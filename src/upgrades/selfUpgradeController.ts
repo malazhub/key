@@ -5,6 +5,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
 import { detectCapabilityLoss, type CapabilityTestResult } from "./upgradeTransaction";
+import { resolveKeyWorkspaceRoot } from "./workspace";
 
 const execAsync = promisify(exec);
 
@@ -188,7 +189,7 @@ export async function runBoundedSelfUpgradeSession(
 
   const activeRoot = path.resolve(deps.activeWorkspace);
   const workspaceRoot = path.resolve(
-    request.workspaceRoot || path.join(activeRoot, "upgrade-workspaces")
+    request.workspaceRoot || resolveKeyWorkspaceRoot(activeRoot).root
   );
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
