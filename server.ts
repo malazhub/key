@@ -37,6 +37,17 @@ import {
   buildEngineQueryPayload,
   pushQueryToEnginesAndConverge,
 } from "./src/searchAndEnginePushRouter";
+import {
+  hashKeyLogic,
+  validateKeyLogic,
+  validateUpgradeCandidate,
+  executeUpgradeTransaction,
+  type KeyLogic,
+  type UpgradeCandidate,
+  type UpgradeVersion,
+  type CapabilityTest,
+  type UpgradeStore,
+} from "./src/upgrades/upgradeTransaction";
 
 dotenv.config();
 
@@ -4246,21 +4257,31 @@ jobs:
       });
     }
 
-    // Always rebuild dist/ on deploy so the compiled bundle (index.html + assets/*) matches src/* and src/mirroredKeyState.json 100%
+    // Build is a hard prerequisite: deployment must never continue after a build failure.
+    let buildError: string | null = null;
     try {
       const distDir = path.join(__dirname, "dist");
       if (options?.forceRebuild !== false) {
         fs.rmSync(distDir, { recursive: true, force: true });
       }
       if (!fs.existsSync(path.join(distDir, "index.html"))) {
-        await new Promise<void>((resolve) => {
-          exec("npm run build", { cwd: __dirname, timeout: 45000 }, () =>
-            resolve()
-          );
+        await new Promise<void>((resolve, reject) => {
+          exec("npm run build", { cwd: __dirname, timeout: 45000 }, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
       }
-    } catch {
-      // ignore build error if already built
+    } catch (err) {
+      buildError = err instanceof Error ? err.message : String(err);
+    }
+    if (buildError) {
+      return {
+        success: false,
+        verified: false,
+        error: `Build failed; deployment aborted: ${buildError}`,
+        repoUrl: `https://github.com/${owner}/${repo}`,
+      };
     }
 
     const files = await collectProjectFiles();
@@ -4269,6 +4290,7 @@ jobs:
     // and execute local git init + git commit so it is 100% ready for atomic `git push --force`
     const stageDir = "/tmp/malazhub_key_force_deploy";
     let localGitCommitSha = "";
+    let stageError: string | null = null;
     try {
       fs.rmSync(stageDir, { recursive: true, force: true });
       fs.mkdirSync(stageDir, { recursive: true });
@@ -4291,8 +4313,15 @@ jobs:
           }
         );
       });
-    } catch {
-      // ignore stage dir error
+    } catch (err) {
+      stageError = err instanceof Error ? err.message : String(err);
+    }
+    if (stageError || !localGitCommitSha) {
+      return {
+        success: false,
+        verified: false,
+        error: `Staging/local commit failed; deployment aborted: ${stageError || "no local commit was created"}`,
+      };
     }
 
     if (!token) {
@@ -4393,7 +4422,10 @@ jobs:
       });
 
       if (gitPushSucceeded) {
-        liveGitHubCommitSha = localGitCommitSha || "main";
+        const verifiedLocalSha = await new Promise<string>((resolve) => {
+          exec("git rev-parse HEAD", { cwd: stageDir, timeout: 5000 }, (_err, stdout) => resolve(stdout.trim()));
+        });
+        liveGitHubCommitSha = verifiedLocalSha;
         for (const f of files) {
           if (!f.path.startsWith(".github/")) {
             pushedFiles.push(f.path);
@@ -4497,7 +4529,7 @@ jobs:
                       body: JSON.stringify({
                         message: `Force deploy full Key Multi-AI Consensus Engine structure (${treeItems.length} files) to malazhub/key — Live: https://malazhub.github.io/key/`,
                         tree: tJson.sha,
-                        parents: [],
+                        parents: [latestCommitSha],
                       }),
                     }
                   );
@@ -4624,6 +4656,57 @@ jobs:
       headers: ghHeaders,
     }).catch(() => {});
 
+    // Final remote verification: only report success after the remote commit/tree
+    // matches the exact intended deploy set and blob contents.
+    const remoteRefRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBranch)}`,
+      { headers: ghHeaders }
+    );
+    if (!remoteRefRes.ok) {
+      return { success: false, verified: false, error: `Remote branch verification failed: HTTP ${remoteRefRes.status}`, pushedFiles, failedFiles };
+    }
+    const remoteRef = (await remoteRefRes.json()) as { object?: { sha?: string } };
+    const remoteCommitSha = remoteRef.object?.sha || "";
+    if (!remoteCommitSha || remoteCommitSha !== liveGitHubCommitSha) {
+      return { success: false, verified: false, error: "Remote commit verification failed; refusing to report deployment success.", remoteCommitSha, reportedCommitSha: liveGitHubCommitSha, pushedFiles, failedFiles };
+    }
+    const remoteCommitRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/commits/${remoteCommitSha}`,
+      { headers: ghHeaders }
+    );
+    if (!remoteCommitRes.ok) {
+      return { success: false, verified: false, error: `Remote commit verification failed: HTTP ${remoteCommitRes.status}`, remoteCommitSha, pushedFiles, failedFiles };
+    }
+    const remoteCommit = (await remoteCommitRes.json()) as { tree?: { sha?: string } };
+    const remoteTreeSha = remoteCommit.tree?.sha || "";
+    if (!remoteTreeSha) {
+      return { success: false, verified: false, error: "Remote commit has no tree; refusing deployment success.", remoteCommitSha };
+    }
+    const remoteTreeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${remoteTreeSha}?recursive=1`,
+      { headers: ghHeaders }
+    );
+    if (!remoteTreeRes.ok) {
+      return { success: false, verified: false, error: `Remote tree verification failed: HTTP ${remoteTreeRes.status}`, remoteCommitSha };
+    }
+    const remoteTree = (await remoteTreeRes.json()) as { tree?: Array<{ path?: string; type?: string; sha?: string }> };
+    const remoteByPath = new Map((remoteTree.tree || []).map(item => [item.path || "", item]));
+    const cryptoBlobSha = (content: string) => {
+      const bytes = Buffer.from(content, "utf8");
+      return crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])).digest("hex");
+    };
+    const deployable = files.filter(file => !file.path.startsWith(".github/"));
+    const mismatches = deployable.filter(file => {
+      const remote = remoteByPath.get(file.path);
+      return !remote || remote.type !== "blob" || remote.sha !== cryptoBlobSha(file.content);
+    }).map(file => file.path);
+    const expectedPaths = new Set(deployable.map(file => file.path));
+    const unexpected = (remoteTree.tree || [])
+      .filter(item => item.type === "blob" && !expectedPaths.has(item.path || ""))
+      .map(item => item.path || "");
+    if (mismatches.length > 0 || unexpected.length > 0) {
+      return { success: false, verified: false, error: "Remote tree does not exactly match the intended deploy set.", mismatches, unexpected, remoteCommitSha, pushedFiles, failedFiles };
+    }
     const deployedAt = new Date().toISOString();
     const repoUrl = `https://github.com/${owner}/${repo}`;
     const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
@@ -4636,7 +4719,8 @@ jobs:
       actionsUrl,
       liveDeployUrl,
       branch: targetBranch,
-      commitSha: liveGitHubCommitSha || localGitCommitSha || "main",
+      commitSha: liveGitHubCommitSha,
+      verified: true,
       deployedAt,
       pushedCount: pushedFiles.length,
       pushedFiles,
