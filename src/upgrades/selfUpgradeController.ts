@@ -4,6 +4,7 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import crypto from "crypto";
+import { detectCapabilityLoss, type CapabilityTestResult } from "./upgradeTransaction";
 
 const execAsync = promisify(exec);
 
@@ -191,6 +192,20 @@ export async function runBoundedSelfUpgradeSession(
   );
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
+  const baselineLint = await runCheck(activeRoot, "npm run lint");
+  const baselineBuild = baselineLint.ok
+    ? await runCheck(activeRoot, "npm run build")
+    : { ok: false, output: "Baseline lint failed; refusing to replace a known-good active version." };
+  if (!baselineLint.ok || !baselineBuild.ok) {
+    throw new Error(
+      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}.`
+    );
+  }
+  const baselineCapabilities: CapabilityTestResult[] = [
+    { id: "lint", passed: baselineLint.ok },
+    { id: "build", passed: baselineBuild.ok },
+  ];
+
   const session: SelfUpgradeSession = {
     sessionId: safeSessionId(),
     instruction: String(request.instruction || "").slice(0, 1000),
@@ -254,6 +269,24 @@ export async function runBoundedSelfUpgradeSession(
       }
 
       const build = await runCheck(candidateWorkspace, "npm run build");
+      const candidateCapabilities: CapabilityTestResult[] = [
+        { id: "lint", passed: lint.ok },
+        { id: "build", passed: build.ok },
+      ];
+      const lostCapabilities = detectCapabilityLoss(baselineCapabilities, candidateCapabilities);
+      if (lostCapabilities.length > 0) {
+        const error = `OLD PASS + NEW FAIL: ${lostCapabilities.join(", ")}. Active version retained; trying next round.`;
+        session.rounds.push({
+          round, candidatePath: rel, candidateWorkspace,
+          checks: { lint: lint.ok, build: build.ok },
+          generated, deployed: false, error,
+        });
+        previousFailure = `${error}\n${!lint.ok ? lint.output : ""}\n${!build.ok ? build.output : ""}`.slice(-12000);
+        previousCandidate = candidate;
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        continue;
+      }
       if (!build.ok) {
         const error = summarizeFailure(lint, build);
         session.rounds.push({
