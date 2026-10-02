@@ -12,8 +12,17 @@ export type SelfUpgradeRoundCandidate = {
   fileContent: string;
 };
 
+export type SelfUpgradeCandidateGenerator = (params: {
+  round: number;
+  instruction: string;
+  activeWorkspace: string;
+  previousFailure?: string;
+  previousCandidate?: SelfUpgradeRoundCandidate;
+}) => Promise<SelfUpgradeRoundCandidate>;
+
 export type SelfUpgradeSessionStatus =
   | "COMPLETED"
+  | "EXHAUSTED"
   | "STOPPED"
   | "FAILED"
   | "PENDING_ADMIN_DECISION";
@@ -21,10 +30,10 @@ export type SelfUpgradeSessionStatus =
 export interface SelfUpgradeControllerRequest {
   instruction: string;
   requestedRounds: number;
-  candidates: SelfUpgradeRoundCandidate[];
+  candidates?: SelfUpgradeRoundCandidate[];
   deploy: boolean;
   workspaceRoot?: string;
-};
+}
 
 export interface SelfUpgradeRoundResult {
   round: number;
@@ -34,6 +43,7 @@ export interface SelfUpgradeRoundResult {
     lint: boolean;
     build: boolean;
   };
+  generated: boolean;
   deployed: boolean;
   deployment?: Record<string, unknown>;
   error?: string;
@@ -73,6 +83,19 @@ function assertSafeRelativePath(filePath: string): string {
   if (normalized.startsWith(".git/") || normalized === ".git") {
     throw new Error("Git metadata is not a candidate file.");
   }
+  if (
+    normalized.startsWith(".github/") ||
+    normalized === "package.json" ||
+    normalized === "package-lock.json" ||
+    normalized === "pnpm-lock.yaml" ||
+    normalized === "yarn.lock" ||
+    normalized.startsWith(".env")
+  ) {
+    throw new Error("Upgrade candidate may not modify deployment, dependency, or secret configuration.");
+  }
+  if (!(normalized === "server.ts" || normalized.startsWith("src/"))) {
+    throw new Error("Upgrade candidate must target server.ts or a file under src/.");
+  }
   return normalized;
 }
 
@@ -105,13 +128,16 @@ function copyWorkspace(sourceRoot: string, targetRoot: string): void {
 function persistSession(session: SelfUpgradeSession): void {
   const dir = path.join(session.workspaceRoot, "sessions");
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${session.sessionId}.json`);
-  fs.writeFileSync(file, JSON.stringify(session, null, 2), "utf8");
+  fs.writeFileSync(path.join(dir, `${session.sessionId}.json`), JSON.stringify(session, null, 2), "utf8");
 }
 
 async function runCheck(workspace: string, command: string): Promise<{ ok: boolean; output: string }> {
   try {
-    const result = await execAsync(command, { cwd: workspace, timeout: 120000, maxBuffer: 8 * 1024 * 1024 });
+    const result = await execAsync(command, {
+      cwd: workspace,
+      timeout: 120000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
     return { ok: true, output: `${result.stdout || ""}${result.stderr || ""}`.slice(-12000) };
   } catch (error) {
     const e = error as { stdout?: string; stderr?: string; message?: string };
@@ -131,20 +157,32 @@ async function restoreFiles(activeRoot: string, backups: Map<string, string | nu
   }
 }
 
+function summarizeFailure(lint: { ok: boolean; output: string }, build: { ok: boolean; output: string }): string {
+  if (!lint.ok) return `LINT FAILED:\n${lint.output}`;
+  if (!build.ok) return `BUILD FAILED:\n${build.output}`;
+  return "Candidate did not reach deployment.";
+}
+
 export async function runBoundedSelfUpgradeSession(
   request: SelfUpgradeControllerRequest,
   deps: {
     activeWorkspace: string;
     deploy: DeployFn;
     githubToken?: string;
+    generateCandidate?: SelfUpgradeCandidateGenerator;
   }
 ): Promise<SelfUpgradeSession> {
   const requestedRounds = Number(request.requestedRounds);
   if (!Number.isInteger(requestedRounds) || requestedRounds < 1 || requestedRounds > 50) {
     throw new Error("requestedRounds must be an integer from 1 to 50.");
   }
-  if (!Array.isArray(request.candidates) || request.candidates.length < requestedRounds) {
-    throw new Error("Each requested round must have one explicit candidate file. Provide candidates for every round.");
+
+  const explicitCandidates = Array.isArray(request.candidates) ? request.candidates : [];
+  if (explicitCandidates.length > 0 && explicitCandidates.length < requestedRounds) {
+    throw new Error("When explicit candidates are supplied, provide one candidate for every requested round.");
+  }
+  if (explicitCandidates.length === 0 && typeof deps.generateCandidate !== "function") {
+    throw new Error("No candidates supplied and no autonomous candidate generator is configured.");
   }
 
   const activeRoot = path.resolve(deps.activeWorkspace);
@@ -166,95 +204,140 @@ export async function runBoundedSelfUpgradeSession(
   };
   persistSession(session);
 
+  let previousFailure = "";
+  let previousCandidate: SelfUpgradeRoundCandidate | undefined;
+
   for (let round = 1; round <= requestedRounds; round += 1) {
-    const candidate = request.candidates[round - 1];
-    const candidateWorkspace = path.join(workspaceRoot, session.sessionId, `round-${round}`);
-    fs.mkdirSync(candidateWorkspace, { recursive: true });
-    copyWorkspace(activeRoot, candidateWorkspace);
+    let candidate: SelfUpgradeRoundCandidate;
+    let generated = false;
 
-    const rel = assertSafeRelativePath(candidate.filePath);
-    const candidateFile = path.join(candidateWorkspace, rel);
-    fs.mkdirSync(path.dirname(candidateFile), { recursive: true });
-    fs.writeFileSync(candidateFile, String(candidate.fileContent), "utf8");
+    try {
+      if (explicitCandidates.length > 0) {
+        candidate = explicitCandidates[round - 1];
+      } else {
+        candidate = await deps.generateCandidate!({
+          round,
+          instruction: session.instruction,
+          activeWorkspace: activeRoot,
+          previousFailure,
+          previousCandidate,
+        });
+        generated = true;
+      }
 
-    const lint = await runCheck(candidateWorkspace, "npm run lint");
-    if (!lint.ok) {
-      session.rounds.push({
-        round, candidatePath: rel, candidateWorkspace,
-        checks: { lint: false, build: false }, deployed: false,
-        error: `Lint failed: ${lint.output}`,
+      const rel = assertSafeRelativePath(candidate.filePath);
+      if (!candidate.fileContent || candidate.fileContent.length > 1024 * 1024) {
+        throw new Error("Candidate file content must be non-empty and <= 1 MiB.");
+      }
+
+      const candidateWorkspace = path.join(workspaceRoot, session.sessionId, `round-${round}`);
+      fs.mkdirSync(candidateWorkspace, { recursive: true });
+      copyWorkspace(activeRoot, candidateWorkspace);
+
+      const candidateFile = path.join(candidateWorkspace, rel);
+      fs.mkdirSync(path.dirname(candidateFile), { recursive: true });
+      fs.writeFileSync(candidateFile, String(candidate.fileContent), "utf8");
+
+      const lint = await runCheck(candidateWorkspace, "npm run lint");
+      if (!lint.ok) {
+        const error = summarizeFailure(lint, { ok: true, output: "" });
+        session.rounds.push({
+          round, candidatePath: rel, candidateWorkspace,
+          checks: { lint: false, build: false },
+          generated, deployed: false, error,
+        });
+        previousFailure = error;
+        previousCandidate = candidate;
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        continue;
+      }
+
+      const build = await runCheck(candidateWorkspace, "npm run build");
+      if (!build.ok) {
+        const error = summarizeFailure(lint, build);
+        session.rounds.push({
+          round, candidatePath: rel, candidateWorkspace,
+          checks: { lint: true, build: false },
+          generated, deployed: false, error,
+        });
+        previousFailure = error;
+        previousCandidate = candidate;
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        continue;
+      }
+
+      if (!request.deploy) {
+        session.rounds.push({
+          round, candidatePath: rel, candidateWorkspace,
+          checks: { lint: true, build: true },
+          generated, deployed: false,
+        });
+        session.completedRounds = round;
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        continue;
+      }
+
+      const target = path.join(activeRoot, rel);
+      const backups = new Map<string, string | null>();
+      backups.set(rel, fs.existsSync(target) ? fs.readFileSync(target, "utf8") : null);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(candidateFile, target);
+
+      const deployment = await deps.deploy({
+        githubToken: deps.githubToken,
+        repoOwner: "malazhub",
+        repoName: "key",
+        branch: "main",
+        forceRebuild: true,
       });
-      session.updatedAt = new Date().toISOString();
-      persistSession(session);
-      session.status = "STOPPED";
-      persistSession(session);
-      return session;
-    }
 
-    const build = await runCheck(candidateWorkspace, "npm run build");
-    if (!build.ok) {
+      if (deployment.success !== true || deployment.verified !== true) {
+        await restoreFiles(activeRoot, backups);
+        const error = "Deployment did not return verified=true; active workspace restored.";
+        session.rounds.push({
+          round, candidatePath: rel, candidateWorkspace,
+          checks: { lint: true, build: true },
+          generated, deployed: false, deployment, error,
+        });
+        previousFailure = error;
+        previousCandidate = candidate;
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        continue;
+      }
+
       session.rounds.push({
         round, candidatePath: rel, candidateWorkspace,
-        checks: { lint: true, build: false }, deployed: false,
-        error: `Build failed: ${build.output}`,
-      });
-      session.updatedAt = new Date().toISOString();
-      persistSession(session);
-      session.status = "STOPPED";
-      persistSession(session);
-      return session;
-    }
-
-    if (!request.deploy) {
-      session.rounds.push({
-        round, candidatePath: rel, candidateWorkspace,
-        checks: { lint: true, build: true }, deployed: false,
+        checks: { lint: true, build: true },
+        generated, deployed: true, deployment,
       });
       session.completedRounds = round;
       session.updatedAt = new Date().toISOString();
-      persistSession(session);
-      continue;
-    }
-
-    const target = path.join(activeRoot, rel);
-    const backups = new Map<string, string | null>();
-    backups.set(rel, fs.existsSync(target) ? fs.readFileSync(target, "utf8") : null);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(candidateFile, target);
-
-    const deployment = await deps.deploy({
-      githubToken: deps.githubToken,
-      repoOwner: "malazhub",
-      repoName: "key",
-      branch: "main",
-      forceRebuild: true,
-    });
-
-    if (deployment.success !== true || deployment.verified !== true) {
-      await restoreFiles(activeRoot, backups);
-      session.rounds.push({
-        round, candidatePath: rel, candidateWorkspace,
-        checks: { lint: true, build: true }, deployed: false,
-        deployment,
-        error: "Deployment did not return verified=true; active workspace restored.",
-      });
-      session.updatedAt = new Date().toISOString();
-      persistSession(session);
-      session.status = "FAILED";
+      session.status = "COMPLETED";
       persistSession(session);
       return session;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      session.rounds.push({
+        round,
+        candidatePath: String(candidate?.filePath || "generation-error"),
+        candidateWorkspace: path.join(workspaceRoot, session.sessionId, `round-${round}`),
+        checks: { lint: false, build: false },
+        generated,
+        deployed: false,
+        error: message,
+      });
+      previousFailure = message;
+      previousCandidate = candidate;
+      session.updatedAt = new Date().toISOString();
+      persistSession(session);
     }
-
-    session.rounds.push({
-      round, candidatePath: rel, candidateWorkspace,
-      checks: { lint: true, build: true }, deployed: true, deployment,
-    });
-    session.completedRounds = round;
-    session.updatedAt = new Date().toISOString();
-    persistSession(session);
   }
 
-  session.status = "COMPLETED";
+  session.status = "EXHAUSTED";
   session.updatedAt = new Date().toISOString();
   persistSession(session);
   return session;
