@@ -3643,166 +3643,142 @@ export const VERSION8_SUPERSEDING_ENGINE = {
     res.json({ active: false });
   });
 
+  async function generateAutonomousSelfUpgradeCandidate(params: {
+    round: number;
+    instruction: string;
+    activeWorkspace: string;
+    previousFailure?: string;
+    previousCandidate?: SelfUpgradeRoundCandidate;
+  }): Promise<SelfUpgradeRoundCandidate> {
+    const targetFiles = [
+      "src/consensusEngine.ts",
+      "src/searchAndEnginePushRouter.ts",
+      "src/security/defender.ts",
+      "src/upgrades/selfUpgradeController.ts",
+      "src/upgrades/upgradeTransaction.ts",
+      "src/upgrades/activeSelfUpgradeModule.ts",
+      "src/App.tsx",
+      "server.ts",
+    ];
+
+    const previousPath = params.previousCandidate?.filePath
+      ? String(params.previousCandidate.filePath)
+      : "";
+    const previousContent = params.previousCandidate?.fileContent
+      ? String(params.previousCandidate.fileContent)
+      : "";
+
+    const prompt = `
+You are KEY's bounded self-upgrade planner. Produce exactly ONE candidate file revision for round ${params.round}.
+
+Upgrade goal:
+${params.instruction.slice(0, 3000)}
+
+Hard architectural constraints:
+- Preserve KEY as maestro/orchestrator; external AI engines remain workers.
+- Preserve the defender gate at query/search/engine boundaries.
+- Preserve NORMAL/LEARN/UPGRADE/SLEEP authority boundaries.
+- Self-upgrade is bounded to the requested rounds; never create recursion or a new unbounded loop.
+- Do not modify package manifests, lockfiles, .github workflows, secrets, Git metadata, or deployment configuration.
+- Only choose one file from this allowlist:
+${targetFiles.join(", ")}
+- Return the complete replacement contents for that one file.
+- Make a concrete improvement related to the goal or fix the previous failure.
+- Do not invent test results or claim deployment success.
+- Keep the change compatible with the existing TypeScript/Vite project.
+
+Previous round failure:
+${(params.previousFailure || "none").slice(-8000)}
+
+Previous candidate path:
+${previousPath || "none"}
+
+Previous candidate content (use only to improve/fix it; may be empty):
+${previousContent.slice(-30000)}
+
+Return ONLY JSON in this exact shape:
+{"filePath":"one allowed path","fileContent":"complete UTF-8 file contents"}
+`;
+
+    const availableModels = getOrderedCandidateModels().filter(isModelAvailable);
+    if (availableModels.length === 0) throw new Error("No AI model is currently available for self-upgrade generation.");
+
+    let lastError = "";
+    for (const model of availableModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+          },
+        });
+        const raw = String(response.text || "").trim();
+        const parsed = JSON.parse(raw) as { filePath?: unknown; fileContent?: unknown };
+        if (typeof parsed.filePath !== "string" || typeof parsed.fileContent !== "string") {
+          throw new Error("AI self-upgrade candidate did not match the required JSON shape.");
+        }
+        return {
+          filePath: parsed.filePath,
+          fileContent: parsed.fileContent,
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        if (isQuotaOrRateLimitError(error)) markModelCooldown(model, error);
+      }
+    }
+    throw new Error(`All self-upgrade candidate generation attempts failed: ${lastError}`);
+  }
+
   app.post("/api/self-upgrade/execute", async (req, res) => {
     try {
-    // Bounded controller path: explicit finite rounds, isolated candidate workspace,
-    // real lint/build gates, and optional verified deployment. Legacy behavior below
-    // is preserved when no candidates are supplied.
-    if (Array.isArray(req.body?.candidates) && req.body.candidates.length > 0) {
+      const requestedRounds = Number(
+        req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1
+      );
+      const deploy = req.body?.deploy === undefined ? true : Boolean(req.body.deploy);
+
       const result = await runBoundedSelfUpgradeSession(
         {
-          instruction: String(req.body?.instruction || "Enhance KEY strength, codebase, and file structures"),
-          requestedRounds: Number(req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1),
-          candidates: req.body.candidates as SelfUpgradeRoundCandidate[],
-          deploy: Boolean(req.body?.deploy),
+          instruction: String(
+            req.body?.instruction ||
+              "Improve KEY's architecture, resilience, defender integration, and self-upgrade reliability."
+          ),
+          requestedRounds,
+          candidates:
+            Array.isArray(req.body?.candidates) && req.body.candidates.length > 0
+              ? (req.body.candidates as SelfUpgradeRoundCandidate[])
+              : undefined,
+          deploy,
           workspaceRoot:
-            typeof req.body?.workspaceRoot === "string" && req.body.workspaceRoot.trim()
+            typeof req.body?.workspaceRoot === "string" &&
+            req.body.workspaceRoot.trim()
               ? req.body.workspaceRoot
               : undefined,
         },
         {
           activeWorkspace: __dirname,
           githubToken:
-            typeof req.body?.githubToken === "string" && req.body.githubToken.trim()
+            typeof req.body?.githubToken === "string" &&
+            req.body.githubToken.trim()
               ? req.body.githubToken
               : undefined,
+          generateCandidate: generateAutonomousSelfUpgradeCandidate,
           deploy: async (args) =>
             (await executeFullGitHubStructureDeploy(args)) as Record<string, unknown>,
         }
       );
+
       res.json({
         success: result.status === "COMPLETED",
-        controller: "bounded-isolated-self-upgrade",
+        controller: "bounded-autonomous-self-upgrade-v2",
+        noLifetimeUpgradeLimit: true,
         ...result,
-      });
-      return;
-    }
-
-      const {
-        instruction = "Enhance KEY strength, codebase, and file structures",
-        targetThreshold = 99,
-        revisionRounds = 50,
-        filePath,
-        fileContent,
-      } = req.body || {};
-      const registryPath = path.join(__dirname, "src", "selfUpgradeRegistry.json");
-      const upgradesDir = path.join(__dirname, "src", "upgrades");
-      const activeModulePath = path.join(upgradesDir, "activeSelfUpgradeModule.ts");
-      const selfStatePath = path.join(__dirname, "key_self_upgrade_state.json");
-
-      const mutatedFilesList = [
-        "src/consensusEngine.ts",
-        "src/App.tsx",
-        "server.ts",
-        "src/selfUpgradeRegistry.json",
-        "src/upgrades/activeSelfUpgradeModule.ts",
-        "key_self_upgrade_state.json",
-      ];
-
-      if (typeof filePath === "string" && filePath.trim() && typeof fileContent === "string") {
-        const cleanRel = filePath.trim().replace(/^\/+/, "");
-        const absTarget = path.resolve(__dirname, cleanRel);
-        if (absTarget.startsWith(path.resolve(__dirname))) {
-          fs.mkdirSync(path.dirname(absTarget), { recursive: true });
-          fs.writeFileSync(absTarget, fileContent, "utf8");
-          if (!mutatedFilesList.includes(cleanRel)) {
-            mutatedFilesList.unshift(cleanRel);
-          }
-        }
-      }
-
-      let prevUpgradeCount = 4;
-      let historyRecords: Array<Record<string, any>> = [];
-      if (fs.existsSync(registryPath)) {
-        try {
-          const parsedReg = JSON.parse(fs.readFileSync(registryPath, "utf8"));
-          if (typeof parsedReg.upgradeCount === "number") {
-            prevUpgradeCount = parsedReg.upgradeCount;
-          }
-          if (Array.isArray(parsedReg.history)) {
-            historyRecords = parsedReg.history.slice(-24);
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      const nextUpgradeCount = prevUpgradeCount + 1;
-      const nowIso = new Date().toISOString();
-      const newVersionStr = `v3.8.${nextUpgradeCount}`;
-      const liveWorkspaceFiles = await collectProjectFiles({ skipBuild: true });
-      const upgradeEntry = {
-        upgradeId: `upg_${Date.now().toString(36)}`,
-        version: newVersionStr,
-        executedAt: nowIso,
-        workspaceRoot: __dirname,
-        totalFilesOnDisk: liveWorkspaceFiles.length,
-        triggerQuery: String(instruction).slice(0, 260),
-        consensusStrengthThreshold: Math.max(95, Math.min(100, Number(targetThreshold) || 99)),
-        maxRevisionRounds: Math.max(30, Math.min(100, Number(revisionRounds) || 50)),
-        zeroRefrainZeroObstruction: true,
-        mutatedFiles: mutatedFilesList,
-        verificationGate: {
-          syntax: "PASS",
-          typecheck: "PASS",
-          build: "PASS",
-          tests: "312/312 PASS",
-        },
-      };
-
-      const registryPayload = {
-        active: true,
-        version: newVersionStr,
-        upgradeCount: nextUpgradeCount,
-        updatedAt: nowIso,
-        workspaceRoot: __dirname,
-        totalFilesOnDisk: liveWorkspaceFiles.length,
-        latestUpgrade: upgradeEntry,
-        history: [...historyRecords, upgradeEntry],
-      };
-
-      fs.mkdirSync(upgradesDir, { recursive: true });
-      fs.writeFileSync(registryPath, JSON.stringify(registryPayload, null, 2), "utf8");
-      fs.writeFileSync(
-        selfStatePath,
-        JSON.stringify(
-          {
-            updatedAt: nowIso,
-            version: newVersionStr,
-            upgradeCount: nextUpgradeCount,
-            workspaceRoot: __dirname,
-            totalFilesOnDisk: liveWorkspaceFiles.length,
-            query: instruction,
-            spec: upgradeEntry,
-            modifiedFiles: mutatedFilesList,
-          },
-          null,
-          2
-        ),
-        "utf8"
-      );
-      fs.writeFileSync(
-        activeModulePath,
-        `// Auto-generated & persisted by KEY Autonomous Self-Upgrade Engine (${nowIso})\nexport * from "./version8Harness";\nimport {\n  HARNESS_VERSION,\n  VERSION8_INTEGRATION_STATUS,\n  FIXTURE_REGISTRY,\n  run_self_tests,\n  run_campaign,\n  evaluateResponseWithVersion8Override,\n} from "./version8Harness";\n\nexport const KEY_AUTONOMOUS_UPGRADE_MANIFEST = ${JSON.stringify(
-          {
-            ...upgradeEntry,
-            harnessVersion: V8_HARNESS_VERSION,
-            integrationStatus: VERSION8_INTEGRATION_STATUS,
-          },
-          null,
-          2
-        )} as const;\n\nexport const VERSION8_SUPERSEDING_ENGINE = {\n  run_self_tests,\n  run_campaign,\n  evaluateResponseWithVersion8Override,\n  FIXTURE_REGISTRY,\n};\n`,
-        "utf8"
-      );
-
-      res.json({
-        success: true,
-        ...registryPayload,
       });
     } catch (err: unknown) {
       res.status(500).json({
         success: false,
-        error: err instanceof Error ? err.message : "Failed to execute self-upgrade.",
+        error:
+          err instanceof Error ? err.message : "Failed to execute self-upgrade.",
       });
     }
   });
