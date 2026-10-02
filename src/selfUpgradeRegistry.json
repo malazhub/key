@@ -2,7 +2,7 @@
   "active": true,
   "version": "v8.0 (7.0-real-attacker)",
   "upgradeCount": 6,
-  "updatedAt": "2026-10-01T17:35:00.000Z",
+  "updatedAt": "2026-10-02T13:07:43.583Z",
   "latestUpgrade": {
     "upgradeId": "upg_version8_real_attacker_v70",
     "version": "v8.0 (7.0-real-attacker)",
@@ -56,5 +56,25 @@
       "zeroRefrainZeroObstruction": true,
       "totalLevel1To8HarmonyCodesImplemented": 61
     }
-  ]
+  ],
+  "maestroUpgradeTransaction": {
+    "version": "1.0.0",
+    "module": "src/upgrades/upgradeTransaction.ts",
+    "modes": [
+      "NORMAL",
+      "LEARN",
+      "UPGRADE",
+      "SLEEP"
+    ],
+    "trustedStrategies": [
+      "PARALLEL_DELEGATION",
+      "SEQUENTIAL_CHAIN",
+      "CONSENSUS_VOTE"
+    ],
+    "candidateFormat": "declarative-KeyLogic-only",
+    "capabilityGate": "OLD PASS + NEW FAIL => administrator decision; otherwise atomic activation",
+    "immutableVersions": true,
+    "rollbackSupported": true,
+    "lifetimeUpgradeLimit": null
+  }
 }
