@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const KEY_UPGRADE_MODULE_VERSION = "1.0.0";
+export const KEY_UPGRADE_MODULE_VERSION = "1.1.0";
 export type KeyMode = "NORMAL" | "LEARN" | "UPGRADE" | "SLEEP";
 export type TrustedStrategy = "PARALLEL_DELEGATION" | "SEQUENTIAL_CHAIN" | "CONSENSUS_VOTE";
 
@@ -151,9 +151,9 @@ export const KEY_MAESTRO_PRINCIPLES = Object.freeze([
   "KEY is the maestro/orchestrator; external AI engines are workers.",
   "Permanent core contains logic and orchestration methodology, not a conventional knowledge database.",
   "NORMAL and LEARN never permanently modify KeyLogic.",
-  "UPGRADE is explicit and discrete; one command creates at most one candidate version.",
+  "UPGRADE is explicit and discrete; each candidate is tested before activation and failed candidates never replace the active version.",
   "Candidates are declarative and use only trusted predefined strategies.",
   "OLD PASS + NEW FAIL requires administrator decision; active version remains unchanged.",
   "Previous versions are immutable for rollback.",
-  "There is no artificial lifetime upgrade count or capability ceiling.",
+  "There is no artificial lifetime upgrade count or capability ceiling; bounded sessions are per transaction, not a lifetime quota.",
 ] as const);
