@@ -1,5 +1,6 @@
 import express from "express";
 import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate } from "./src/upgrades/selfUpgradeController";
+import { resolveKeyWorkspaceRoot, resolveAuditRoot, safeAuditPath, isAuditReadablePath } from "./src/upgrades/workspace";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -5057,6 +5058,59 @@ jobs:
   if (!readSavedGitHubToken()) {
     startOrReuseServerDeviceSession(false).catch(() => {});
   }
+
+  // Read-only KEY workspace audit surface. Writes remain exclusively on the self-upgrade controller.
+  app.get("/api/audit/tree", (_req, res) => {
+    try {
+      const root = resolveAuditRoot(__dirname);
+      const files: string[] = [];
+      const walk = (dir: string, rel = "") => {
+        if (files.length >= 5000) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if ([".git", "node_modules", "dist", "upgrade-workspaces"].includes(entry.name)) continue;
+          const childRel = rel ? path.join(rel, entry.name) : entry.name;
+          const child = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(child, childRel);
+          else if (entry.isFile() && isAuditReadablePath(childRel)) files.push(childRel.replace(/\\\\/g, "/"));
+        }
+      };
+      walk(root);
+      res.json({ ok: true, root: "/", count: files.length, truncated: files.length >= 5000, files });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/audit/source", (req, res) => {
+    try {
+      const root = resolveAuditRoot(__dirname);
+      const requested = String(req.query.path || "").trim();
+      const normalized = requested.replace(/^[/\\\\]+/, "").replace(/\\\\/g, "/");
+      if (!isAuditReadablePath(normalized)) throw new Error("source path is not allowed");
+      const file = safeAuditPath(root, normalized);
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Error("source file not found");
+      const source = fs.readFileSync(file, "utf8");
+      res.json({ ok: true, path: normalized, bytes: Buffer.byteLength(source, "utf8"), source });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/audit/upgrade-path", (_req, res) => {
+    const workspace = resolveKeyWorkspaceRoot(__dirname);
+    res.json({
+      ok: true,
+      controller: "src/upgrades/selfUpgradeController.ts",
+      workspaceRoot: workspace.root,
+      workspaceSource: workspace.source,
+      persistentWorkspaceConfigured: workspace.persistent,
+      roundLimit: { min: 1, max: 50 },
+      flow: ["generate", "isolate", "lint", "build", "capability-gate", "verified-deploy", "retain-or-retry"],
+      failurePolicy: "OLD PASS + NEW FAIL => reject candidate and continue; active version remains unchanged",
+      deploymentPolicy: "activate only after success=true and verified=true",
+      sourceOfTruth: "GitHub main branch",
+    });
+  });
 
   // ============================================================================
   // VERSION 8 (v7.0 REAL-ATTACKER HARNESS) LIVE BACKEND API ROUTES
