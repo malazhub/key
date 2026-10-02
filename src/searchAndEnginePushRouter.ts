@@ -75,6 +75,9 @@ export async function executeKeySearchPipeline(
   memorySearchTrace: MemoryOSPipelineTrace;
 }> {
   const cleanQuestion = String(question || "").trim();
+  if (!defendQuery(cleanQuestion)) {
+    throw new Error("DEFENDER_BLOCKED: query rejected by defender.");
+  }
 
   const memorySearchTrace = runMemoryOperatingSystemPipeline(
     cleanQuestion,
@@ -129,6 +132,13 @@ export async function pushQueryToEnginesAndConverge(
   request: SearchAndEnginePushRequest
 ): Promise<Record<string, any>> {
   const effectiveQuestion = String(request.question || "").trim();
+   if (!defendQuery(effectiveQuestion)) {
+    return {
+      blocked: true,
+      blockedBy: "DEFENDER",
+      reason: "Query rejected by defender.",
+    };
+  }
   const modelsList =
     Array.isArray(request.activeModels) && request.activeModels.length > 0
       ? request.activeModels
