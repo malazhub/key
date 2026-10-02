@@ -3644,6 +3644,39 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
   app.post("/api/self-upgrade/execute", async (req, res) => {
     try {
+    // Bounded controller path: explicit finite rounds, isolated candidate workspace,
+    // real lint/build gates, and optional verified deployment. Legacy behavior below
+    // is preserved when no candidates are supplied.
+    if (Array.isArray(req.body?.candidates) && req.body.candidates.length > 0) {
+      const result = await runBoundedSelfUpgradeSession(
+        {
+          instruction: String(req.body?.instruction || "Enhance KEY strength, codebase, and file structures"),
+          requestedRounds: Number(req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1),
+          candidates: req.body.candidates as SelfUpgradeRoundCandidate[],
+          deploy: Boolean(req.body?.deploy),
+          workspaceRoot:
+            typeof req.body?.workspaceRoot === "string" && req.body.workspaceRoot.trim()
+              ? req.body.workspaceRoot
+              : undefined,
+        },
+        {
+          activeWorkspace: __dirname,
+          githubToken:
+            typeof req.body?.githubToken === "string" && req.body.githubToken.trim()
+              ? req.body.githubToken
+              : undefined,
+          deploy: async (args) =>
+            (await executeFullGitHubStructureDeploy(args)) as Record<string, unknown>,
+        }
+      );
+      res.json({
+        success: result.status === "COMPLETED",
+        controller: "bounded-isolated-self-upgrade",
+        ...result,
+      });
+      return;
+    }
+
       const {
         instruction = "Enhance KEY strength, codebase, and file structures",
         targetThreshold = 99,
