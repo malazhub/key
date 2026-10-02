@@ -4257,21 +4257,31 @@ jobs:
       });
     }
 
-    // Always rebuild dist/ on deploy so the compiled bundle (index.html + assets/*) matches src/* and src/mirroredKeyState.json 100%
+    // Build is a hard prerequisite: deployment must never continue after a build failure.
+    let buildError: string | null = null;
     try {
       const distDir = path.join(__dirname, "dist");
       if (options?.forceRebuild !== false) {
         fs.rmSync(distDir, { recursive: true, force: true });
       }
       if (!fs.existsSync(path.join(distDir, "index.html"))) {
-        await new Promise<void>((resolve) => {
-          exec("npm run build", { cwd: __dirname, timeout: 45000 }, () =>
-            resolve()
-          );
+        await new Promise<void>((resolve, reject) => {
+          exec("npm run build", { cwd: __dirname, timeout: 45000 }, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
       }
-    } catch {
-      // ignore build error if already built
+    } catch (err) {
+      buildError = err instanceof Error ? err.message : String(err);
+    }
+    if (buildError) {
+      return {
+        success: false,
+        verified: false,
+        error: `Build failed; deployment aborted: ${buildError}`,
+        repoUrl: `https://github.com/${owner}/${repo}`,
+      };
     }
 
     const files = await collectProjectFiles();
@@ -4280,6 +4290,7 @@ jobs:
     // and execute local git init + git commit so it is 100% ready for atomic `git push --force`
     const stageDir = "/tmp/malazhub_key_force_deploy";
     let localGitCommitSha = "";
+    let stageError: string | null = null;
     try {
       fs.rmSync(stageDir, { recursive: true, force: true });
       fs.mkdirSync(stageDir, { recursive: true });
@@ -4302,8 +4313,15 @@ jobs:
           }
         );
       });
-    } catch {
-      // ignore stage dir error
+    } catch (err) {
+      stageError = err instanceof Error ? err.message : String(err);
+    }
+    if (stageError || !localGitCommitSha) {
+      return {
+        success: false,
+        verified: false,
+        error: `Staging/local commit failed; deployment aborted: ${stageError || "no local commit was created"}`,
+      };
     }
 
     if (!token) {
