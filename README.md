@@ -69,3 +69,40 @@ npm install
 npm run dev
 ```
 Then open `http://localhost:3000` in your browser.
+
+
+## KEY Maestro Architecture
+
+KEY is the maestro/orchestrator. External AI engines are workers that provide knowledge,
+reasoning, research, coding, analysis, and alternative solutions. KEY's permanent core is
+the orchestration and upgrade methodology rather than a conventional internal knowledge database.
+
+### Explicit modes
+
+- **NORMAL** — solve tasks; no permanent KeyLogic mutation.
+- **LEARN** — analyze and extract principles; no permanent KeyLogic mutation.
+- **UPGRADE** — one explicit, finite upgrade transaction may produce one candidate version.
+- **SLEEP** — no upgrade activity.
+
+### Declarative upgrade transaction
+
+`src/upgrades/upgradeTransaction.ts` implements the transaction boundary. Candidate KeyLogic
+is schema-validated and may use only the trusted strategies:
+
+- `PARALLEL_DELEGATION`
+- `SEQUENTIAL_CHAIN`
+- `CONSENSUS_VOTE`
+
+Executable JavaScript/TypeScript is not accepted as candidate logic.
+
+Before activation, the candidate is tested against the current capability suite. If a capability
+that previously passed now fails, the candidate is saved as an immutable inactive version and
+administrator decision is required. Otherwise the version is atomically activated. Previous
+versions remain immutable for rollback, and there is no artificial lifetime upgrade count.
+
+### Deployment integrity
+
+The GitHub deployment routine now treats build/staging failures as hard failures and does not
+report a local commit SHA as a remote GitHub commit. After deployment it verifies the remote branch
+commit, remote tree, exact intended file set, and Git blob SHA for every deployed file before
+returning `success: true`.
