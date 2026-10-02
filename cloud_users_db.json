@@ -1,0 +1,22 @@
+{
+  "demo@malaz.ai": {
+    "email": "demo@malaz.ai",
+    "threads": [
+      {
+        "id": "t1",
+        "title": "Beirut Weather",
+        "updatedAt": "Now",
+        "messages": [
+          {
+            "id": "m1",
+            "role": "user",
+            "content": "What is the weather in Beirut today and tomorrow?"
+          }
+        ]
+      }
+    ],
+    "usedBytes": 157,
+    "quotaBytes": 200,
+    "updatedAt": "2026-09-27T08:51:53.510Z"
+  }
+}

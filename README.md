@@ -1,0 +1,71 @@
+# Key — Multi-AI Consensus Engine (`malazhub/key`)
+
+### 🌐 Live Application Entry Point (Click to Open AI Key):
+# 👉 [**https://malazhub.github.io/key/**](https://malazhub.github.io/key/)
+
+A full-stack **Multi-AI Consensus Engine** that coordinates **10 simultaneous AI Engines** (`ChatGPT 4o`, `Claude 3.5 Sonnet`, `DeepSeek V3`, `Gemini 2.5`, `Qwen 2.5`, `Llama 3.3 70B`, `Grok 2`, `Mistral Large 2`, `Perplexity Pro`, `Command R+`) with **Persistent Contextual Routing (PCR)**, **Full-History Vector Indexing**, and **Global State Sync** until reaching your target agreement threshold (default **≥ 95%**).
+
+---
+
+## 🔗 Direct Links
+
+- **Live Multi-AI Consensus Engine (GitHub Pages):** [https://malazhub.github.io/key/](https://malazhub.github.io/key/)
+- **Primary GitHub Repository:** [https://github.com/malazhub/key](https://github.com/malazhub/key)
+- **GitHub Actions & Deployment Status:** [https://github.com/malazhub/key/actions](https://github.com/malazhub/key/actions)
+
+---
+
+## 📁 Complete Project Folder Structure (`malazhub/key`)
+
+```text
+key/
+├── index.html                          # Production GitHub Pages Entry Point (https://malazhub.github.io/key/)
+├── index.vite.html                     # Vite development HTML entry point
+├── assets/                             # Compiled production JavaScript & CSS bundle for GitHub Pages
+├── .nojekyll                           # Ensures GitHub Pages serves all static assets immediately
+├── package.json                        # Dependencies and start/build scripts
+├── server.ts                           # Express + Vite full-stack server, PCR, Live Mirror Sync & Direct GitHub Force-Deploy API
+├── tsconfig.json                       # TypeScript configuration
+├── vite.config.ts                      # Vite bundler configuration
+├── metadata.json                       # Application metadata & capabilities manifest
+├── .env.example                        # Environment variables template (GEMINI_API_KEY, GITHUB_TOKEN)
+├── .gitignore                          # Git ignore rules
+├── admin_versions_db.json              # Primary repository version ledger (malazhub/key)
+├── cloud_users_db.json                 # Cloud user threads & quota storage ledger
+├── firebase-applet-config.json         # Firebase project configuration
+├── firebase-blueprint.json             # Firebase database schema blueprint
+├── firestore.rules                     # Firestore database security rules
+├── README.md                           # Direct link to https://malazhub.github.io/key/ & setup guide
+└── src/
+    ├── main.tsx                        # React DOM entry point
+    ├── App.tsx                         # Main Key Multi-AI Consensus UI, 10-Engine Selector, Memory & Admin Deploy
+    ├── consensusEngine.ts              # Shared 10-Engine Consensus Kernel, Strict Query Priority & Self-Upgrade Engine
+    ├── searchAndEnginePushRouter.ts    # Live Web Search Grounding, 5-Channel Memory Search & 10-Engine Query Push Router
+    ├── mirroredKeyState.json           # Live 1:1 Mirrored Workspace State Snapshot (UI, Engines, Target % & Threads)
+    ├── selfUpgradeRegistry.json        # Autonomous Self-Upgrade Version & Verification Gate Registry
+    ├── index.css                       # Tailwind CSS v4 global stylesheet
+    ├── firebase.ts                     # Firebase Auth & Firestore client initialization
+    ├── upgrades/
+    │   └── activeSelfUpgradeModule.ts  # Active Autonomous Self-Upgrade Manifest
+    └── components/
+        ├── MarkdownRenderer.tsx        # Structured Markdown + Interactive Portal Controller
+        ├── GitHubExportModal.tsx       # Direct GitHub Repository Force-Push & File Inspector
+        └── SemanticHistoryGraph.tsx    # Interactive Semantic History & Vector Relation Graph
+```
+
+---
+
+## 🚀 How to Open & Run AI Key
+
+### 1. Open Directly from GitHub Pages (Zero Setup)
+Click the primary link below on any desktop or mobile browser to launch the **Key Multi-AI Consensus Engine**:
+👉 **[https://malazhub.github.io/key/](https://malazhub.github.io/key/)**
+
+### 2. Run Full-Stack Locally (Node.js)
+```bash
+git clone https://github.com/malazhub/key.git
+cd key
+npm install
+npm run dev
+```
+Then open `http://localhost:3000` in your browser.

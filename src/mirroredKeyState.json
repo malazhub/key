@@ -1,0 +1,110 @@
+{
+  "mirrorVersion": 126,
+  "deployId": "deploy_1790943789217",
+  "updatedAt": "2026-10-02T12:23:09.218Z",
+  "uiState": {
+    "resetButtonPosition": "hidden",
+    "headerTitleAlign": "left",
+    "showHeaderUrlBadge": false,
+    "showHeaderBar": true,
+    "customHeaderTitle": "Key",
+    "headerTitleColors": [
+      "#ef4444",
+      "#facc15",
+      "#3b82f6"
+    ],
+    "sidebarPosition": "left",
+    "sidebarOpen": true,
+    "enginesExpanded": false,
+    "composerPosition": "bottom",
+    "showCarButton": false,
+    "showAttachButton": true,
+    "showPreviewButton": true,
+    "showDownloadButton": true,
+    "customCssPatch": "",
+    "isAdminAuthenticated": true
+  },
+  "models": [
+    "ChatGPT 4o",
+    "Claude 3.5 Sonnet",
+    "DeepSeek V3",
+    "Gemini 2.5",
+    "Qwen 2.5",
+    "Llama 3.3 70B",
+    "Grok 2",
+    "Mistral Large 2",
+    "Perplexity Pro",
+    "Command R+"
+  ],
+  "target": 95,
+  "threads": [
+    {
+      "id": "thread-1790943345792",
+      "title": "New Chat",
+      "updatedAt": "03:15 PM",
+      "messages": []
+    },
+    {
+      "id": "thread-1790940632439",
+      "title": "my dear i need the worksapace where u keep…",
+      "updatedAt": "02:35 PM",
+      "messages": [
+        {
+          "id": "user-1790940949162",
+          "role": "user",
+          "content": "my dear i need the worksapace where u keept key files folders i want to inspect them give me the live work space, where key saved logic and files, i do not want github or any other issues i want live work sapce let say u saved into chttp\"//cloud... or i do not know u shall tell me to get and inspect",
+          "timestamp": "02:35 PM"
+        }
+      ]
+    },
+    {
+      "id": "thread-1790940631584",
+      "title": "New Chat",
+      "updatedAt": "Just now",
+      "messages": []
+    }
+  ],
+  "adminDeployResult": {
+    "repoUrl": "https://github.com/malazhub/key",
+    "actionsUrl": "https://github.com/malazhub/key/actions",
+    "liveDeployUrl": "https://malazhub.github.io/key/",
+    "pushedCount": 33,
+    "commitSha": "da4127b",
+    "deployedAt": "2026-10-02T12:22:42.372Z",
+    "pushedFiles": [
+      "README.md",
+      "package.json",
+      "server.ts",
+      "index.html",
+      "vite.config.ts",
+      "tsconfig.json",
+      ".env.example",
+      ".gitignore",
+      "metadata.json",
+      "admin_versions_db.json",
+      "cloud_users_db.json",
+      "firebase-applet-config.json",
+      "firebase-blueprint.json",
+      "firestore.rules",
+      "src/main.tsx",
+      "src/App.tsx",
+      "src/consensusEngine.ts",
+      "src/searchAndEnginePushRouter.ts",
+      "src/mirroredKeyState.json",
+      "src/selfUpgradeRegistry.json",
+      "src/upgrades/activeSelfUpgradeModule.ts",
+      "src/upgrades/version8Harness.ts",
+      "src/upgrades/version8.py",
+      "version8.py",
+      "src/index.css",
+      "src/firebase.ts",
+      "src/components/MarkdownRenderer.tsx",
+      "src/components/GitHubExportModal.tsx",
+      "src/components/SemanticHistoryGraph.tsx",
+      ".nojekyll",
+      "index.vite.html",
+      "assets/index-BeJVkPZI.js",
+      "assets/index-dB37l1aN.css"
+    ]
+  }
+}
