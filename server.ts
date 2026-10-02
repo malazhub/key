@@ -37,6 +37,17 @@ import {
   buildEngineQueryPayload,
   pushQueryToEnginesAndConverge,
 } from "./src/searchAndEnginePushRouter";
+import {
+  hashKeyLogic,
+  validateKeyLogic,
+  validateUpgradeCandidate,
+  executeUpgradeTransaction,
+  type KeyLogic,
+  type UpgradeCandidate,
+  type UpgradeVersion,
+  type CapabilityTest,
+  type UpgradeStore,
+} from "./src/upgrades/upgradeTransaction";
 
 dotenv.config();
 
@@ -4393,7 +4404,10 @@ jobs:
       });
 
       if (gitPushSucceeded) {
-        liveGitHubCommitSha = localGitCommitSha || "main";
+        const verifiedLocalSha = await new Promise<string>((resolve) => {
+          exec("git rev-parse HEAD", { cwd: stageDir, timeout: 5000 }, (_err, stdout) => resolve(stdout.trim()));
+        });
+        liveGitHubCommitSha = verifiedLocalSha;
         for (const f of files) {
           if (!f.path.startsWith(".github/")) {
             pushedFiles.push(f.path);
@@ -4497,7 +4511,7 @@ jobs:
                       body: JSON.stringify({
                         message: `Force deploy full Key Multi-AI Consensus Engine structure (${treeItems.length} files) to malazhub/key — Live: https://malazhub.github.io/key/`,
                         tree: tJson.sha,
-                        parents: [],
+                        parents: [latestCommitSha],
                       }),
                     }
                   );
@@ -4624,6 +4638,57 @@ jobs:
       headers: ghHeaders,
     }).catch(() => {});
 
+    // Final remote verification: only report success after the remote commit/tree
+    // matches the exact intended deploy set and blob contents.
+    const remoteRefRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBranch)}`,
+      { headers: ghHeaders }
+    );
+    if (!remoteRefRes.ok) {
+      return { success: false, verified: false, error: `Remote branch verification failed: HTTP ${remoteRefRes.status}`, pushedFiles, failedFiles };
+    }
+    const remoteRef = (await remoteRefRes.json()) as { object?: { sha?: string } };
+    const remoteCommitSha = remoteRef.object?.sha || "";
+    if (!remoteCommitSha || remoteCommitSha !== liveGitHubCommitSha) {
+      return { success: false, verified: false, error: "Remote commit verification failed; refusing to report deployment success.", remoteCommitSha, reportedCommitSha: liveGitHubCommitSha, pushedFiles, failedFiles };
+    }
+    const remoteCommitRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/commits/${remoteCommitSha}`,
+      { headers: ghHeaders }
+    );
+    if (!remoteCommitRes.ok) {
+      return { success: false, verified: false, error: `Remote commit verification failed: HTTP ${remoteCommitRes.status}`, remoteCommitSha, pushedFiles, failedFiles };
+    }
+    const remoteCommit = (await remoteCommitRes.json()) as { tree?: { sha?: string } };
+    const remoteTreeSha = remoteCommit.tree?.sha || "";
+    if (!remoteTreeSha) {
+      return { success: false, verified: false, error: "Remote commit has no tree; refusing deployment success.", remoteCommitSha };
+    }
+    const remoteTreeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${remoteTreeSha}?recursive=1`,
+      { headers: ghHeaders }
+    );
+    if (!remoteTreeRes.ok) {
+      return { success: false, verified: false, error: `Remote tree verification failed: HTTP ${remoteTreeRes.status}`, remoteCommitSha };
+    }
+    const remoteTree = (await remoteTreeRes.json()) as { tree?: Array<{ path?: string; type?: string; sha?: string }> };
+    const remoteByPath = new Map((remoteTree.tree || []).map(item => [item.path || "", item]));
+    const cryptoBlobSha = (content: string) => {
+      const bytes = Buffer.from(content, "utf8");
+      return crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])).digest("hex");
+    };
+    const deployable = files.filter(file => !file.path.startsWith(".github/"));
+    const mismatches = deployable.filter(file => {
+      const remote = remoteByPath.get(file.path);
+      return !remote || remote.type !== "blob" || remote.sha !== cryptoBlobSha(file.content);
+    }).map(file => file.path);
+    const expectedPaths = new Set(deployable.map(file => file.path));
+    const unexpected = (remoteTree.tree || [])
+      .filter(item => item.type === "blob" && !expectedPaths.has(item.path || ""))
+      .map(item => item.path || "");
+    if (mismatches.length > 0 || unexpected.length > 0) {
+      return { success: false, verified: false, error: "Remote tree does not exactly match the intended deploy set.", mismatches, unexpected, remoteCommitSha, pushedFiles, failedFiles };
+    }
     const deployedAt = new Date().toISOString();
     const repoUrl = `https://github.com/${owner}/${repo}`;
     const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
@@ -4636,7 +4701,8 @@ jobs:
       actionsUrl,
       liveDeployUrl,
       branch: targetBranch,
-      commitSha: liveGitHubCommitSha || localGitCommitSha || "main",
+      commitSha: liveGitHubCommitSha,
+      verified: true,
       deployedAt,
       pushedCount: pushedFiles.length,
       pushedFiles,
