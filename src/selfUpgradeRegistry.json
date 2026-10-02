@@ -2,7 +2,7 @@
   "active": true,
   "version": "v8.0 (7.0-real-attacker)",
   "upgradeCount": 6,
-  "updatedAt": "2026-10-02T13:25:01.505Z",
+  "updatedAt": "2026-10-02T14:12:27.839Z",
   "latestUpgrade": {
     "upgradeId": "upg_version8_real_attacker_v70",
     "version": "v8.0 (7.0-real-attacker)",
@@ -78,21 +78,26 @@
     "lifetimeUpgradeLimit": null
   },
   "maestroUpgradeController": {
-    "version": "1.0.0",
+    "version": "2.0.0",
     "module": "src/upgrades/selfUpgradeController.ts",
     "boundedRounds": {
       "min": 1,
       "max": 50,
       "hardStop": true
     },
-    "workspaceIsolation": "active workspace is copied into upgrade-workspaces/session/round-N; candidate changes are tested before activation",
+    "candidateFlow": "explicit candidates or autonomous one-candidate-per-round generation",
+    "workspaceIsolation": "active workspace copied into upgrade-workspaces/session/round-N; failed candidates never activate",
     "checks": [
-      "npm run lint",
-      "npm run build"
+      "baseline npm run lint",
+      "baseline npm run build",
+      "candidate npm run lint",
+      "candidate npm run build"
     ],
-    "deployment": "optional; requires verified=true from existing GitHub deployment routine",
-    "rollback": "failed deployment restores modified active files from pre-round backup",
+    "capabilityGate": "OLD PASS + NEW FAIL => reject candidate and continue to next preselected round; active version remains unchanged",
+    "deployment": "first candidate passing the capability gate may be deployed only when existing GitHub deployment returns success=true and verified=true",
+    "rollback": "failed or unverified deployment restores the modified active file",
     "sessionPersistence": "sessions/<session-id>.json",
-    "protectedBehavior": "no unbounded recursion; one candidate per requested round; stop on failed gate"
+    "noLifetimeUpgradeLimit": true,
+    "defenderPreserved": true
   }
 }
