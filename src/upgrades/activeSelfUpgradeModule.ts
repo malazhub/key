@@ -52,3 +52,5 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
 
 export * from "./upgradeTransaction";
+
+export * from "./selfUpgradeController";
