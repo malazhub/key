@@ -100,6 +100,22 @@ that previously passed now fails, the candidate is saved as an immutable inactiv
 administrator decision is required. Otherwise the version is atomically activated. Previous
 versions remain immutable for rollback, and there is no artificial lifetime upgrade count.
 
+### Bounded self-upgrade controller
+
+The self-upgrade execution path now has an isolated, finite-round controller in
+\`src/upgrades/selfUpgradeController.ts\`. An administrator can submit a finite number of
+rounds (1–50) with one explicit candidate per round. Each candidate is copied into an isolated
+session/round workspace, then \`npm run lint\` and \`npm run build\` must pass before the next
+round is allowed.
+
+When deployment is requested, the controller calls the existing verified GitHub deployment
+routine. A round is considered deployed only when that routine returns \`verified: true\`; failed
+deployment restores the files changed by that round. Session state is persisted under the upgrade
+workspace so completed rounds and the hard stop are explicit rather than an unbounded recursive loop.
+
+The existing legacy self-upgrade endpoint behavior is preserved when no candidate list is supplied;
+the new controller is additive and does not replace that path.
+
 ### Deployment integrity
 
 The GitHub deployment routine now treats build/staging failures as hard failures and does not
