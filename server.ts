@@ -1,4 +1,5 @@
 import express from "express";
+import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate } from "./src/upgrades/selfUpgradeController";
 import path from "path";
 import fs from "fs";
 import os from "os";
