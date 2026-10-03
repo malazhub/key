@@ -49,6 +49,12 @@ export interface SelfUpgradeRoundResult {
   deployed: boolean;
   deployment?: Record<string, unknown>;
   error?: string;
+
+  // Persistent staged copy: survives browser refresh because the session
+  // is written to the self-upgrade workspace on disk.
+  stagedFileContent?: string;
+  previewHtml?: string;
+  previewReady?: boolean;
 }
 
 export interface SelfUpgradeSession {
@@ -303,16 +309,40 @@ export async function runBoundedSelfUpgradeSession(
       }
 
       if (!request.deploy) {
-        session.rounds.push({
-          round, candidatePath: rel, candidateWorkspace,
-          checks: { lint: true, build: true },
-          generated, deployed: false,
-        });
-        session.completedRounds = round;
-        session.updatedAt = new Date().toISOString();
-        persistSession(session);
-        continue;
-      }
+  let previewHtml = "";
+
+  const previewIndex = path.join(candidateWorkspace, "dist", "index.html");
+  if (fs.existsSync(previewIndex)) {
+    previewHtml = fs.readFileSync(previewIndex, "utf8");
+  }
+
+  session.rounds.push({
+    round,
+    candidatePath: rel,
+    candidateWorkspace,
+    checks: { lint: true, build: true },
+    generated,
+    deployed: false,
+
+    // Keep the actual generated source, not merely a description of it.
+    stagedFileContent: String(candidate.fileContent),
+
+    // Keep the built application available for the visual preview.
+    previewHtml,
+    previewReady: Boolean(previewHtml),
+  });
+
+  session.completedRounds = round;
+  session.status = "PENDING_ADMIN_DECISION";
+  session.updatedAt = new Date().toISOString();
+  persistSession(session);
+
+  // STOP HERE.
+  // Nothing is copied into activeRoot.
+  // Nothing is deployed.
+  // Nothing is committed.
+  return session;
+}
 
       const target = path.join(activeRoot, rel);
       const backups = new Map<string, string | null>();
