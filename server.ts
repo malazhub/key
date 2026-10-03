@@ -3736,7 +3736,7 @@ Return ONLY JSON in this exact shape:
       const requestedRounds = Number(
         req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1
       );
-      const deploy = req.body?.deploy === undefined ? true : Boolean(req.body.deploy);
+      const deploy = req.body?.deploy === undefined ? false : Boolean(req.body.deploy);
 
       const result = await runBoundedSelfUpgradeSession(
         {
