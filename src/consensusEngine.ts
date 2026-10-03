@@ -2224,9 +2224,23 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <button id="runDiskUpgradeBtn" type="button" class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">
-          ⚡ Execute &amp; Persist Self-Upgrade to Disk Now
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            id="runDiskUpgradeBtn"
+            type="button"
+            class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md"
+          >
+            🧪 Generate &amp; Preview Upgrade
+          </button>
+
+          <button
+            id="approveStagedUpgradeBtn"
+            type="button"
+            class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md"
+          >
+            ✅ Activate Staged Upgrade
+          </button>
+        </div>
         <button id="refreshTreeBtn" type="button" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition">
           ↻ Refresh Live Tree
         </button>
@@ -2245,6 +2259,32 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
 
     <div id="statusBar" class="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-mono text-emerald-300">
       ✓ Connected to Key Node.js Filesystem Bridge (/api/fs/tree, /api/fs/read, /api/fs/write, /api/self-upgrade/execute). Click any file on the left to inspect or modify its real code on disk.
+    </div>
+    <div class="rounded-2xl bg-slate-900 border border-sky-500/40 p-4 space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-sm font-extrabold text-sky-300">
+            LIVE STAGED SELF-UPGRADE
+          </div>
+          <div class="text-[11px] text-slate-400">
+            Generated → tested → previewed → persisted. Activation remains separate.
+          </div>
+        </div>
+
+        <span
+          id="previewStatus"
+          class="text-[11px] font-mono text-slate-400"
+        >
+          No staged upgrade
+        </span>
+      </div>
+
+      <iframe
+        id="upgradePreviewFrame"
+        title="Key staged self-upgrade preview"
+        class="w-full min-h-[620px] rounded-xl bg-white border border-slate-700"
+        sandbox="allow-scripts allow-forms allow-modals allow-same-origin"
+      ></iframe>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -2359,31 +2399,179 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
         renderFileButtons(FALLBACK_FILES);
       }
 
+      var STAGED_UPGRADE_STORAGE_KEY = 'malaz_key_staged_self_upgrade_v1';
+      var stagedUpgrade = null;
+
+      function saveStagedUpgrade(value) {
+        stagedUpgrade = value;
+        try {
+          localStorage.setItem(
+            STAGED_UPGRADE_STORAGE_KEY,
+            JSON.stringify(value)
+          );
+        } catch (e) {
+          console.warn('Could not persist staged upgrade:', e);
+        }
+      }
+
+      function loadStagedUpgrade() {
+        try {
+          var raw = localStorage.getItem(STAGED_UPGRADE_STORAGE_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function showStagedUpgrade(value) {
+        var frame = document.getElementById('upgradePreviewFrame');
+        var previewStatus = document.getElementById('previewStatus');
+
+        if (!value) {
+          if (frame) frame.srcdoc = '';
+          if (previewStatus) previewStatus.textContent = 'No staged upgrade';
+          return;
+        }
+
+        if (frame) {
+          frame.srcdoc = value.previewHtml || '';
+        }
+
+        if (previewStatus) {
+          previewStatus.textContent =
+            'STAGED · ' +
+            (value.filePath || 'candidate') +
+            ' · ' +
+            (value.savedAt || 'persisted');
+        }
+      }
+
       async function runDiskSelfUpgrade() {
-        var instr = (upgradeInput && upgradeInput.value) ? upgradeInput.value.trim() : 'Autonomous Key Self-Upgrade on Disk';
-        statusBar.textContent = '⏳ Executing live disk self-upgrade (/api/self-upgrade/execute)...';
+        var instr =
+          (upgradeInput && upgradeInput.value)
+            ? upgradeInput.value.trim()
+            : 'Autonomous Key Self-Upgrade on Disk';
+
+        statusBar.textContent =
+          '⏳ Generating and testing upgrade — active Key remains unchanged...';
+
         try {
           var res = await fetch('/api/self-upgrade/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instruction: instr, targetThreshold: 99, revisionRounds: 50 })
+            body: JSON.stringify({
+              instruction: instr,
+              requestedRounds: 1,
+              deploy: false
+            })
           });
+
           var data = await res.json();
-          if (data && data.success) {
-            versionBadge.textContent = 'Disk Version: ' + data.version + ' (#' + data.upgradeCount + ')';
-            statusBar.textContent = '✓ REAL DISK UPGRADE EXECUTED: Persisted ' + data.version + ' (upgradeId: ' + (data.latestUpgrade && data.latestUpgrade.upgradeId) + ') to src/selfUpgradeRegistry.json & src/upgrades/activeSelfUpgradeModule.ts!';
-            await loadTree();
-            await loadFile('src/selfUpgradeRegistry.json');
-          } else {
-            statusBar.textContent = '⚠ Upgrade response: ' + JSON.stringify(data);
+
+          if (!data || !data.success) {
+            statusBar.textContent =
+              '⚠ Upgrade generation failed: ' + JSON.stringify(data);
+            return;
           }
+
+          var rounds = Array.isArray(data.rounds) ? data.rounds : [];
+          var round = rounds[rounds.length - 1];
+
+          if (!round || !round.stagedFileContent) {
+            statusBar.textContent =
+              '⚠ Upgrade was not staged. Response: ' + JSON.stringify(data);
+            return;
+          }
+
+          var staged = {
+            sessionId: data.sessionId || '',
+            round: round.round,
+            filePath: round.candidatePath,
+            fileContent: round.stagedFileContent,
+            previewHtml: round.previewHtml || '',
+            previewReady: Boolean(round.previewReady),
+            savedAt: new Date().toISOString()
+          };
+
+          saveStagedUpgrade(staged);
+          showStagedUpgrade(staged);
+
+          statusBar.textContent =
+            '✓ UPGRADE STAGED AND TESTED. Active Key was NOT changed. ' +
+            'The staged copy is persisted and will be restored after refresh.';
         } catch (e) {
-          statusBar.textContent = '⚠ Disk upgrade error: ' + e;
+          statusBar.textContent =
+            '⚠ Disk upgrade error: ' + e;
         }
       }
 
-      document.getElementById('refreshTreeBtn').addEventListener('click', loadTree);
-      document.getElementById('runDiskUpgradeBtn').addEventListener('click', runDiskSelfUpgrade);
+      async function approveStagedUpgrade() {
+        var value = stagedUpgrade || loadStagedUpgrade();
+
+        if (!value || !value.filePath || !value.fileContent) {
+          statusBar.textContent =
+            '⚠ No staged upgrade exists. Generate one first.';
+          return;
+        }
+
+        statusBar.textContent =
+          '⏳ Activating the reviewed staged upgrade...';
+
+        try {
+          var res = await fetch('/api/self-upgrade/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              instruction: 'Activate the previously reviewed staged self-upgrade.',
+              requestedRounds: 1,
+              deploy: true,
+              candidates: [
+                {
+                  filePath: value.filePath,
+                  fileContent: value.fileContent
+                }
+              ]
+            })
+          });
+
+          var data = await res.json();
+
+          if (!data || !data.success) {
+            statusBar.textContent =
+              '⚠ Activation failed: ' + JSON.stringify(data);
+            return;
+          }
+
+          localStorage.removeItem(STAGED_UPGRADE_STORAGE_KEY);
+          stagedUpgrade = null;
+          showStagedUpgrade(null);
+
+          statusBar.textContent =
+            '✓ STAGED UPGRADE ACTIVATED. The separate GitHub deploy/commit flow remains unchanged.';
+        } catch (e) {
+          statusBar.textContent =
+            '⚠ Activation error: ' + e;
+        }
+      }
+
+      document.getElementById('refreshTreeBtn')
+        .addEventListener('click', loadTree);
+
+      document.getElementById('runDiskUpgradeBtn')
+        .addEventListener('click', runDiskSelfUpgrade);
+
+      document.getElementById('approveStagedUpgradeBtn')
+        .addEventListener('click', approveStagedUpgrade);
+
+      stagedUpgrade = loadStagedUpgrade();
+
+      if (stagedUpgrade) {
+        showStagedUpgrade(stagedUpgrade);
+
+        statusBar.textContent =
+          '✓ STAGED UPGRADE RESTORED AFTER REFRESH. ' +
+          'Active Key remains unchanged until you activate it.';
+      }
       document.getElementById('saveFileBtn').addEventListener('click', async function() {
         statusBar.textContent = '⏳ Writing ' + currentPath + ' directly to disk (/api/fs/write)...';
         try {
