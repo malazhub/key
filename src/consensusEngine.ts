@@ -2515,44 +2515,8 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
         }
 
         statusBar.textContent =
-          '⏳ Activating the reviewed staged upgrade...';
-
-        try {
-          var res = await fetch('/api/self-upgrade/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              instruction: 'Activate the previously reviewed staged self-upgrade locally.',
-              requestedRounds: 1,
-              deploy: false,
-              candidates: [
-                {
-                  filePath: value.filePath,
-                  fileContent: value.fileContent
-                }
-              ]
-            })
-          });
-
-          var data = await res.json();
-
-          if (!data || !data.success) {
-            statusBar.textContent =
-              '⚠ Activation failed: ' + JSON.stringify(data);
-            return;
-          }
-
-          localStorage.removeItem(STAGED_UPGRADE_STORAGE_KEY);
-          stagedUpgrade = null;
-          showStagedUpgrade(null);
-
-          statusBar.textContent =
-            '✓ STAGED UPGRADE ACTIVATED. The separate GitHub deploy/commit flow remains unchanged.';
-        } catch (e) {
-          statusBar.textContent =
-            '⚠ Activation error: ' + e;
-        }
-      }
+        '✓ STAGED UPGRADE APPROVED FOR THE SEPARATE DEPLOY/COMMIT STEP. ' +
+        'The active Key remains unchanged.';
 
       document.getElementById('refreshTreeBtn')
         .addEventListener('click', loadTree);
