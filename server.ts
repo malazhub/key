@@ -4501,9 +4501,7 @@ jobs:
         });
         liveGitHubCommitSha = verifiedLocalSha;
         for (const f of files) {
-          if (!f.path.startsWith(".github/")) {
-            pushedFiles.push(f.path);
-          }
+          pushedFiles.push(f.path);
         }
       }
     } catch {
@@ -4534,9 +4532,7 @@ jobs:
               sha: string;
             }> = [];
 
-            const deployableFiles = files.filter(
-              (f) => !f.path.startsWith(".github/")
-            );
+            const deployableFiles = files;
 
             const batchSize = 5;
             for (let i = 0; i < deployableFiles.length; i += batchSize) {
@@ -4644,7 +4640,6 @@ jobs:
     // METHOD 3 (FALLBACK): File-by-file Contents API
     if (pushedFiles.length === 0) {
       for (const file of files) {
-        if (file.path.startsWith(".github/")) continue;
         const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`;
         let existingSha: string | undefined;
 
@@ -4769,7 +4764,7 @@ jobs:
       const bytes = Buffer.from(content, "utf8");
       return crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])).digest("hex");
     };
-    const deployable = files.filter(file => !file.path.startsWith(".github/"));
+    const deployable = files;
     const mismatches = deployable.filter(file => {
       const remote = remoteByPath.get(file.path);
       return !remote || remote.type !== "blob" || remote.sha !== cryptoBlobSha(file.content);
