@@ -67,6 +67,7 @@ function createGenAIClient(): GoogleGenAI {
 export const CANDIDATE_MODELS = [
   "gemini-3.8-flash",
   "gemini-3.7-flash",
+  "gemini-3.6-flash",
   "gemini-3.5-flash-lite",
   "gemini-2.5-flash",
 ];
@@ -7407,12 +7408,7 @@ export function shouldUseGoogleSearchGrounding(question: string): boolean {
     return false;
   }
 
-  return /\b(
-    search|browse|web|internet|look\s+up|lookup|research|find\s+online|
-    latest|current|today|tonight|this\s+week|recent|breaking\s+news|
-    current\s+price|stock\s+price|weather\s+in|news|sources?|citations?|
-    compare\s+online|verify\s+online|check\s+online|according\s+to
-  )\b/i.test(question);
+  return /\b(search|browse|web|internet|look\s+up|lookup|research|find\s+online|latest|current|today|tonight|this\s+week|recent|breaking\s+news|current\s+price|stock\s+price|weather\s+in|news|sources?|citations?|compare\s+online|verify\s+online|check\s+online|according\s+to)\b/i.test(question);
 }
 
 export function detectAppBuildIntent(
