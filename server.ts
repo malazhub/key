@@ -5276,6 +5276,32 @@ jobs:
         }
       }
 
+      if (result?.success === true && result?.verified === true && workingCopyId) {
+        const current = readWorkingCopy();
+        if (current && current.workingCopyId === String(workingCopyId)) {
+          const deployed: KeyWorkingCopy = {
+            ...current,
+            status: "DEPLOYED",
+            deployedAt: new Date().toISOString(),
+            deployedCommitSha:
+              typeof result.commitSha === "string"
+                ? result.commitSha
+                : typeof result.remoteCommitSha === "string"
+                ? result.remoteCommitSha
+                : current.deployedCommitSha,
+            updatedAt: new Date().toISOString(),
+          };
+          writeWorkingCopy(deployed);
+          writeMirroredKeyState({
+            workingCopyId: deployed.workingCopyId,
+            workingCopyStatus: deployed.status,
+            workingCopyDeployedAt: deployed.deployedAt,
+            deployedCommitSha: deployed.deployedCommitSha,
+            workingCopy: deployed,
+          });
+        }
+      }
+
       res.json(result);
     } catch (err: unknown) {
       res.status(500).json({
