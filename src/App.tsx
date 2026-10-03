@@ -226,38 +226,7 @@ function readStagedSelfUpgrade(): StagedSelfUpgrade | null {
   }
 }
 
-type StagedSelfUpgrade = {
-  sessionId: string;
-  candidatePath: string;
-  stagedFileContent: string;
-  previewHtml: string;
-  previewReady: boolean;
-  status: string;
-  updatedAt: string;
-};
 
-function readStagedSelfUpgrade(): StagedSelfUpgrade | null {
-  try {
-    const raw = localStorage.getItem(STAGED_UPGRADE_STORAGE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (
-      !parsed ||
-      typeof parsed.sessionId !== "string" ||
-      typeof parsed.stagedFileContent !== "string"
-    ) {
-      return null;
-    }
-
-    return parsed as StagedSelfUpgrade;
-  } catch {
-    return null;
-  }
-}
-const WORKING_MEMORY_LEDGER_STORAGE_KEY =
-  "malaz_key_working_memory_ledger_db_v5";
 const DEFAULT_QUOTA_BYTES = 50 * 1024; // 50 KB default cloud space per signed-in user
 
 function extractClientVectorTokens(text: string): string[] {
