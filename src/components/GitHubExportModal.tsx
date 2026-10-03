@@ -253,7 +253,7 @@ function buildStandaloneGitHubPagesHtml(): string {
 
     const WORKING_COPY_STORAGE_KEY = "key_working_copy_v1";
     const WORKING_COPY_BACKENDS = [
-      "https://ais-dev-f2uayjdkh47dv4kxbjqlp7-790065884957.europe-west2.run.app",
+      "https://ais-dev-f2uayjdkh47dv4xbjqlp7-790065884957.europe-west2.run.app",
       "https://ais-pre-f2uayjdkh47dv4kxbqlp7-790065884957.europe-west2.run.app",
     ];
 
@@ -911,7 +911,7 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
 
     const DEPLOY_BACKENDS = [
       "https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app",
-      "https://ais-pre-f2uayjdkh47dv4kxbjqlp7-790065884957.europe-west2.run.app",
+      "https://ais-pre-f2uayjdkh47dv4xbjqlp7-790065884957.europe-west2.run.app",
     ];
 
     const readStorage = (storage: Storage) => {
