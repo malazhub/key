@@ -191,7 +191,7 @@ const TARGET_MATCH_STORAGE_KEY = "malaz_key_target_v5";
 const CUMULATIVE_BUILD_STORAGE_KEY =
   "malaz_key_cumulative_build_v5";
 const STAGED_UPGRADE_STORAGE_KEY =
-  "malaz_key_staged_upgrade_v1";
+  "malaz_key_staged_self_upgrade_v2";
 const WORKING_MEMORY_LEDGER_STORAGE_KEY =
   "malaz_key_working_memory_ledger_db_v5";
 
@@ -398,6 +398,14 @@ async function executeBrowserNativeRoute(
   init?: RequestInit
 ): Promise<Response | null> {
   const cleanPath = apiPath.split("?")[0];
+
+  // Self-upgrade operations require the real backend.
+  // Never simulate generation, testing, staging, activation,
+  // or preview through the browser-native fallback.
+  if (cleanPath.startsWith("/api/self-upgrade/")) {
+    return null;
+  }
+
   const method = (init?.method || "GET").toUpperCase();
   let bodyObj: Record<string, any> = {};
   if (typeof init?.body === "string" && init.body.trim()) {
@@ -2880,8 +2888,8 @@ export default function App() {
     status: string;
   } | null>(() => {
     try {
-      const raw = localStorage.getItem(
-        "malaz_key_staged_self_upgrade_v2"
+     const raw = localStorage.getItem(
+        STAGED_UPGRADE_STORAGE_KEY
       );
 
       if (!raw) return null;
@@ -3516,10 +3524,9 @@ export default function App() {
       };
 
       localStorage.setItem(
-        "malaz_key_staged_self_upgrade_v2",
+        STAGED_UPGRADE_STORAGE_KEY,
         JSON.stringify(staged)
       );
-
       setStagedSelfUpgrade(staged);
       setSelfUpgradePreviewOpen(true);
 
@@ -3541,7 +3548,7 @@ export default function App() {
 
   const handleRestoreStagedSelfUpgrade = async () => {
     const raw = localStorage.getItem(
-      "malaz_key_staged_self_upgrade_v2"
+      STAGED_UPGRADE_STORAGE_KEY
     );
 
     if (!raw) return;
@@ -3565,7 +3572,7 @@ export default function App() {
       }
     } catch {
       localStorage.removeItem(
-        "malaz_key_staged_self_upgrade_v2"
+        STAGED_UPGRADE_STORAGE_KEY
       );
     }
   };
@@ -3628,7 +3635,7 @@ export default function App() {
       setStagedSelfUpgrade(activated);
 
       localStorage.setItem(
-        "malaz_key_staged_self_upgrade_v2",
+        STAGED_UPGRADE_STORAGE_KEY,
         JSON.stringify(activated)
       );
 
