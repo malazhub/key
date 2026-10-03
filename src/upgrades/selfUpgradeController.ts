@@ -27,7 +27,8 @@ export type SelfUpgradeSessionStatus =
   | "EXHAUSTED"
   | "STOPPED"
   | "FAILED"
-  | "PENDING_ADMIN_DECISION";
+  | "PENDING_ADMIN_DECISION"
+  | "ACTIVATED_LOCALLY";
 
 export interface SelfUpgradeControllerRequest {
   instruction: string;
@@ -336,7 +337,7 @@ export async function runBoundedSelfUpgradeSession(
   session.status = "PENDING_ADMIN_DECISION";
   session.updatedAt = new Date().toISOString();
   persistSession(session);
-//
+
   // STOP HERE.
   // Nothing is copied into activeRoot.
   // Nothing is deployed.
