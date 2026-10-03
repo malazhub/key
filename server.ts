@@ -3749,13 +3749,8 @@ Return ONLY JSON in this exact shape:
             Array.isArray(req.body?.candidates) && req.body.candidates.length > 0
               ? (req.body.candidates as SelfUpgradeRoundCandidate[])
               : undefined,
-          deploy,
-          workspaceRoot:
-            typeof req.body?.workspaceRoot === "string" &&
-            req.body.workspaceRoot.trim()
-              ? req.body.workspaceRoot
-              : undefined,
-        },
+                    deploy,
+         },
         {
           activeWorkspace: __dirname,
           githubToken:
@@ -3955,6 +3950,17 @@ Return ONLY JSON in this exact shape:
         latestRound.stagedFileContent,
         "utf8"
       );
+
+      if (
+        !fs.existsSync(target) ||
+        fs.readFileSync(target, "utf8") !== latestRound.stagedFileContent
+      ) {
+        res.status(500).json({
+          success: false,
+          error: "Local activation verification failed: activated file does not match the staged candidate.",
+        });
+        return;
+      }
 
       latestRound.deployed = false;
       latestRound.error = undefined;
