@@ -23,7 +23,7 @@ import {
   type IncomingAttachment,
   type MemoryOSPipelineTrace,
 } from "./consensusEngine";
-import { defendQuery } from "./security/defender";
+import { defendQuery } from "./security/defenderRuntime";
 
 export interface SearchAndEnginePushRequest {
   question: string;
