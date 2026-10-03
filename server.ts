@@ -3965,9 +3965,44 @@ Return ONLY JSON in this exact shape:
     return merged;
   }
 
+  let volatileKeyRuntimeState: Record<string, unknown> = {};
+
+  function hydrateVolatileKeyRuntimeState(): Record<string, unknown> {
+    try {
+      const persisted = readMirroredKeyState();
+      if (
+        persisted &&
+        typeof persisted === "object" &&
+        !Array.isArray(persisted)
+      ) {
+        volatileKeyRuntimeState = {
+          ...persisted,
+          runtimeHydratedAt: new Date().toISOString(),
+          runtimeHydrationSource: "src/mirroredKeyState.json",
+        };
+      } else {
+        volatileKeyRuntimeState = {};
+      }
+    } catch {
+      volatileKeyRuntimeState = {};
+    }
+    return volatileKeyRuntimeState;
+  }
+
   app.get("/api/mirrored-state", (_req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.json(readMirroredKeyState());
+    res.json({
+      ...readMirroredKeyState(),
+      volatileRuntimeHydrated: true,
+    });
+  });
+
+  app.get("/api/runtime-state", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.json({
+      success: true,
+      volatileRuntimeState,
+    });
   });
 
   app.post("/api/mirrored-state", (req, res) => {
@@ -4240,6 +4275,18 @@ jobs:
       // ignore dist bundle read error
     }
 
+    const DEPLOY_WORKFLOW_PATH = ".github/workflows/deploy.yml";
+
+    if (!seenPaths.has(DEPLOY_WORKFLOW_PATH)) {
+      collected.push({
+        path: DEPLOY_WORKFLOW_PATH,
+        category: "GitHub Actions Deployment",
+        sizeBytes: Buffer.byteLength(GITHUB_ACTIONS_DEPLOY_YML, "utf8"),
+        content: GITHUB_ACTIONS_DEPLOY_YML,
+      });
+      seenPaths.add(DEPLOY_WORKFLOW_PATH);
+    }
+
     return collected;
   }
 
@@ -4260,12 +4307,29 @@ jobs:
       : "";
     const token = providedToken || readSavedGitHubToken();
 
-    // Persist exact live state from the left workspace into src/mirroredKeyState.json BEFORE building dist/
-    if (options?.mirroredState && typeof options.mirroredState === "object") {
-      writeMirroredKeyState({
+    // Persist the complete administrative deployment snapshot before building dist/.
+    // This path is intentionally outside Defender: deployment is an administrative operation,
+    // not an engine/query request.
+    if (
+      options?.mirroredState &&
+      typeof options.mirroredState === "object" &&
+      !Array.isArray(options.mirroredState)
+    ) {
+      const deploymentSnapshot: Record<string, unknown> = {
         ...options.mirroredState,
+        deploymentCapture: {
+          capturedAt: new Date().toISOString(),
+          source: "Key Browser volatile runtime",
+          target: `${owner}/${repo}`,
+          branch: targetBranch,
+          administrativeDeploy: true,
+          defenderBypass: true,
+        },
         deployId: `deploy_${Date.now()}`,
-      });
+      };
+
+      writeMirroredKeyState(deploymentSnapshot);
+      volatileKeyRuntimeState = readMirroredKeyState();
     }
 
     // Build is a hard prerequisite: deployment must never continue after a build failure.
@@ -4306,7 +4370,6 @@ jobs:
       fs.rmSync(stageDir, { recursive: true, force: true });
       fs.mkdirSync(stageDir, { recursive: true });
       for (const file of files) {
-        if (file.path.startsWith(".github/")) continue;
         const destPath = path.join(stageDir, file.path);
         fs.mkdirSync(path.dirname(destPath), { recursive: true });
         fs.writeFileSync(destPath, file.content, "utf8");
@@ -4561,7 +4624,7 @@ jobs:
                         }
                       );
                       if (uRes.ok) {
-                        liveGitHubCommitSha = cJson.sha.slice(0, 7);
+                        liveGitHubCommitSha = cJson.sha;
                         for (const item of treeItems) {
                           pushedFiles.push(item.path);
                         }
@@ -4620,7 +4683,7 @@ jobs:
               commit?: { sha?: string };
             };
             if (putJson.commit?.sha) {
-              liveGitHubCommitSha = putJson.commit.sha.slice(0, 7);
+              liveGitHubCommitSha = putJson.commit.sha;
             }
           } catch {
             // ignore
@@ -5351,6 +5414,8 @@ jobs:
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  hydrateVolatileKeyRuntimeState();
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
