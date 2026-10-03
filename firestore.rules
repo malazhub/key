@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'usedBytes', 'quotaBytes', 'updatedAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 320 &&
+             data.usedBytes is number && data.usedBytes >= 0 &&
+             data.quotaBytes is number && data.quotaBytes > 0 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidThreadDoc(data) {
+      return data.keys().hasAll(['id', 'uid', 'title', 'updatedAt', 'messagesJson', 'sizeBytes']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.title is string && data.title.size() <= 300 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64 &&
+             data.messagesJson is string && data.messagesJson.size() <= 900000 &&
+             data.sizeBytes is number && data.sizeBytes >= 0;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(userId);
+
+      match /threads/{threadId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidThreadDoc(request.resource.data) && request.resource.data.uid == request.auth.uid;
+        allow update: if isOwner(userId) && isValidThreadDoc(request.resource.data) && request.resource.data.uid == resource.data.uid;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

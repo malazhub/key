@@ -1,0 +1,6 @@
+{
+  "name": "Key — Malaz Multi-AI Consensus Chat",
+  "description": "ChatGPT-style conversational AI powered by a 10-node Multi-AI Consensus Engine that converges responses across selected AI models until your target agreement threshold is reached.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

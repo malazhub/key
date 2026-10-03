@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Stores a signed-in user's profile and cloud storage usage metrics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "usedBytes": { "type": "number" },
+        "quotaBytes": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "usedBytes", "quotaBytes", "updatedAt"]
+    },
+    "ChatThreadDoc": {
+      "title": "ChatThreadDoc",
+      "description": "Stores an individual conversation thread and its cumulative messages in the cloud.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "messagesJson": { "type": "string" },
+        "sizeBytes": { "type": "number" }
+      },
+      "required": ["id", "uid", "title", "updatedAt", "messagesJson", "sizeBytes"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile and cloud storage quota document."
+    },
+    "/users/{userId}/threads/{threadId}": {
+      "schema": { "$ref": "#/entities/ChatThreadDoc" },
+      "description": "User's saved chat conversation threads."
+    }
+  }
+}
