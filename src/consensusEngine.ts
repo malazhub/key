@@ -62,11 +62,13 @@ function createGenAIClient(): GoogleGenAI {
 }
 
 // Verified fastest healthy models prioritized first for deterministic identical response across both server & GitHub Pages
+// Current production models with Google Search grounding support.
+// Keep the first model stable/current; older preview aliases can be shut down without notice.
 export const CANDIDATE_MODELS = [
-  "gemini-flash-lite-latest",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite-preview",
-  "gemini-flash-latest",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
 ];
 
 export function withStrictTimeout<T>(
@@ -8781,41 +8783,54 @@ export async function fetchGoogleSearchGrounding(
   if (!shouldUseGoogleSearchGrounding(question)) {
     return [];
   }
+
+  // Search grounding is latency-sensitive but 2.5s is too aggressive for real web
+  // retrieval. Try each currently available model so one retired/overloaded model
+  // cannot silently disable browsing for the whole request.
   const availableModels = getAvailableCandidateModels();
   if (availableModels.length === 0) return [];
 
-  try {
-    const ai = createGenAIClient();
-    const resp = await withStrictTimeout(
-      ai.models.generateContent({
-        model: availableModels[0],
-        contents: question,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      }),
-      2500,
-      "GoogleSearchGrounding"
-    );
-    const chunks =
-      resp.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const sources: GroundingSource[] = [];
-    const seenUris = new Set<string>();
-    for (const chunk of chunks) {
-      const uri = chunk?.web?.uri;
-      const title = chunk?.web?.title || uri;
-      if (uri && !seenUris.has(uri)) {
-        seenUris.add(uri);
-        sources.push({ title: String(title), uri: String(uri) });
+  const ai = createGenAIClient();
+
+  for (const model of availableModels) {
+    try {
+      const resp = await withStrictTimeout(
+        ai.models.generateContent({
+          model,
+          contents: question,
+          config: {
+            tools: [{ googleSearch: {} }],
+          },
+        }),
+        10000,
+        "GoogleSearchGrounding:" + model
+      );
+
+      const chunks =
+        resp.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const sources: GroundingSource[] = [];
+      const seenUris = new Set<string>();
+
+      for (const chunk of chunks) {
+        const uri = chunk?.web?.uri;
+        const title = chunk?.web?.title || uri;
+        if (uri && !seenUris.has(uri)) {
+          seenUris.add(uri);
+          sources.push({ title: String(title), uri: String(uri) });
+        }
+      }
+
+      if (sources.length > 0) {
+        return sources.slice(0, 6);
+      }
+    } catch (err) {
+      if (isQuotaOrRateLimitError(err)) {
+        markModelCooldown(model, err);
       }
     }
-    return sources.slice(0, 6);
-  } catch (err) {
-    if (isQuotaOrRateLimitError(err) && availableModels[0]) {
-      markModelCooldown(availableModels[0], err);
-    }
-    return [];
   }
+
+  return [];
 }
 
 export function buildKeyLiveCodebaseDiagnosticContext(
