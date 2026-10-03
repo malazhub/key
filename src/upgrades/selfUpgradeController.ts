@@ -195,9 +195,13 @@ export async function runBoundedSelfUpgradeSession(
   }
 
   const activeRoot = path.resolve(deps.activeWorkspace);
+
+  // The persistent self-upgrade workspace is always resolved by the server.
+  // Never allow an API caller to select the filesystem workspace.
   const workspaceRoot = path.resolve(
-    request.workspaceRoot || resolveKeyWorkspaceRoot(activeRoot).root
+    resolveKeyWorkspaceRoot(activeRoot).root
   );
+
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
   const baselineLint = await runCheck(activeRoot, "npm run lint");
