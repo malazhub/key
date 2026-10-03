@@ -9,15 +9,26 @@ export type WorkspaceRootInfo = {
 
 export function resolveKeyWorkspaceRoot(activeWorkspace: string): WorkspaceRootInfo {
   const configured = String(process.env.KEY_WORKSPACE_ROOT || "").trim();
+
   if (configured) {
     const root = path.resolve(configured);
     fs.mkdirSync(root, { recursive: true });
     return { root, persistent: true, source: "env" };
   }
 
-  const root = path.resolve(path.join(activeWorkspace, "upgrade-workspaces"));
-  fs.mkdirSync(root, { recursive: true });
-  return { root, persistent: false, source: "runtime" };
+  const persistentRoot = path.resolve(
+    process.env.KEY_PERSISTENT_DATA_ROOT
+      ? process.env.KEY_PERSISTENT_DATA_ROOT
+      : path.join(activeWorkspace, "upgrade-workspaces")
+  );
+
+  fs.mkdirSync(persistentRoot, { recursive: true });
+
+  return {
+    root: persistentRoot,
+    persistent: true,
+    source: process.env.KEY_PERSISTENT_DATA_ROOT ? "env" : "runtime",
+  };
 }
 
 export function resolveAuditRoot(activeWorkspace: string): string {
