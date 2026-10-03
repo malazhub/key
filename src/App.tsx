@@ -2833,6 +2833,54 @@ export default function App() {
   const [adminBannerNote, setAdminBannerNote] = useState<string | null>(null);
   const [enginesExpanded, setEnginesExpanded] = useState<boolean>(false);
 
+  // Self-upgrade staging / review / local activation state.
+  // This is intentionally separate from the existing GitHub Deploy flow.
+  const [stagedSelfUpgrade, setStagedSelfUpgrade] = useState<{
+    sessionId: string;
+    candidatePath: string;
+    stagedFileContent: string;
+    previewHtml: string;
+    previewReady: boolean;
+    status: string;
+  } | null>(() => {
+    try {
+      const raw = localStorage.getItem(
+        "malaz_key_staged_self_upgrade_v2"
+      );
+
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+
+      if (
+        parsed &&
+        typeof parsed.sessionId === "string" &&
+        typeof parsed.candidatePath === "string" &&
+        typeof parsed.stagedFileContent === "string"
+      ) {
+        return parsed;
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
+  });
+
+  const [selfUpgradeInstruction, setSelfUpgradeInstruction] =
+    useState<string>(
+      "Improve Key's self-upgrade reliability while preserving all existing capabilities."
+    );
+
+  const [selfUpgradeBusy, setSelfUpgradeBusy] =
+    useState<boolean>(false);
+
+  const [selfUpgradeStatus, setSelfUpgradeStatus] =
+    useState<string>("");
+
+  const [selfUpgradePreviewOpen, setSelfUpgradePreviewOpen] =
+    useState<boolean>(false);
+
   // User Auth & Cloud Storage State (Guest vs. Signed-In User)
   const [userProfile, setUserProfile] = useState<SignedInProfile | null>(() => {
     try {
@@ -3346,6 +3394,202 @@ export default function App() {
     } catch {
       // ignore prewarm error
     }
+  }, []);
+
+  // Generate, test, stage, and visually preview a Key self-upgrade.
+  // This NEVER deploys to GitHub.
+  const handleGenerateSelfUpgrade = async () => {
+    if (selfUpgradeBusy) return;
+
+    setSelfUpgradeBusy(true);
+    setSelfUpgradeStatus("Generating and testing self-upgrade...");
+
+    try {
+      const res = await fetchFromKeyBackend(
+        "/api/self-upgrade/execute",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            instruction: selfUpgradeInstruction,
+            requestedRounds: 1,
+            deploy: false,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (
+        !data ||
+        !data.success ||
+        data.status !== "PENDING_ADMIN_DECISION"
+      ) {
+        setSelfUpgradeStatus(
+          `Self-upgrade staging failed: ${JSON.stringify(data)}`
+        );
+        return;
+      }
+
+      const round =
+        Array.isArray(data.rounds) && data.rounds.length > 0
+          ? data.rounds[data.rounds.length - 1]
+          : null;
+
+      if (
+        !round ||
+        round.checks?.lint !== true ||
+        round.checks?.build !== true ||
+        typeof round.candidatePath !== "string" ||
+        typeof round.stagedFileContent !== "string"
+      ) {
+        setSelfUpgradeStatus(
+          "Self-upgrade was not staged because the candidate did not pass all verification gates."
+        );
+        return;
+      }
+
+      const staged = {
+        sessionId: String(data.sessionId),
+        candidatePath: String(round.candidatePath),
+        stagedFileContent: String(round.stagedFileContent),
+        previewHtml:
+          typeof round.previewHtml === "string"
+            ? round.previewHtml
+            : "",
+        previewReady: Boolean(round.previewReady),
+        status: String(data.status),
+      };
+
+      localStorage.setItem(
+        "malaz_key_staged_self_upgrade_v2",
+        JSON.stringify(staged)
+      );
+
+      setStagedSelfUpgrade(staged);
+      setSelfUpgradePreviewOpen(true);
+
+      setSelfUpgradeStatus(
+        staged.previewReady
+          ? "✓ Upgrade generated, linted, built, staged, and ready for visual review. Active Key is unchanged."
+          : "✓ Upgrade generated, linted, built, and staged. No built preview HTML was returned."
+      );
+    } catch (error) {
+      setSelfUpgradeStatus(
+        `Self-upgrade error: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setSelfUpgradeBusy(false);
+    }
+  };
+
+  const handleRestoreStagedSelfUpgrade = async () => {
+    const raw = localStorage.getItem(
+      "malaz_key_staged_self_upgrade_v2"
+    );
+
+    if (!raw) return;
+
+    try {
+      const staged = JSON.parse(raw);
+
+      if (
+        staged &&
+        typeof staged.sessionId === "string" &&
+        typeof staged.candidatePath === "string" &&
+        typeof staged.stagedFileContent === "string"
+      ) {
+        setStagedSelfUpgrade(staged);
+        setSelfUpgradePreviewOpen(true);
+        setSelfUpgradeStatus(
+          "✓ Staged self-upgrade restored after refresh. Active Key remains unchanged."
+        );
+      }
+    } catch {
+      localStorage.removeItem(
+        "malaz_key_staged_self_upgrade_v2"
+      );
+    }
+  };
+
+  const handleApproveStagedSelfUpgrade = () => {
+    if (!stagedSelfUpgrade) {
+      setSelfUpgradeStatus(
+        "No staged self-upgrade exists."
+      );
+      return;
+    }
+
+    setSelfUpgradeStatus(
+      "✓ Staged upgrade approved for local activation. GitHub Deploy remains a separate step."
+    );
+  };
+
+  const handleActivateStagedSelfUpgradeLocally = async () => {
+    if (!stagedSelfUpgrade || selfUpgradeBusy) return;
+
+    setSelfUpgradeBusy(true);
+    setSelfUpgradeStatus(
+      "Activating the verified staged upgrade locally..."
+    );
+
+    try {
+      const res = await fetchFromKeyBackend(
+        "/api/self-upgrade/activate-local",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId: stagedSelfUpgrade.sessionId,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!data || !data.success) {
+        setSelfUpgradeStatus(
+          `Local activation failed: ${JSON.stringify(data)}`
+        );
+        return;
+      }
+
+      setStagedSelfUpgrade({
+        ...stagedSelfUpgrade,
+        status: "ACTIVATED_LOCALLY",
+      });
+
+      localStorage.setItem(
+        "malaz_key_staged_self_upgrade_v2",
+        JSON.stringify({
+          ...stagedSelfUpgrade,
+          status: "ACTIVATED_LOCALLY",
+        })
+      );
+
+      setSelfUpgradeStatus(
+        "✓ STAGED UPGRADE ACTIVATED LOCALLY. No GitHub commit or deployment was performed. Use the separate Deploy control when you are ready."
+      );
+    } catch (error) {
+      setSelfUpgradeStatus(
+        `Local activation error: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setSelfUpgradeBusy(false);
+    }
+  };
+
+  // Restore browser-persisted staged upgrade whenever the app starts.
+  useEffect(() => {
+    handleRestoreStagedSelfUpgrade();
   }, []);
 
   // Admin Login Handler: verifies malazjanbeih@gmail.com / mjkey1971
