@@ -3923,6 +3923,23 @@ Return ONLY JSON in this exact shape:
     "src",
     "mirroredKeyState.json"
   );
+  const WORKING_COPY_PATH = path.join(__dirname, "working_copy_state.json");
+
+  type KeyWorkingCopy = {
+    workingCopyId: string;
+    status: "WORKING" | "APPROVED" | "DEPLOYED";
+    createdAt: string;
+    updatedAt: string;
+    approvedAt?: string;
+    approvedBy?: string;
+    deployedAt?: string;
+    deployedCommitSha?: string;
+    baseDeployedCommit?: string | null;
+    source: "Key Browser";
+    browserRuntimeSnapshot: Record<string, unknown>;
+    runtimeState: Record<string, unknown>;
+    generatedFiles?: Array<{ path: string; content: string }>;
+  };
 
   function readMirroredKeyState(): Record<string, unknown> {
     try {
@@ -3965,6 +3982,37 @@ Return ONLY JSON in this exact shape:
     return merged;
   }
 
+  function readWorkingCopy(): KeyWorkingCopy | null {
+    try {
+      if (!fs.existsSync(WORKING_COPY_PATH)) return null;
+      const parsed = JSON.parse(fs.readFileSync(WORKING_COPY_PATH, "utf8"));
+      if (!parsed || typeof parsed !== "object" || typeof parsed.workingCopyId !== "string") {
+        return null;
+      }
+      return parsed as KeyWorkingCopy;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeWorkingCopy(copy: KeyWorkingCopy): KeyWorkingCopy {
+    fs.writeFileSync(WORKING_COPY_PATH, JSON.stringify(copy, null, 2) + "\n", "utf8");
+    return copy;
+  }
+
+  function buildWorkingCopyId(): string {
+    return `wc_${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}`;
+  }
+
+  function validateAdminCredentials(email: unknown, password: unknown): string | null {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPass = String(password || "").trim();
+    const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
+    return validEmails.includes(cleanEmail) && cleanPass === "mjkey1971"
+      ? cleanEmail
+      : null;
+  }
+
   let volatileKeyRuntimeState: Record<string, unknown> = {};
 
   function hydrateVolatileKeyRuntimeState(): Record<string, unknown> {
@@ -4003,6 +4051,102 @@ Return ONLY JSON in this exact shape:
       success: true,
       volatileRuntimeState,
     });
+  });
+
+  app.get("/api/working-copy", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const workingCopy = readWorkingCopy();
+    res.json({
+      success: true,
+      exists: Boolean(workingCopy),
+      workingCopy,
+    });
+  });
+
+  app.post("/api/working-copy", (req, res) => {
+    try {
+      const incoming = req.body && typeof req.body === "object" ? req.body : {};
+      const previous = readWorkingCopy();
+      const nowIso = new Date().toISOString();
+      const workingCopy: KeyWorkingCopy = {
+        workingCopyId:
+          typeof incoming.workingCopyId === "string" && incoming.workingCopyId.trim()
+            ? incoming.workingCopyId.trim()
+            : previous?.workingCopyId || buildWorkingCopyId(),
+        status: "WORKING",
+        createdAt: previous?.createdAt || nowIso,
+        updatedAt: nowIso,
+        baseDeployedCommit:
+          typeof incoming.baseDeployedCommit === "string"
+            ? incoming.baseDeployedCommit
+            : previous?.baseDeployedCommit || null,
+        source: "Key Browser",
+        browserRuntimeSnapshot:
+          incoming.browserRuntimeSnapshot &&
+          typeof incoming.browserRuntimeSnapshot === "object"
+            ? incoming.browserRuntimeSnapshot
+            : {},
+        runtimeState:
+          incoming.runtimeState && typeof incoming.runtimeState === "object"
+            ? incoming.runtimeState
+            : {},
+        generatedFiles: Array.isArray(incoming.generatedFiles)
+          ? incoming.generatedFiles
+              .filter((f: any) => f && typeof f.path === "string" && typeof f.content === "string")
+              .map((f: any) => ({ path: String(f.path), content: String(f.content) }))
+          : previous?.generatedFiles || [],
+      };
+      const saved = writeWorkingCopy(workingCopy);
+      writeMirroredKeyState({
+        workingCopyId: saved.workingCopyId,
+        workingCopyStatus: saved.status,
+        workingCopyUpdatedAt: saved.updatedAt,
+        workingCopy: saved,
+      });
+      res.json({ success: true, workingCopy: saved });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to persist working copy.",
+      });
+    }
+  });
+
+  app.post("/api/working-copy/approve", (req, res) => {
+    try {
+      const adminEmail = validateAdminCredentials(req.body?.email, req.body?.password);
+      if (!adminEmail) {
+        res.status(401).json({ success: false, error: "Admin approval authentication failed." });
+        return;
+      }
+      const current = readWorkingCopy();
+      const requestedId = String(req.body?.workingCopyId || "").trim();
+      if (!current || !requestedId || current.workingCopyId !== requestedId) {
+        res.status(409).json({ success: false, error: "The requested working copy is no longer the current working copy." });
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const approved: KeyWorkingCopy = {
+        ...current,
+        status: "APPROVED",
+        approvedAt: nowIso,
+        approvedBy: adminEmail,
+        updatedAt: nowIso,
+      };
+      const saved = writeWorkingCopy(approved);
+      writeMirroredKeyState({
+        workingCopyId: saved.workingCopyId,
+        workingCopyStatus: saved.status,
+        workingCopyApprovedAt: saved.approvedAt,
+        workingCopy: saved,
+      });
+      res.json({ success: true, workingCopy: saved });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to approve working copy.",
+      });
+    }
   });
 
   app.post("/api/mirrored-state", (req, res) => {
@@ -5071,17 +5215,48 @@ jobs:
         repoName = "key",
         branch = "main",
         mirroredState,
+        workingCopyId,
       } = req.body || {};
+
+      let deploymentState =
+        mirroredState && typeof mirroredState === "object"
+          ? mirroredState
+          : undefined;
+
+      if (workingCopyId) {
+        const workingCopy = readWorkingCopy();
+        if (
+          !workingCopy ||
+          workingCopy.workingCopyId !== String(workingCopyId) ||
+          workingCopy.status !== "APPROVED"
+        ) {
+          res.status(409).json({
+            success: false,
+            verified: false,
+            error: "Deployment requires the exact current working copy to be ADMIN APPROVED first.",
+          });
+          return;
+        }
+        deploymentState = {
+          deploymentRequestedAt: new Date().toISOString(),
+          deploymentSource: "Key Browser Approved Working Copy",
+          deploymentTarget: "malazhub/key",
+          deploymentBranch: "main",
+          administrativeDeploy: true,
+          defenderBypass: true,
+          workingCopyId: workingCopy.workingCopyId,
+          workingCopyStatus: workingCopy.status,
+          workingCopy,
+        };
+        writeMirroredKeyState(deploymentState);
+      }
 
       const result = await executeFullGitHubStructureDeploy({
         githubToken,
         repoOwner,
         repoName,
         branch,
-        mirroredState:
-          mirroredState && typeof mirroredState === "object"
-            ? mirroredState
-            : undefined,
+        mirroredState: deploymentState,
         forceRebuild: true,
       });
 
