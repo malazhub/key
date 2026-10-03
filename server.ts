@@ -3770,7 +3770,9 @@ Return ONLY JSON in this exact shape:
       );
 
       res.json({
-        success: result.status === "COMPLETED",
+        success:
+          result.status === "COMPLETED" ||
+          result.status === "PENDING_ADMIN_DECISION",
         controller: "bounded-autonomous-self-upgrade-v2",
         noLifetimeUpgradeLimit: true,
         ...result,
