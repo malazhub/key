@@ -2951,6 +2951,18 @@ export default function App() {
   const [selfUpgradeApproved, setSelfUpgradeApproved] =
     useState<boolean>(false);
 
+  const selfUpgradePreviewUrl = stagedSelfUpgrade
+    ? `${
+        typeof window !== "undefined" &&
+        window.location.protocol !== "file:" &&
+        !window.location.hostname.endsWith("github.io")
+          ? window.location.origin
+          : LIVE_BACKEND_ORIGINS[0]
+      }/api/self-upgrade/preview/${encodeURIComponent(
+        stagedSelfUpgrade.sessionId
+      )}/`
+    : "";
+
   // User Auth & Cloud Storage State (Guest vs. Signed-In User)
   const [userProfile, setUserProfile] = useState<SignedInProfile | null>(() => {
     try {
@@ -6163,6 +6175,121 @@ export default function App() {
             {/* Admin Login / Logout + Single Deploy Button & Code Box */}
             <section className="pt-2 border-t border-slate-800/80">
               <div className="bg-slate-950/95 rounded-xl border border-slate-800 p-3 space-y-2.5">
+                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-extrabold text-sky-300">
+                      Self-Upgrade
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      staged / tested / local
+                    </span>
+                  </div>
+
+                  <textarea
+                    value={selfUpgradeInstruction}
+                    onChange={(e) =>
+                      setSelfUpgradeInstruction(e.target.value)
+                    }
+                    rows={3}
+                    className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-200 outline-none focus:border-sky-500"
+                    aria-label="Self-upgrade instruction"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={selfUpgradeBusy}
+                    onClick={handleGenerateSelfUpgrade}
+                    className="w-full rounded-lg bg-sky-400 hover:bg-sky-300 disabled:opacity-60 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                  >
+                    {selfUpgradeBusy
+                      ? "Testing..."
+                      : "Generate + Test Upgrade"}
+                  </button>
+
+                  {selfUpgradeStatus && (
+                    <div className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-[11px] text-slate-300">
+                      {selfUpgradeStatus}
+                    </div>
+                  )}
+
+                  {stagedSelfUpgrade && (
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2 text-[11px]">
+                        <div className="font-bold text-emerald-300">
+                          STAGED
+                        </div>
+                        <div className="text-slate-300">
+                          File: {stagedSelfUpgrade.candidatePath}
+                        </div>
+                        <div className="text-slate-400">
+                          Status: {stagedSelfUpgrade.status}
+                        </div>
+                      </div>
+
+                      {stagedSelfUpgrade.previewReady &&
+                        selfUpgradePreviewUrl && (
+                          <div className="rounded-lg border border-slate-700 overflow-hidden bg-white">
+                            <iframe
+                              key={stagedSelfUpgrade.sessionId}
+                              title="Tested staged Key upgrade preview"
+                              src={selfUpgradePreviewUrl}
+                              className="w-full h-[420px] border-0"
+                            />
+                          </div>
+                        )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelfUpgradePreviewOpen(
+                            !selfUpgradePreviewOpen
+                          );
+                        }}
+                        className="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200 cursor-pointer"
+                      >
+                        {selfUpgradePreviewOpen
+                          ? "Preview Visible"
+                          : "Show Tested Preview"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={
+                          selfUpgradeBusy ||
+                          selfUpgradeApproved ||
+                          stagedSelfUpgrade.status ===
+                            "ACTIVATED_LOCALLY"
+                        }
+                        onClick={handleApproveStagedSelfUpgrade}
+                        className="w-full rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-50 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                      >
+                        {selfUpgradeApproved
+                          ? "Approved for Activation"
+                          : "Approve Staged Upgrade"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={
+                          selfUpgradeBusy ||
+                          !selfUpgradeApproved ||
+                          stagedSelfUpgrade.status ===
+                            "ACTIVATED_LOCALLY"
+                        }
+                        onClick={
+                          handleActivateStagedSelfUpgradeLocally
+                        }
+                        className="w-full rounded-lg bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                      >
+                        {stagedSelfUpgrade.status ===
+                        "ACTIVATED_LOCALLY"
+                          ? "Activated Locally"
+                          : "Activate Staged Upgrade Locally"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {!isAdminAuthenticated ? (
                   <button
                     type="button"
