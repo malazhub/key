@@ -2238,7 +2238,7 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
             type="button"
             class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md"
           >
-            ✅ Activate Staged Upgrade
+            ✅ Approve Staged Upgrade
           </button>
         </div>
         <button id="refreshTreeBtn" type="button" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition">
@@ -2522,9 +2522,9 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              instruction: 'Activate the previously reviewed staged self-upgrade.',
+              instruction: 'Activate the previously reviewed staged self-upgrade locally.',
               requestedRounds: 1,
-              deploy: true,
+              deploy: false,
               candidates: [
                 {
                   filePath: value.filePath,
