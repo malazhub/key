@@ -3786,9 +3786,208 @@ Return ONLY JSON in this exact shape:
     }
   });
 
+  // Persistent staged self-upgrade retrieval.
+  app.get("/api/self-upgrade/staged/:sessionId", async (req, res) => {
+    try {
+      const sessionId = String(req.params.sessionId || "").trim();
+
+      if (!/^upgrade_[A-Za-z0-9_.-]+$/.test(sessionId)) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid self-upgrade session id.",
+        });
+        return;
+      }
+
+      const workspaceRoot = resolveKeyWorkspaceRoot(__dirname).root;
+      const sessionPath = path.join(
+        workspaceRoot,
+        "sessions",
+        `${sessionId}.json`
+      );
+
+      const root = path.resolve(workspaceRoot);
+      const resolved = path.resolve(sessionPath);
+
+      if (!resolved.startsWith(root + path.sep)) {
+        res.status(403).json({
+          success: false,
+          error: "Invalid self-upgrade session path.",
+        });
+        return;
+      }
+
+      if (!fs.existsSync(resolved)) {
+        res.status(404).json({
+          success: false,
+          error: "Staged self-upgrade session not found.",
+        });
+        return;
+      }
+
+      const session = JSON.parse(fs.readFileSync(resolved, "utf8"));
+
+      res.json({
+        success: true,
+        session,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({
+        success: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to load staged self-upgrade.",
+      });
+    }
+  });
+
+  // Activate the already-tested staged file locally.
+  // IMPORTANT: this does NOT deploy to GitHub and does NOT commit.
+  app.post("/api/self-upgrade/activate-local", async (req, res) => {
+    try {
+      const sessionId = String(req.body?.sessionId || "").trim();
+
+      if (!/^upgrade_[A-Za-z0-9_.-]+$/.test(sessionId)) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid self-upgrade session id.",
+        });
+        return;
+      }
+
+      const workspaceRoot = resolveKeyWorkspaceRoot(__dirname).root;
+      const sessionPath = path.resolve(
+        workspaceRoot,
+        "sessions",
+        `${sessionId}.json`
+      );
+
+      const workspaceResolved = path.resolve(workspaceRoot);
+
+      if (!sessionPath.startsWith(workspaceResolved + path.sep)) {
+        res.status(403).json({
+          success: false,
+          error: "Invalid self-upgrade session path.",
+        });
+        return;
+      }
+
+      if (!fs.existsSync(sessionPath)) {
+        res.status(404).json({
+          success: false,
+          error: "Staged self-upgrade session not found.",
+        });
+        return;
+      }
+
+      const session = JSON.parse(fs.readFileSync(sessionPath, "utf8"));
+
+      if (session.status !== "PENDING_ADMIN_DECISION") {
+        res.status(409).json({
+          success: false,
+          error:
+            `Only a PENDING_ADMIN_DECISION session can be activated locally. ` +
+            `Current status: ${String(session.status || "unknown")}`,
+        });
+        return;
+      }
+
+      const latestRound =
+        Array.isArray(session.rounds) && session.rounds.length > 0
+          ? session.rounds[session.rounds.length - 1]
+          : null;
+
+      if (
+        !latestRound ||
+        latestRound.deployed !== false ||
+        latestRound.checks?.lint !== true ||
+        latestRound.checks?.build !== true ||
+        typeof latestRound.candidatePath !== "string" ||
+        typeof latestRound.candidateWorkspace !== "string" ||
+        typeof latestRound.stagedFileContent !== "string"
+      ) {
+        res.status(409).json({
+          success: false,
+          error: "The staged candidate is not fully verified and cannot be activated.",
+        });
+        return;
+      }
+
+      const rel = String(latestRound.candidatePath)
+        .trim()
+        .replace(/^[/\\]+/, "")
+        .replace(/\\/g, "/");
+
+      if (
+        !(
+          rel === "server.ts" ||
+          rel.startsWith("src/")
+        ) ||
+        rel.includes("..") ||
+        rel.startsWith(".git") ||
+        rel.startsWith(".github") ||
+        rel === "package.json" ||
+        rel === "package-lock.json" ||
+        rel.startsWith(".env")
+      ) {
+        res.status(403).json({
+          success: false,
+          error: "Staged candidate path is not eligible for local activation.",
+        });
+        return;
+      }
+
+      const activeRoot = path.resolve(__dirname);
+      const target = path.resolve(activeRoot, rel);
+
+      if (!target.startsWith(activeRoot + path.sep)) {
+        res.status(403).json({
+          success: false,
+          error: "Activation target escapes the Key workspace.",
+        });
+        return;
+      }
+
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(
+        target,
+        latestRound.stagedFileContent,
+        "utf8"
+      );
+
+      latestRound.deployed = false;
+      latestRound.error = undefined;
+
+      session.status = "ACTIVATED_LOCALLY";
+      session.updatedAt = new Date().toISOString();
+
+      fs.writeFileSync(
+        sessionPath,
+        JSON.stringify(session, null, 2),
+        "utf8"
+      );
+
+      res.json({
+        success: true,
+        activatedLocally: true,
+        deployed: false,
+        committed: false,
+        session,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({
+        success: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to activate staged self-upgrade locally.",
+      });
+    }
+  });
+
   // Live Node.js Filesystem Bridge for Key Self-Inspection, Browsing, Reading & Modifying Its Own Structure
   app.get("/api/fs/tree", async (_req, res) => {
-    try {
       const files = await collectProjectFiles({ skipBuild: true });
       res.json({
         ok: true,
