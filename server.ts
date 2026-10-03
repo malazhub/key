@@ -3986,7 +3986,101 @@ Return ONLY JSON in this exact shape:
     }
   });
 
-  // Live Node.js Filesystem Bridge for Key Self-Inspection, Browsing, Reading & Modifying Its Own Structure
+  // Serve the actual tested staged build without activating or deploying it.
+  app.use(
+    "/api/self-upgrade/preview/:sessionId",
+    (req, res, next) => {
+      try {
+        const sessionId = String(req.params.sessionId || "").trim();
+
+        if (!/^upgrade_[A-Za-z0-9_.-]+$/.test(sessionId)) {
+          res.status(400).send("Invalid self-upgrade session id.");
+          return;
+        }
+
+        const workspaceRoot = path.resolve(
+          resolveKeyWorkspaceRoot(__dirname).root
+        );
+
+        const sessionPath = path.resolve(
+          workspaceRoot,
+          "sessions",
+          `${sessionId}.json`
+        );
+
+        if (!sessionPath.startsWith(workspaceRoot + path.sep)) {
+          res.status(403).send("Invalid self-upgrade session path.");
+          return;
+        }
+
+        if (!fs.existsSync(sessionPath)) {
+          res.status(404).send("Staged self-upgrade session not found.");
+          return;
+        }
+
+        const session = JSON.parse(
+          fs.readFileSync(sessionPath, "utf8")
+        );
+
+        const latestRound =
+          Array.isArray(session.rounds) &&
+          session.rounds.length > 0
+            ? session.rounds[session.rounds.length - 1]
+            : null;
+
+        if (
+          !latestRound ||
+          latestRound.checks?.lint !== true ||
+          latestRound.checks?.build !== true ||
+          typeof latestRound.candidateWorkspace !== "string"
+        ) {
+          res.status(409).send(
+            "The staged build is not fully verified."
+          );
+          return;
+        }
+
+        const workspace = path.resolve(
+          latestRound.candidateWorkspace
+        );
+
+        if (!workspace.startsWith(workspaceRoot + path.sep)) {
+          res.status(403).send(
+            "Invalid staged workspace path."
+          );
+          return;
+        }
+
+        const distPath = path.resolve(
+          workspace,
+          "dist"
+        );
+
+        if (!distPath.startsWith(workspace + path.sep)) {
+          res.status(403).send(
+            "Invalid staged build path."
+          );
+          return;
+        }
+
+        if (!fs.existsSync(path.join(distPath, "index.html"))) {
+          res.status(404).send(
+            "Staged build index.html not found."
+          );
+          return;
+        }
+
+        express.static(distPath)(req, res, next);
+      } catch (err: unknown) {
+        res.status(500).send(
+          err instanceof Error
+            ? err.message
+            : "Failed to load staged preview."
+        );
+      }
+    }
+  );
+
   app.get("/api/fs/tree", async (_req, res) => {
       const files = await collectProjectFiles({ skipBuild: true });
       res.json({
