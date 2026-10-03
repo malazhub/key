@@ -7393,6 +7393,10 @@ export function buildUltraCarSimulationPortalHtml(): string {
 
 export function shouldUseGoogleSearchGrounding(question: string): boolean {
   if (!question) return false;
+
+  // Never send greetings, internal Key diagnostics, or self-modification requests
+  // to web search. Everything else can explicitly request browsing with natural
+  // language such as "search", "browse", "look up", or "research".
   if (
     isStandaloneGreetingOrSmallTalk(question) ||
     isTopicIsolationOrComplaintQuery(question) ||
@@ -7402,9 +7406,13 @@ export function shouldUseGoogleSearchGrounding(question: string): boolean {
   ) {
     return false;
   }
-  return /\b(latest\s+news|current\s+price|stock\s+price|weather\s+in|2025|2026|what\s+is\s+the\s+current|breaking\s+news)\b/i.test(
-    question
-  );
+
+  return /\b(
+    search|browse|web|internet|look\s+up|lookup|research|find\s+online|
+    latest|current|today|tonight|this\s+week|recent|breaking\s+news|
+    current\s+price|stock\s+price|weather\s+in|news|sources?|citations?|
+    compare\s+online|verify\s+online|check\s+online|according\s+to
+  )\b/i.test(question);
 }
 
 export function detectAppBuildIntent(
