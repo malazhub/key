@@ -251,6 +251,123 @@ function buildStandaloneGitHubPagesHtml(): string {
     let lastGeneratedAppHtml = "";
     let lastGeneratedAppTitle = "Interactive Application Preview (key1)";
 
+    const WORKING_COPY_STORAGE_KEY = "key_working_copy_v1";
+    const WORKING_COPY_BACKENDS = [
+      "https://ais-dev-f2uayjdkh47dv4kxbjqlp7-790065884957.europe-west2.run.app",
+      "https://ais-pre-f2uayjdkh47dv4kxbqlp7-790065884957.europe-west2.run.app",
+    ];
+
+    function captureWorkingCopy() {
+      const runtimeState = {
+        models: [...models],
+        targetAgreement,
+        allowApplicationMode,
+        isAdminAuthenticated,
+        pendingAttachments: Array.isArray(pendingAttachments) ? pendingAttachments : [],
+        chatHistory: Array.isArray(chatHistory) ? chatHistory : [],
+        lastGeneratedAppHtml,
+        lastGeneratedAppTitle,
+      };
+      return {
+        workingCopyId:
+          (() => {
+            try {
+              const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
+              return existing?.workingCopyId || null;
+            } catch { return null; }
+          })(),
+        source: "Key Browser",
+        browserRuntimeSnapshot: {
+          href: window.location.href,
+          pathname: window.location.pathname,
+          capturedInputValues: Array.from(document.querySelectorAll("input, textarea, select")).map((element) => ({
+            tag: element.tagName,
+            id: (element as HTMLInputElement).id || null,
+            value: (element as HTMLInputElement).value || "",
+          })),
+        },
+        runtimeState,
+      };
+    }
+
+    async function persistWorkingCopy() {
+      const copy = captureWorkingCopy();
+      if (!copy.runtimeState.lastGeneratedAppHtml && copy.runtimeState.chatHistory.length === 0) return;
+      try {
+        let stored = copy;
+        const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
+        if (existing?.workingCopyId) stored.workingCopyId = existing.workingCopyId;
+        else stored.workingCopyId = "wc_browser_" + Date.now().toString(36) + "_" + Math.random().toString(16).slice(2);
+        localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(stored));
+        for (const backend of WORKING_COPY_BACKENDS) {
+          try {
+            const response = await fetch(backend + "/api/working-copy", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+              body: JSON.stringify(stored),
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data?.workingCopy) {
+                localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(data.workingCopy));
+              }
+              break;
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    async function restoreWorkingCopy() {
+      let copy = null;
+      try {
+        copy = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
+      } catch {}
+      if (!copy?.runtimeState?.lastGeneratedAppHtml) {
+        for (const backend of WORKING_COPY_BACKENDS) {
+          try {
+            const response = await fetch(backend + "/api/working-copy", {
+              cache: "no-store",
+              headers: { "Cache-Control": "no-cache" },
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data?.workingCopy) {
+                copy = data.workingCopy;
+                localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(copy));
+                break;
+              }
+            }
+          } catch {}
+        }
+      }
+      if (!copy?.runtimeState) return;
+      const state = copy.runtimeState;
+      if (Array.isArray(state.models)) models = state.models.filter((m) => typeof m === "string");
+      if (Number.isFinite(Number(state.targetAgreement))) targetAgreement = Math.max(1, Math.min(100, Number(state.targetAgreement)));
+      allowApplicationMode = Boolean(state.allowApplicationMode);
+      isAdminAuthenticated = Boolean(state.isAdminAuthenticated);
+      pendingAttachments = Array.isArray(state.pendingAttachments) ? state.pendingAttachments : [];
+      chatHistory = Array.isArray(state.chatHistory) ? state.chatHistory : [];
+      lastGeneratedAppHtml = typeof state.lastGeneratedAppHtml === "string" ? state.lastGeneratedAppHtml : "";
+      lastGeneratedAppTitle = typeof state.lastGeneratedAppTitle === "string" ? state.lastGeneratedAppTitle : lastGeneratedAppTitle;
+      renderEngines();
+      targetInput.value = String(targetAgreement);
+      renderPresets();
+      renderAttachments();
+      if (lastGeneratedAppHtml) {
+        const container = document.getElementById("messagesContainer");
+        if (container && !container.querySelector(".working-copy-recovery")) {
+          const card = document.createElement("div");
+          card.className = "working-copy-recovery w-full rounded-2xl bg-slate-900/70 border border-amber-500/50 p-5 space-y-3";
+          card.innerHTML = '<div class="flex items-center justify-between gap-3"><div><div class="text-xs font-bold text-amber-300">WORKING COPY RESTORED</div><div class="text-[11px] text-slate-400">This is the last modified copy saved before refresh. It is not deployed until admin approval.</div></div><span class="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-mono">SAFE AFTER REFRESH</span></div><iframe class="working-copy-frame w-full h-[32rem] rounded-xl border border-slate-800 bg-slate-950" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>';
+          const frame = card.querySelector(".working-copy-frame");
+          if (frame) frame.srcdoc = lastGeneratedAppHtml;
+          container.appendChild(card);
+        }
+      }
+    }
+
     const enginesGrid = document.getElementById("enginesGrid");
     function renderEngines() {
       enginesGrid.innerHTML = "";
@@ -648,6 +765,7 @@ function buildStandaloneGitHubPagesHtml(): string {
         lastGeneratedAppHtml = data.generatedAppHtml;
         lastGeneratedAppTitle = data.appTitle || "Interactive Application Preview (key1)";
       }
+      void persistWorkingCopy();
 
       const aiCard = document.createElement("div");
       aiCard.className = "w-full rounded-2xl bg-slate-900/60 border border-slate-800/90 p-5 sm:p-6 space-y-5 chat-turn-node current-turn-node";
@@ -842,8 +960,51 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
 
       let lastError = "Could not reach the Key deployment backend.";
 
+      await persistWorkingCopy();
+      let savedWorkingCopy: any = null;
+      try {
+        const raw = localStorage.getItem(WORKING_COPY_STORAGE_KEY);
+        savedWorkingCopy = raw ? JSON.parse(raw) : null;
+      } catch {}
+
+      if (!savedWorkingCopy?.workingCopyId) {
+        setPushStatus({
+          type: "error",
+          message: "No saved WORKING COPY exists. Nothing is safe to deploy.",
+        });
+        return;
+      }
+
       for (const backend of DEPLOY_BACKENDS) {
         try {
+          const approvalRes = await fetch(`${backend}/api/working-copy/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+            body: JSON.stringify({
+              workingCopyId: savedWorkingCopy.workingCopyId,
+              email: adminUser,
+              password: adminPass,
+            }),
+          });
+          const approvalData = await approvalRes.json().catch(() => null);
+          if (!approvalRes.ok || approvalData?.success !== true) {
+            lastError = approvalData?.error || "Admin approval of WORKING COPY failed.";
+            continue;
+          }
+
+          const approvedWorkingCopy = approvalData.workingCopy;
+          const mirroredState: Record<string, unknown> = {
+            deploymentRequestedAt: new Date().toISOString(),
+            deploymentSource: "Key Browser Approved Working Copy",
+            deploymentTarget: "malazhub/key",
+            deploymentBranch: "main",
+            administrativeDeploy: true,
+            defenderBypass: true,
+            workingCopyId: approvedWorkingCopy.workingCopyId,
+            workingCopyStatus: approvedWorkingCopy.status,
+            workingCopy: approvedWorkingCopy,
+          };
+
           await fetch(`${backend}/api/mirrored-state`, {
             method: "POST",
             headers: {
@@ -864,7 +1025,7 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
               repoOwner: "malazhub",
               repoName: "key",
               branch: "main",
-              mirroredState,
+              workingCopyId: approvedWorkingCopy.workingCopyId,
             }),
           });
 
@@ -1006,8 +1167,9 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
       .catch(() => loadFromGitHubTreeFallback())
       .finally(() => setLoading(false));
 
-    // Automatically execute the full structure copy & deployment to https://github.com/malazhub/key when opened locally
-    triggerImmediateDeploy();
+    // IMPORTANT: opening/refreshing never deploys and never clears the working copy.
+    // Deployment is an explicit admin action after the restored WORKING COPY is reviewed.
+    restoreWorkingCopy();
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -1054,11 +1216,8 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
                 </code>
               </h2>
               <p className="text-[11px] text-slate-400">
-                Automatically copies and deploys all {files.length || 19}{" "}
-                project files &amp; directory structures (<code>src/</code>,{" "}
-                <code>src/components/</code>, <code>server.ts</code>,{" "}
-                <code>package.json</code>, <code>.github/workflows/deploy.yml</code>)
-                with zero manual requirements.
+                Saves the latest browser modification as a persistent WORKING COPY.
+                Refresh restores that copy; deployment happens only after explicit admin approval.
               </p>
             </div>
           </div>
@@ -1074,7 +1233,7 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
               <span>
                 {pushing
                   ? "Deploying Full Structure..."
-                  : "Deploy All to https://github.com/malazhub/key"}
+                  : "Approve & Deploy Saved Working Copy"}
               </span>
             </button>
             <button
