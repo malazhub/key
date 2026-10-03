@@ -188,7 +188,74 @@ const GUEST_STORAGE_KEY = "malaz_key_chat_history_v5";
 const AUTH_EMAIL_STORAGE_KEY = "malaz_key_signed_in_user_v1";
 const ENGINE_SLOTS_STORAGE_KEY = "malaz_key_engines_v5";
 const TARGET_MATCH_STORAGE_KEY = "malaz_key_target_v5";
-const CUMULATIVE_BUILD_STORAGE_KEY = "malaz_key_cumulative_build_v5";
+const CUMULATIVE_BUILD_STORAGE_KEY =
+  "malaz_key_cumulative_build_v5";
+const STAGED_UPGRADE_STORAGE_KEY =
+  "malaz_key_staged_upgrade_v1";
+const WORKING_MEMORY_LEDGER_STORAGE_KEY =
+  "malaz_key_working_memory_ledger_db_v5";
+
+type StagedSelfUpgrade = {
+  sessionId: string;
+  candidatePath: string;
+  stagedFileContent: string;
+  previewHtml: string;
+  previewReady: boolean;
+  status: string;
+  updatedAt: string;
+};
+
+function readStagedSelfUpgrade(): StagedSelfUpgrade | null {
+  try {
+    const raw = localStorage.getItem(STAGED_UPGRADE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.stagedFileContent !== "string"
+    ) {
+      return null;
+    }
+
+    return parsed as StagedSelfUpgrade;
+  } catch {
+    return null;
+  }
+}
+
+type StagedSelfUpgrade = {
+  sessionId: string;
+  candidatePath: string;
+  stagedFileContent: string;
+  previewHtml: string;
+  previewReady: boolean;
+  status: string;
+  updatedAt: string;
+};
+
+function readStagedSelfUpgrade(): StagedSelfUpgrade | null {
+  try {
+    const raw = localStorage.getItem(STAGED_UPGRADE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.stagedFileContent !== "string"
+    ) {
+      return null;
+    }
+
+    return parsed as StagedSelfUpgrade;
+  } catch {
+    return null;
+  }
+}
 const WORKING_MEMORY_LEDGER_STORAGE_KEY =
   "malaz_key_working_memory_ledger_db_v5";
 const DEFAULT_QUOTA_BYTES = 50 * 1024; // 50 KB default cloud space per signed-in user
@@ -2834,7 +2901,7 @@ export default function App() {
   const [enginesExpanded, setEnginesExpanded] = useState<boolean>(false);
 
   // Self-upgrade staging / review / local activation state.
-  // This is intentionally separate from the existing GitHub Deploy flow.
+  // This is separate from the existing GitHub Deploy flow.
   const [stagedSelfUpgrade, setStagedSelfUpgrade] = useState<{
     sessionId: string;
     candidatePath: string;
@@ -2879,6 +2946,9 @@ export default function App() {
     useState<string>("");
 
   const [selfUpgradePreviewOpen, setSelfUpgradePreviewOpen] =
+    useState<boolean>(false);
+
+  const [selfUpgradeApproved, setSelfUpgradeApproved] =
     useState<boolean>(false);
 
   // User Auth & Cloud Storage State (Guest vs. Signed-In User)
@@ -3396,12 +3466,13 @@ export default function App() {
     }
   }, []);
 
-  // Generate, test, stage, and visually preview a Key self-upgrade.
+    // Generate, test, stage, and visually preview a Key self-upgrade.
   // This NEVER deploys to GitHub.
   const handleGenerateSelfUpgrade = async () => {
     if (selfUpgradeBusy) return;
 
     setSelfUpgradeBusy(true);
+    setSelfUpgradeApproved(false);
     setSelfUpgradeStatus("Generating and testing self-upgrade...");
 
     try {
@@ -3473,8 +3544,8 @@ export default function App() {
 
       setSelfUpgradeStatus(
         staged.previewReady
-          ? "✓ Upgrade generated, linted, built, staged, and ready for visual review. Active Key is unchanged."
-          : "✓ Upgrade generated, linted, built, and staged. No built preview HTML was returned."
+          ? "✓ Generated, linted, built, staged, and ready for visual review. Active Key is unchanged."
+          : "✓ Generated, linted, built, and staged."
       );
     } catch (error) {
       setSelfUpgradeStatus(
@@ -3505,6 +3576,8 @@ export default function App() {
       ) {
         setStagedSelfUpgrade(staged);
         setSelfUpgradePreviewOpen(true);
+        setSelfUpgradeApproved(false);
+
         setSelfUpgradeStatus(
           "✓ Staged self-upgrade restored after refresh. Active Key remains unchanged."
         );
@@ -3518,19 +3591,25 @@ export default function App() {
 
   const handleApproveStagedSelfUpgrade = () => {
     if (!stagedSelfUpgrade) {
-      setSelfUpgradeStatus(
-        "No staged self-upgrade exists."
-      );
+      setSelfUpgradeStatus("No staged self-upgrade exists.");
       return;
     }
 
+    setSelfUpgradeApproved(true);
+
     setSelfUpgradeStatus(
-      "✓ Staged upgrade approved for local activation. GitHub Deploy remains a separate step."
+      "✓ Staged upgrade approved for local activation. GitHub Deploy remains separate."
     );
   };
 
   const handleActivateStagedSelfUpgradeLocally = async () => {
-    if (!stagedSelfUpgrade || selfUpgradeBusy) return;
+    if (
+      !stagedSelfUpgrade ||
+      !selfUpgradeApproved ||
+      selfUpgradeBusy
+    ) {
+      return;
+    }
 
     setSelfUpgradeBusy(true);
     setSelfUpgradeStatus(
@@ -3560,21 +3639,20 @@ export default function App() {
         return;
       }
 
-      setStagedSelfUpgrade({
+      const activated = {
         ...stagedSelfUpgrade,
         status: "ACTIVATED_LOCALLY",
-      });
+      };
+
+      setStagedSelfUpgrade(activated);
 
       localStorage.setItem(
         "malaz_key_staged_self_upgrade_v2",
-        JSON.stringify({
-          ...stagedSelfUpgrade,
-          status: "ACTIVATED_LOCALLY",
-        })
+        JSON.stringify(activated)
       );
 
       setSelfUpgradeStatus(
-        "✓ STAGED UPGRADE ACTIVATED LOCALLY. No GitHub commit or deployment was performed. Use the separate Deploy control when you are ready."
+        "✓ STAGED UPGRADE ACTIVATED LOCALLY. No GitHub commit or deployment was performed."
       );
     } catch (error) {
       setSelfUpgradeStatus(
