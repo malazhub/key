@@ -13,6 +13,7 @@ export default defineConfig(() => {
   );
 
   return {
+    base: './',
     plugins: [react(), tailwindcss()],
     define: {
       __KEY_ENGINE_SEED__: JSON.stringify(encodedSeed),
