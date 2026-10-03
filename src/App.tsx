@@ -3640,7 +3640,7 @@ export default function App() {
       );
 
       setSelfUpgradeStatus(
-        "✓ STAGED UPGRADE ACTIVATED LOCALLY. No GitHub commit or deployment was performed."
+        "✓ STAGED UPGRADE ACTIVATED LOCALLY. The verified staged source is now active in the local Key workspace. No GitHub commit or deployment was performed."
       );
     } catch (error) {
       setSelfUpgradeStatus(
