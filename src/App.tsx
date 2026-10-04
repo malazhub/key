@@ -6183,7 +6183,7 @@ export default function App() {
                         className="w-full rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-50 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
                       >
                         {selfUpgradeApproved
-                          ? "Approved for Activation"
+                          ? "Approved for Deployment Review"
                           : "Approve Staged Upgrade"}
                       </button>
 
