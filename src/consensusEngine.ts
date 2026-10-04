@@ -11259,13 +11259,16 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
     };
   }
 
-  // If all upstream API calls failed due to network/quota outage, report the live inspection state transparently without canned fake answers
+  // All user queries, including greetings/small-talk, must remain on the
+  // live engine path. Never synthesize a predefined answer locally.
   const achievedFallback = Math.min(100, safeTarget + 2);
-  const liveTransparentReport = isStructureOrCodebaseInquiry && liveStructureGrounding
-    ? `### Live Key Structure & Cached State Inspection (\`https://github.com/malazhub/key\`)\n\n${liveStructureGrounding}`
-    : isMemoryOrHistoryInquiry
-    ? `### Live Conversation Memory Inspection\n\n${liveConversationMemoryBlock}`
-    : `### Live Engine Dispatch Status\n\nYour query (**"${cleanQuestion}"**) was analyzed and dispatched live to the ${modelsList.length} AI engines (${modelsList.join(", ")}), but the upstream model API endpoint is temporarily unreachable or rate-limited. Please retry in a moment for a live generated response.`;
+
+  const liveTransparentReport =
+    `### Live Engine Dispatch Failure\n\n` +
+    `The live AI engine pipeline could not obtain a generated response for ` +
+    `the current query (**"${cleanQuestion}"**). ` +
+    `No predefined or locally fabricated answer was substituted. ` +
+    `The query remained on the live engine path across ${modelsList.length} configured engines.`;
 
   const enrichedResilient = sanitizeAndEnrichConsensusResult(
     {
