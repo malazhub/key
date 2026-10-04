@@ -1809,10 +1809,11 @@ function sanitizeAndEnrichConsensusResult(
     ? parsed.nodeContributions
     : [];
 
-  const achieved = Math.max(
-    safeTarget,
-    Math.min(100, Number(parsed.achievedAgreement) || safeTarget)
-  );
+  const achieved =
+  typeof parsed.achievedAgreement === "number" &&
+    Number.isFinite(parsed.achievedAgreement)
+      ? Math.min(100, Math.max(0, parsed.achievedAgreement))
+      : 0;
 
   // Detect if the LLM returned identical or ultra-short placeholder replies across engines
   const uniqueInitials = new Set(
@@ -1921,26 +1922,7 @@ function sanitizeAndEnrichConsensusResult(
     ? parsed.convergenceRounds
     : [];
 
-  const round1Score = Math.max(68, Math.min(safeTarget - 6, 88));
-  const convergenceRounds =
-    rawRounds.length >= 2
-      ? rawRounds
-      : [
-          {
-            round: 1,
-            similarityScore: round1Score,
-            note: `Opened fresh sessions across ${modelsList.length} AI engines (${modelsList
-              .slice(0, 4)
-              .join(", ")}${
-              modelsList.length > 4 ? ` + ${modelsList.length - 4} more` : ""
-            }) and collected independent detailed analyses (${round1Score}% initial similarity).`,
-          },
-          {
-            round: 2,
-            similarityScore: achieved,
-            note: `Cross-examined and merged all ${modelsList.length} engine outputs until reaching ${achieved}% consensus agreement (target ≥ ${safeTarget}%).`,
-          },
-        ];
+  const convergenceRounds: ConvergenceRound[] = rawRounds;
 
   return {
     ...parsed,
@@ -2373,15 +2355,41 @@ Mode: ${
 
   if (parallelCandidates.length > 0) {
     try {
-      const fastestParsed = await Promise.any(
-        parallelCandidates.map((modelName, idx) =>
-          callModelWithRetry(modelName, 80 * idx)
+      const settledResults = await Promise.allSettled(
+        parallelCandidates.map((modelName) =>
+          callModelWithRetry(modelName, 0)
         )
       );
 
+      const successfulResults = settledResults
+        .filter(
+          (
+            result
+          ): result is PromiseFulfilledResult<any> =>
+            result.status === "fulfilled"
+        )
+        .map((result) => result.value);
+
+      if (successfulResults.length === 0) {
+        throw new Error(
+          `No live AI engine returned a usable response for "${question}".`
+        );
+      }
+
+      const fastestParsed = successfulResults[0];
+
       const groundingSources = await groundingPromise;
+
       const enriched = sanitizeAndEnrichConsensusResult(
-        fastestParsed,
+        {
+          ...fastestParsed,
+          nodeContributions: successfulResults.flatMap(
+            (result) =>
+              Array.isArray(result?.nodeContributions)
+                ? result.nodeContributions
+                : []
+          ),
+        },
         modelsList,
         safeTarget,
         question,
@@ -2439,7 +2447,7 @@ Mode: ${
             : "",
           generatedAppHtml: "",
           achievedAgreement: achieved,
-          iterationsRequired: 2,
+          iterationsRequired: 0,
           consensusSummary: relation.hasRelation
             ? `Merged cumulative related history + current query into one query and iterated across ${modelsList.length} engines until ${achieved}% agreement was reached.`
             : `Mathematical proof showed 0% relation with prior history — sent ONLY the current query to ${modelsList.length} engines and reached ${achieved}% agreement.`,
@@ -2474,10 +2482,7 @@ Mode: ${
   }
 
   // Context-Aware Natural Synthesis Fallback (if all upstream API endpoints are temporarily unreachable)
-  const achievedFallback = Math.min(
-    100,
-    safeTarget + Math.floor(Math.random() * Math.max(1, 101 - safeTarget))
-  );
+  const achievedFallback = 0;
   const isKeyUpgradeQuery = /malazhub\/key|mjkey1971|allow application|synthesize/i.test(
     `${question} ${cumulativeSpec || ""}`
   );
@@ -2534,7 +2539,7 @@ Mode: ${
       : "",
     generatedAppHtml: "",
     achievedAgreement: achievedFallback,
-    iterationsRequired: 2,
+    iterationsRequired: 0,
     consensusSummary: relation.hasRelation
       ? `Merged cumulative previous (Ask + Reply) with current query into one unified query and reached ${achievedFallback}% consensus across ${modelsList.length} AI engines.`
       : `Mathematical proof confirmed no relation with previous history — sent ONLY the current query to ${modelsList.length} AI engines and reached ${achievedFallback}% consensus.`,
