@@ -23,6 +23,8 @@ import {
   isVersion8HarnessQuery,
   KEY_COMPLETE_FILE_TREE_ASCII,
   KEY_CODEBASE_STRUCTURE_REGISTRY,
+  extractSemanticTokens,
+  computeCosineSimilarity,
 } from "./src/consensusEngine";
 import {
   HARNESS_VERSION as V8_HARNESS_VERSION,
