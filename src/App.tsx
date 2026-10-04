@@ -2883,6 +2883,9 @@ export default function App() {
   const [selfUpgradeApproved, setSelfUpgradeApproved] =
     useState<boolean>(false);
 
+  const [selfUpgradeBusy, setSelfUpgradeBusy] =
+    useState<boolean>(false);
+
   const selfUpgradePreviewUrl = stagedSelfUpgrade
     ? `${
         typeof window !== "undefined" &&
