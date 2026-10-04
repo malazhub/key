@@ -335,8 +335,24 @@ export async function runBoundedSelfUpgradeSession(
 
   // THIS is the critical cumulative state.
   // Every successful round becomes the source for the next round.
-  let latestSuccessfulWorkspace = activeRoot;
-  let latestSuccessfulCandidate: SelfUpgradeRoundCandidate | undefined;
+  const persistentRuntimeWorkspace = path.join(
+    workspaceRoot,
+    "active-runtime"
+  );
+
+  fs.mkdirSync(persistentRuntimeWorkspace, {
+    recursive: true,
+  });
+
+  let latestSuccessfulWorkspace = fs.existsSync(
+    path.join(persistentRuntimeWorkspace, "server.ts")
+  )
+    ? persistentRuntimeWorkspace
+    : activeRoot;
+
+  let latestSuccessfulCandidate:
+    | SelfUpgradeRoundCandidate
+    | undefined;
 
   for (let round = 1; round <= requestedRounds; round += 1) {
     let candidate: SelfUpgradeRoundCandidate;
@@ -521,6 +537,34 @@ export async function runBoundedSelfUpgradeSession(
       latestSuccessfulWorkspace = candidateWorkspace;
       latestSuccessfulCandidate = candidate;
 
+      const runtimeNext = path.join(
+        workspaceRoot,
+        "active-runtime-next"
+      );
+
+      fs.rmSync(runtimeNext, {
+        recursive: true,
+        force: true,
+      });
+
+      copyWorkspace(
+        candidateWorkspace,
+        runtimeNext
+      );
+
+      fs.rmSync(
+        persistentRuntimeWorkspace,
+        {
+          recursive: true,
+          force: true,
+        }
+      );
+
+      fs.renameSync(
+        runtimeNext,
+        persistentRuntimeWorkspace
+      );
+
       session.finalRound = round;
       session.finalCandidatePath = rel;
       session.finalCandidateWorkspace = candidateWorkspace;
@@ -573,9 +617,14 @@ export async function runBoundedSelfUpgradeSession(
         previousFailure = "";
         previousCandidate = candidate;
 
-        // DO NOT return here.
-        // The loop must continue until requestedRounds.
-        continue;
+        if (round < requestedRounds) {
+          continue;
+        }
+
+        session.status = "PENDING_ADMIN_DECISION";
+        session.updatedAt = new Date().toISOString();
+        persistSession(session);
+        break;
       }
 
       // Legacy direct-deploy mode remains available.
