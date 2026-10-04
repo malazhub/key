@@ -3783,8 +3783,7 @@ export default function App() {
               deviceCode:
                 githubDeviceAuth.deviceCode,
               stagedSessionId:
-                (githubDeviceAuth as any)
-                  .stagedSessionId,
+                githubDeviceAuth.stagedSessionId,
             }),
           }
         );
@@ -4183,6 +4182,19 @@ const data = await res.json();
 
         if (res.ok && data.success) {
           setGithubDeviceAuth(null);
+
+          // The staged candidate has now been successfully deployed.
+          // Remove the persistent staging marker so refreshes do not
+          // reopen the already-completed staged preview session.
+          try {
+            localStorage.removeItem(STAGED_UPGRADE_STORAGE_KEY);
+          } catch {
+            // ignore storage errors
+          }
+
+          setStagedSelfUpgrade(null);
+          setSelfUpgradeApproved(false);
+
           const pushedCount = Number(data.pushedCount) || 21;
           const repoUrl = data.repoUrl || "https://github.com/malazhub/key";
           const actionsUrl =
