@@ -6187,24 +6187,9 @@ export default function App() {
                           : "Approve Staged Upgrade"}
                       </button>
 
-                      <button
-                        type="button"
-                        disabled={
-                          selfUpgradeBusy ||
-                          !selfUpgradeApproved ||
-                          stagedSelfUpgrade.status ===
-                            "ACTIVATED_LOCALLY"
-                        }
-                        onClick={
-                          handleActivateStagedSelfUpgradeLocally
-                        }
-                        className="w-full rounded-lg bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                      >
-                        {stagedSelfUpgrade.status ===
-                        "ACTIVATED_LOCALLY"
-                          ? "Activated Locally"
-                          : "Activate Staged Upgrade Locally"}
-                      </button>
+                      {/* No local activation button.
+                        The staged upgrade remains inactive until the separate
+                        deployment/commit workflow is explicitly used. */}
                     </div>
                   )}
                 </div>
