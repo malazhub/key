@@ -1359,134 +1359,16 @@ function enrichAndRepairAssistantMessage(
     "the requested interactive task"
   ).slice(0, 90);
 
-  const repairedNodes: NodeContribution[] =
-    rawNodes.length > 0
-      ? rawNodes.map((node, idx) => {
-          const modelName =
-            node.modelName || participatingModels[idx] || `Engine #${idx + 1}`;
-          const rawInit = String(node.initialReply || "").trim();
-          const rawFinal = String(node.finalMatchedReply || "").trim();
-          const rawDetailed = String(node.detailedResponse || "").trim();
-          const angle = PERSPECTIVE_ANGLES[idx % PERSPECTIVE_ANGLES.length];
-          const detailSnippet =
-            cleanSentences[idx % Math.max(1, cleanSentences.length)] ||
-            `Structured the full implementation and interactive controls for "${queryRef}"`;
-          const secondarySnippet =
-            cleanSentences[(idx + 1) % Math.max(1, cleanSentences.length)] ||
-            detailSnippet;
-          const summarySnippet =
-            cleanSentences[0] ||
-            `Verified the complete interactive solution and action controls for "${queryRef}"`;
+  // Display only contributions actually returned by the live backend.
+  // Never manufacture engine replies, scores, latency, or token usage in the UI.
+  const repairedNodes: NodeContribution[] = rawNodes.filter(
+    (node) =>
+      node &&
+      typeof node.modelName === "string" &&
+      typeof node.initialReply === "string" &&
+      typeof node.finalMatchedReply === "string"
+  );
 
-          const isInitGood = !hasLazyPlaceholders && rawInit.length >= 45;
-          const isFinalGood =
-            !hasLazyPlaceholders &&
-            rawFinal.length >= 45 &&
-            rawFinal !== rawInit;
-
-          const computedInit = isInitGood
-            ? rawInit
-            : `[${modelName} Initial Analysis]: ${angle}. Key focus: ${detailSnippet}.`;
-          const computedFinal = isFinalGood
-            ? rawFinal
-            : `[${modelName} Final Consensus (${achieved}% Match)]: Converged on the verified solution — ${summarySnippet}. ${
-                hasAppPreview
-                  ? "Confirmed all interactive buttons (Dashboard, Settings, Sync Now, and Confirm & Send) execute live inside the preview."
-                  : "Verified all structured steps and technical details."
-              }`;
-          const computedScore = Math.max(
-            safeTarget,
-            Math.min(100, Number(node.agreementScore) || achieved)
-          );
-
-          const computedDetailed =
-            rawDetailed.length >= 160
-              ? rawDetailed
-              : `### ${modelName} — Full Independent Engine Response (${computedScore}% Match)\n\n` +
-                `1. **Engine #${idx + 1} Analytical Perspective:** ${angle}. Specifically evaluated: *"${detailSnippet}"*.\n` +
-                `2. **Round #1 Initial Output:** ${rawInit || computedInit}\n` +
-                `3. **Module & Logic Verification:** ${secondarySnippet}. ${
-                  hasAppPreview
-                    ? "Verified that clicking Dashboard, Settings, Sync Now, and Confirm & Send dynamically switches views and updates live state."
-                    : "Verified all structured headings, numbered steps, and technical parameters."
-                }\n` +
-                `4. **Complete Verified Answer Approved by ${modelName}:**\n\n${cleanContent}`;
-
-          const fallbackTel = computeSingleEngineTelemetry(
-            modelName,
-            idx,
-            rawUserAsk || queryRef,
-            msg.payloadSentToEngines || queryRef,
-            computedInit,
-            computedFinal,
-            computedDetailed,
-            computedScore
-          );
-
-          return {
-            ...node,
-            modelName,
-            initialReply: computedInit,
-            finalMatchedReply: computedFinal,
-            detailedResponse: computedDetailed,
-            agreementScore: computedScore,
-            latencyMs:
-              typeof node.latencyMs === "number" && node.latencyMs > 0
-                ? node.latencyMs
-                : fallbackTel.latencyMs,
-            round1LatencyMs:
-              typeof node.round1LatencyMs === "number" &&
-              node.round1LatencyMs > 0
-                ? node.round1LatencyMs
-                : fallbackTel.round1LatencyMs,
-            consensusSyncLatencyMs:
-              typeof node.consensusSyncLatencyMs === "number" &&
-              node.consensusSyncLatencyMs > 0
-                ? node.consensusSyncLatencyMs
-                : fallbackTel.consensusSyncLatencyMs,
-            tokenUsage:
-              node.tokenUsage && node.tokenUsage.totalTokens > 0
-                ? node.tokenUsage
-                : fallbackTel.tokenUsage,
-          };
-        })
-      : participatingModels.map((modelName, idx) => {
-          const angle = PERSPECTIVE_ANGLES[idx % PERSPECTIVE_ANGLES.length];
-          const detailSnippet =
-            cleanSentences[idx % Math.max(1, cleanSentences.length)] ||
-            `Structured the full implementation and interactive controls for "${queryRef}"`;
-          const summarySnippet =
-            cleanSentences[0] ||
-            `Verified the complete interactive solution and action controls for "${queryRef}"`;
-          const computedInit = `[${modelName} Initial Analysis]: ${angle}. Key focus: ${detailSnippet}.`;
-          const computedFinal = `[${modelName} Final Consensus (${achieved}% Match)]: Converged on the verified solution — ${summarySnippet}.`;
-          const computedDetailed =
-            `### ${modelName} — Full Independent Engine Response (${achieved}% Match)\n\n` +
-            `1. **Engine #${idx + 1} Analytical Perspective:** ${angle}.\n` +
-            `2. **Round #1 Initial Output:** ${computedInit}\n` +
-            `3. **Complete Verified Answer Approved by ${modelName}:**\n\n${cleanContent}`;
-          const fallbackTel = computeSingleEngineTelemetry(
-            modelName,
-            idx,
-            rawUserAsk || queryRef,
-            msg.payloadSentToEngines || queryRef,
-            computedInit,
-            computedFinal,
-            computedDetailed,
-            achieved
-          );
-          return {
-            modelName,
-            initialReply: computedInit,
-            finalMatchedReply: computedFinal,
-            detailedResponse: computedDetailed,
-            agreementScore: achieved,
-            latencyMs: fallbackTel.latencyMs,
-            round1LatencyMs: fallbackTel.round1LatencyMs,
-            consensusSyncLatencyMs: fallbackTel.consensusSyncLatencyMs,
-            tokenUsage: fallbackTel.tokenUsage,
-          };
-        });
 
   const rawRounds = Array.isArray(msg.convergenceRounds)
     ? msg.convergenceRounds
@@ -1526,20 +1408,22 @@ function enrichAndRepairAssistantMessage(
     metadata:
       msg.metadata ||
       (() => {
-        const engines = repairedNodes.map((n, idx) => ({
-          engineIndex: idx + 1,
-          modelName: n.modelName,
-          latencyMs: n.latencyMs || 380,
-          round1LatencyMs: n.round1LatencyMs || 220,
-          consensusSyncLatencyMs: n.consensusSyncLatencyMs || 160,
-          tokenUsage: n.tokenUsage || {
-            promptTokens: 340,
-            completionTokens: 180,
-            totalTokens: 520,
-          },
-          agreementScore: n.agreementScore,
-          status: "converged" as const,
-        }));
+        const engines = repairedNodes
+          .filter(
+            (n) =>
+              typeof n.latencyMs === "number" &&
+              typeof n.tokenUsage?.totalTokens === "number"
+          )
+          .map((n, idx) => ({
+            engineIndex: idx + 1,
+            modelName: n.modelName,
+            latencyMs: n.latencyMs,
+            round1LatencyMs: n.round1LatencyMs,
+            consensusSyncLatencyMs: n.consensusSyncLatencyMs,
+            tokenUsage: n.tokenUsage,
+            agreementScore: n.agreementScore,
+            status: "converged" as const,
+          }));
         const totalPromptTokens = engines.reduce(
           (a, e) => a + e.tokenUsage.promptTokens,
           0
