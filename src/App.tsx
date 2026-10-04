@@ -3521,6 +3521,7 @@ export default function App() {
             : "",
         previewReady: Boolean(round.previewReady),
         status: String(data.status),
+        updatedAt: new Date().toISOString(),
       };
 
       localStorage.setItem(
