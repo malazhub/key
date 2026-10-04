@@ -2299,19 +2299,33 @@ Mode: ${
     ],
   };
 
-  // Option 2 — Parallel Fast-Track Hedged Engine Execution (`Promise.any` across top healthy models with automatic 503 retry)
+  // REAL LIVE ENGINE CONSENSUS.
+  // Each round uses only actual engine responses. Successful responses are
+  // carried into the next round until the user-selected target is reached
+  // or the existing 50-round safety boundary is reached.
   const healthyModels = getOrderedCandidateModels().filter(isModelAvailable);
   const parallelCandidates = healthyModels.slice(0, 4);
 
-  async function callModelWithRetry(modelName: string, delayMs: number) {
-    if (delayMs > 0) {
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-    for (let attempt = 0; attempt < 2; attempt++) {
+  async function callModelWithRetry(
+    modelName: string,
+    round: number,
+    priorAnswers: string[]
+  ) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
+        const roundContext =
+          priorAnswers.length > 0
+            ? `\n\nLIVE CONSENSUS ROUND ${round}. These are actual answers returned by prior live engines:\n${priorAnswers
+                .map((answer, index) => `[Engine ${index + 1}] ${answer}`)
+                .join("\n\n")}\n\nAnswer the user's query accurately. Use the prior answers as evidence, but do not claim agreement unless it is actually supported.`
+            : "";
+
         const response = await ai.models.generateContent({
           model: modelName,
-          contents: multimodalContents,
+          contents: [
+            ...multimodalContents,
+            { role: "user", parts: [{ text: roundContext }] },
+          ],
           config: {
             systemInstruction,
             temperature: 0.35,
@@ -2319,13 +2333,17 @@ Mode: ${
             responseSchema: responseSchemaConfig,
           },
         });
+
         const rawText = response.text?.trim();
         if (!rawText) throw new Error("Empty model response");
+
         const cleanJsonText = rawText
-          .replace(/^```(?:json)?\s*/i, "")
-          .replace(/\s*```$/i, "")
+          .replace(/^\`\`\`(?:json)?\s*/i, "")
+          .replace(/\s*\`\`\`$/i, "")
           .trim();
+
         const parsed = JSON.parse(cleanJsonText);
+
         if (
           !parsed ||
           typeof parsed.finalAnswer !== "string" ||
@@ -2333,12 +2351,14 @@ Mode: ${
         ) {
           throw new Error("Invalid consensus JSON structure");
         }
-        return parsed;
+
+        return { ...parsed, modelName };
       } catch (err) {
         if (isQuotaOrRateLimitError(err)) {
           markModelCooldown(modelName, err);
           throw err;
         }
+
         if (attempt === 0) {
           await new Promise((r) => setTimeout(r, 700));
         } else {
@@ -2346,18 +2366,52 @@ Mode: ${
         }
       }
     }
+
     throw new Error("Model retry exhausted");
   }
 
-  if (parallelCandidates.length > 0 && windowPairs.length === 0) {
-    // Only use cache on a brand-new empty thread (never return stale cached replies when continuing or repeating a conversation!)
+  function calculateRealAgreement(answers: string[]): number {
+    const usable = answers
+      .filter((answer) => typeof answer === "string" && answer.trim())
+      .map((answer) => answer.trim());
+
+    if (usable.length < 2) return 0;
+
+    let total = 0;
+    let comparisons = 0;
+
+    for (let i = 0; i < usable.length; i += 1) {
+      const left = extractSemanticTokens(usable[i]);
+
+      for (let j = i + 1; j < usable.length; j += 1) {
+        total += computeCosineSimilarity(
+          left,
+          extractSemanticTokens(usable[j])
+        );
+        comparisons += 1;
+      }
+    }
+
+    return comparisons > 0
+      ? Math.round(Math.max(0, Math.min(100, (total / comparisons) * 100)))
+      : 0;
   }
 
   if (parallelCandidates.length > 0) {
-    try {
+    let priorAnswers: string[] = [];
+    let finalSuccessfulResults: any[] = [];
+    let achievedAgreement = 0;
+    let iterationsRequired = 0;
+    const convergenceRounds: Array<{
+      round: number;
+      similarityScore: number;
+      note: string;
+    }> = [];
+
+    for (let round = 1; round <= 50; round += 1) {
       const settledResults = await Promise.allSettled(
         parallelCandidates.map((modelName) =>
-          callModelWithRetry(modelName, 0)
+          callModelWithRetry(modelName, round, priorAnswers)
         )
       );
 
@@ -2368,27 +2422,65 @@ Mode: ${
           ): result is PromiseFulfilledResult<any> =>
             result.status === "fulfilled"
         )
-        .map((result) => result.value);
+        .map((result) => result.value)
+        .filter(
+          (result) =>
+            result &&
+            typeof result.finalAnswer === "string" &&
+            result.finalAnswer.trim().length > 0
+        );
 
       if (successfulResults.length === 0) {
-        throw new Error(
-          `No live AI engine returned a usable response for "${question}".`
-        );
+        if (round === 1) {
+          throw new Error(
+            `No live AI engine returned a usable response for "${question}".`
+          );
+        }
+        break;
       }
 
-      const fastestParsed = successfulResults[0];
+      finalSuccessfulResults = successfulResults;
+      const answers = successfulResults.map((result) =>
+        String(result.finalAnswer).trim()
+      );
 
+      achievedAgreement = calculateRealAgreement(answers);
+      iterationsRequired = round;
+
+      convergenceRounds.push({
+        round,
+        similarityScore: achievedAgreement,
+        note:
+          achievedAgreement >= safeTarget
+            ? `Real conformity reached ${achievedAgreement}% against the selected ${safeTarget}% target.`
+            : `Real conformity measured at ${achievedAgreement}%; another live round is required for the selected ${safeTarget}% target.`,
+      });
+
+      priorAnswers = answers;
+
+      if (achievedAgreement >= safeTarget) break;
+    }
+
+    if (finalSuccessfulResults.length > 0) {
+      const best = finalSuccessfulResults[0];
       const groundingSources = await groundingPromise;
 
       const enriched = sanitizeAndEnrichConsensusResult(
         {
-          ...fastestParsed,
-          nodeContributions: successfulResults.flatMap(
-            (result) =>
-              Array.isArray(result?.nodeContributions)
-                ? result.nodeContributions
-                : []
-          ),
+          ...best,
+          achievedAgreement,
+          iterationsRequired,
+          convergenceRounds,
+          nodeContributions: finalSuccessfulResults.map((result) => ({
+            modelName: String(result.modelName || "unknown"),
+            initialReply: String(result.finalAnswer || ""),
+            finalMatchedReply: String(result.finalAnswer || ""),
+            detailedResponse:
+              typeof result.detailedResponse === "string"
+                ? result.detailedResponse
+                : String(result.finalAnswer || ""),
+            agreementScore: achievedAgreement,
+          })),
         },
         modelsList,
         safeTarget,
@@ -2396,7 +2488,8 @@ Mode: ${
         shouldGenerateAppPreview,
         cumulativeSpec
       );
-      const finalResult = {
+
+      return {
         ...enriched,
         groundingSources,
         workingMemoryFacts: relation.workingMemoryFacts || [],
@@ -2407,18 +2500,15 @@ Mode: ${
         cumulativeSavedPairsCount: allPairsCount + 1,
         droppedOldestCount,
       };
-
-      return finalResult;
-    } catch {
-      // Fall through to secondary plain-markdown fallback if parallel structured JSON failed
     }
   }
 
-  // Secondary fallback if structured JSON fails: race remaining healthy models for direct natural Markdown answer
+  // If structured consensus cannot be produced, still return a real live
+  // answer when one is available. Its agreement remains 0 because no
+  // consensus was measured; nothing is fabricated.
   for (const modelName of getOrderedCandidateModels()) {
-    if (!isModelAvailable(modelName)) {
-      continue;
-    }
+    if (!isModelAvailable(modelName)) continue;
+
     try {
       const plainResp = await ai.models.generateContent({
         model: modelName,
@@ -2428,58 +2518,54 @@ Mode: ${
             "Reply directly, naturally, and accurately to the current user query using the conversation history in context. Never repeat a robotic template.",
         },
       });
+
       const text = plainResp.text?.trim();
-      if (text) {
-        const groundingSources = await groundingPromise;
-        const achieved = Math.min(
-          100,
-          safeTarget + Math.floor(Math.random() * Math.max(1, 101 - safeTarget))
-        );
-        const fallbackRaw = {
-          contextMode: relation.contextMode,
-          historyMatchScore: relation.historyMatchScore,
-          matchedPairIndices: relation.matchedPairIndices,
-          payloadSentToEngines: relation.payloadSentToEngines,
-          finalAnswer: text,
-          hasAppPreview: shouldGenerateAppPreview,
-          appTitle: shouldGenerateAppPreview
-            ? `Interactive Application Preview (${nextVer})`
-            : "",
-          generatedAppHtml: "",
-          achievedAgreement: achieved,
-          iterationsRequired: 0,
-          consensusSummary: relation.hasRelation
-            ? `Merged cumulative related history + current query into one query and iterated across ${modelsList.length} engines until ${achieved}% agreement was reached.`
-            : `Mathematical proof showed 0% relation with prior history — sent ONLY the current query to ${modelsList.length} engines and reached ${achieved}% agreement.`,
-          convergenceRounds: [],
-          nodeContributions: [],
-        };
-        const enrichedFallback = sanitizeAndEnrichConsensusResult(
-          fallbackRaw,
-          modelsList,
-          safeTarget,
-          question,
-          shouldGenerateAppPreview,
-          cumulativeSpec
-        );
-        return {
-          ...enrichedFallback,
-          groundingSources,
-          workingMemoryFacts: relation.workingMemoryFacts || [],
-          contextMode: relation.contextMode,
-          historyMatchScore: relation.historyMatchScore,
-          matchedPairIndices: relation.matchedPairIndices,
-          payloadSentToEngines: relation.payloadSentToEngines,
-          cumulativeSavedPairsCount: allPairsCount + 1,
-          droppedOldestCount,
-        };
-      }
-    } catch (e) {
-      if (isQuotaOrRateLimitError(e)) {
-        markModelCooldown(modelName, e);
-      }
+      if (!text) continue;
+
+      const groundingSources = await groundingPromise;
+
+      return {
+        contextMode: relation.contextMode,
+        historyMatchScore: relation.historyMatchScore,
+        matchedPairIndices: relation.matchedPairIndices,
+        payloadSentToEngines: relation.payloadSentToEngines,
+        finalAnswer: text,
+        hasAppPreview: shouldGenerateAppPreview,
+        appTitle: shouldGenerateAppPreview
+          ? `Interactive Application Preview (${nextVer})`
+          : "",
+        generatedAppHtml: "",
+        achievedAgreement: 0,
+        iterationsRequired: 1,
+        consensusSummary:
+          `A real live engine answered, but the selected ${safeTarget}% consensus target was not reached. No synthetic agreement was reported.`,
+        convergenceRounds: [],
+        nodeContributions: [
+          {
+            modelName,
+            initialReply: text,
+            finalMatchedReply: text,
+            detailedResponse: text,
+            agreementScore: 0,
+          },
+        ],
+        groundingSources,
+        workingMemoryFacts: relation.workingMemoryFacts || [],
+        cumulativeSavedPairsCount: allPairsCount + 1,
+        droppedOldestCount,
+      };
+    } catch (err) {
+      if (isQuotaOrRateLimitError(err)) markModelCooldown(modelName, err);
     }
   }
+
+  throw new Error(
+    `No live AI engine returned a usable response for "${question}".`
+  );
+
+  throw new Error(
+    `No live AI engine returned a usable response for "${question}".`
+  );
 
   // Context-Aware Natural Synthesis Fallback (if all upstream API endpoints are temporarily unreachable)
   const achievedFallback = 0;
