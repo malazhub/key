@@ -3769,17 +3769,26 @@ export default function App() {
     if (!githubDeviceAuth?.deviceCode) return;
     const timer = setInterval(async () => {
       try {
-        const res = await fetchFromKeyBackend("/api/admin/github-device-poll", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deviceCode:
-              githubDeviceAuth.deviceCode,
-            stagedSessionId:
-              (githubDeviceAuth as any)
-                .stagedSessionId,
-          }),
-        if (!res.ok) return;
+        const res =
+        await fetchFromKeyBackend(
+          "/api/admin/github-device-poll",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              deviceCode:
+                githubDeviceAuth.deviceCode,
+              stagedSessionId:
+                (githubDeviceAuth as any)
+                  .stagedSessionId,
+            }),
+          }
+        );
+
+      if (!res.ok) return;
         const data = await res.json();
         if (data.authorized && data.success) {
           if (
@@ -4064,23 +4073,25 @@ export default function App() {
 let res: Response;
 
 if (stagedSessionId) {
-  res = await fetchFromKeyBackend(
-    "/api/self-upgrade/deploy-staged",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sessionId: stagedSessionId,
-        githubToken:
-          savedToken || undefined,
-        repoOwner: "malazhub",
-        repoName: "key",
-        branch: "main",
-      }),
-    }
-  );
+  res =
+    await fetchFromKeyBackend(
+      "/api/admin/deploy",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          stagedSessionId,
+          githubToken:
+            savedToken || undefined,
+          repoOwner: "malazhub",
+          repoName: "key",
+          branch: "main",
+        }),
+      }
+    );
 } else {
   const currentMirroredSnapshot =
     buildLiveMirroredStateSnapshot();
@@ -4125,6 +4136,8 @@ const data = await res.json();
               userCode: String(data.user_code),
               verificationUri: String(verifyUrl),
               deviceCode: String(data.device_code),
+              stagedSessionId:
+                stagedSessionId || undefined,
             };
             prewarmedDeviceRef.current = authObj;
             setGithubDeviceAuth(authObj);
