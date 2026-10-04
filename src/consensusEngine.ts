@@ -8491,10 +8491,13 @@ export function sanitizeAndEnrichConsensusResult(
         .toLowerCase()
     )
   );
-  const hasLazyPlaceholders =
-    rawNodes.length < modelsList.length ||
-    uniqueInitials.size <= Math.max(1, Math.floor(modelsList.length / 3)) ||
-    rawNodes.some((n) => String(n?.initialReply || "").trim().length < 40);
+  const actualEngineNodes = rawNodes.filter(
+    (node) =>
+      node &&
+      typeof node.modelName === "string" &&
+      String(node.initialReply || "").trim().length > 0 &&
+      String(node.finalReply || "").trim().length > 0
+  );
 
   const perspectiveAngles = [
     "Analyzed the core architectural requirements and structured the primary execution steps",
@@ -8536,17 +8539,9 @@ export function sanitizeAndEnrichConsensusResult(
     const isExistingFinalGood =
       !hasLazyPlaceholders && rawFinal.length >= 45 && rawFinal !== rawInit;
 
-    const initialReply = isExistingInitGood
-      ? rawInit
-      : `[${modelName} Initial Analysis]: ${angle}. Key focus: ${detailSnippet}.`;
+    const initialReply = rawInit;
 
-    const finalMatchedReply = isExistingFinalGood
-      ? rawFinal
-      : `[${modelName} Final Consensus (${achieved}% Match)]: Converged on the complete structured solution — ${summarySnippet}. ${
-          hasAppPreview
-            ? "Verified that all interactive buttons (Dashboard, Settings, Sync, and Confirm & Send) switch views and execute live inside the preview."
-            : "Verified all headings, numbered steps, and technical details."
-        }`;
+    const finalMatchedReply = rawFinal;
 
     const engineScore = Math.max(
       safeTarget,
@@ -11062,7 +11057,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
           appTitle: "",
           generatedAppHtml: "",
           achievedAgreement: Math.min(100, safeTarget + 2),
-          iterationsRequired: 2,
+          iterationsRequired: actualRoundsCompleted,
           consensusSummary:
             !strictQueryPriority && relation.hasRelation
               ? `Live multi-engine consensus converged across ${modelsList.length} AI engines with session memory continuity.`
@@ -11111,7 +11106,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         appTitle: String(parsed.appTitle || ""),
         generatedAppHtml: String(parsed.generatedAppHtml || ""),
         achievedAgreement: Math.min(100, safeTarget + 2),
-        iterationsRequired: 2,
+        iterationsRequired: actualRoundsCompleted,
         consensusSummary:
           !strictQueryPriority && relation.hasRelation
             ? `Live multi-engine consensus converged across ${modelsList.length} AI engines with session memory continuity.`
@@ -11174,7 +11169,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
             : "",
           generatedAppHtml: "",
           achievedAgreement: Math.min(100, safeTarget + 2),
-          iterationsRequired: 2,
+          iterationsRequired: actualRoundsCompleted,
           consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
           convergenceRounds: [],
           nodeContributions: [],
@@ -11205,7 +11200,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
                   : "",
                 generatedAppHtml: "",
                 achievedAgreement: Math.min(100, safeTarget + 2),
-                iterationsRequired: 2,
+                iterationsRequired: actualRoundsCompleted,
                 consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
                 convergenceRounds: [],
                 nodeContributions: [],
@@ -11267,7 +11262,10 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
 
   // All user queries, including greetings/small-talk, must remain on the
   // live engine path. Never synthesize a predefined answer locally.
-  const achievedFallback = Math.min(100, safeTarget + 2);
+  throw new Error(
+  `Live engine dispatch failed for query "${cleanQuestion}". ` +
+  `No live engine returned a usable response, so no consensus result was generated.`
+);
 
   const liveTransparentReport =
     `### Live Engine Dispatch Failure\n\n` +
@@ -11293,7 +11291,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         : "",
       generatedAppHtml: "",
       achievedAgreement: achievedFallback,
-      iterationsRequired: 2,
+      iterationsRequired: actualRoundsCompleted,
       consensusSummary: `Dispatched live query across ${modelsList.length} AI engines.`,
       convergenceRounds: [],
       nodeContributions: [],
