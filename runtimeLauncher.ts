@@ -34,21 +34,27 @@ function resolveActiveRuntime(): string {
     ).trim();
 
     if (!runtimeWorkspace) {
-      return repositoryRoot;
+      throw new Error(
+        "Active upgraded runtime marker exists but contains no runtime workspace."
+      );
     }
 
     const resolved = path.resolve(runtimeWorkspace);
 
-    if (
-      fs.existsSync(path.join(resolved, "server.ts"))
-    ) {
-      return resolved;
+    if (!fs.existsSync(path.join(resolved, "server.ts"))) {
+      throw new Error(
+        `Active upgraded runtime workspace is missing server.ts: ${resolved}`
+      );
     }
-  } catch {
-    // Fall back to the repository version if the runtime marker is invalid.
-  }
 
-  return repositoryRoot;
+    return resolved;
+  } catch (error) {
+    throw new Error(
+      `Active upgraded runtime could not be restored; refusing to fall back to the original GitHub runtime. ${String(
+        error instanceof Error ? error.message : error
+      )}`
+    );
+  }
 }
 
 const runtimeWorkspace = resolveActiveRuntime();
