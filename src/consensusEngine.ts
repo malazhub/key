@@ -8479,10 +8479,11 @@ export function sanitizeAndEnrichConsensusResult(
     ? parsed.nodeContributions
     : [];
 
-  const achieved = Math.max(
-    safeTarget,
-    Math.min(100, Number(parsed.achievedAgreement) || safeTarget)
-  );
+  const achieved =
+    typeof parsed.achievedAgreement === "number" &&
+    Number.isFinite(parsed.achievedAgreement)
+      ? Math.min(100, Math.max(0, parsed.achievedAgreement))
+      : 0;
 
   const uniqueInitials = new Set(
     rawNodes.map((n) =>
@@ -8622,26 +8623,7 @@ export function sanitizeAndEnrichConsensusResult(
     ? parsed.convergenceRounds
     : [];
 
-  const round1Score = Math.max(68, Math.min(safeTarget - 6, 88));
-  const convergenceRounds =
-    rawRounds.length >= 2
-      ? rawRounds
-      : [
-          {
-            round: 1,
-            similarityScore: round1Score,
-            note: `Opened fresh sessions across ${modelsList.length} AI engines (${modelsList
-              .slice(0, 4)
-              .join(", ")}${
-              modelsList.length > 4 ? ` + ${modelsList.length - 4} more` : ""
-            }) and collected independent detailed analyses (${round1Score}% initial similarity).`,
-          },
-          {
-            round: 2,
-            similarityScore: achieved,
-            note: `Cross-examined and merged all ${modelsList.length} engine outputs until reaching ${achieved}% consensus agreement (target ≥ ${safeTarget}%).`,
-          },
-        ];
+  const convergenceRounds: ConvergenceRound[] = rawRounds;
 
   const isForcedIsolatedInSanitizer =
     isGreeting ||
@@ -8872,10 +8854,10 @@ export function sanitizeAndEnrichConsensusResult(
     consensus: {
       achievedAgreement: achieved,
       targetAgreement: safeTarget,
-      iterationsRequired: Math.max(
-        convergenceRounds.length,
-        Number(parsed.iterationsRequired) || 2
-      ),
+      iterationsRequired:
+        Number.isInteger(parsed.iterationsRequired)
+          ? parsed.iterationsRequired
+          : convergenceRounds.length,
       summary: String(
         parsed.consensusSummary ||
           `Converged at ${achieved}% across ${modelsList.length} engines.`
@@ -8913,10 +8895,10 @@ export function sanitizeAndEnrichConsensusResult(
     appTitle,
     generatedAppHtml,
     achievedAgreement: achieved,
-    iterationsRequired: Math.max(
-      convergenceRounds.length,
-      Number(parsed.iterationsRequired) || 2
-    ),
+    iterationsRequired:
+    Number.isInteger(parsed.iterationsRequired)
+      ? parsed.iterationsRequired
+      : convergenceRounds.length,
     convergenceRounds,
     nodeContributions: enrichedNodes,
     metadata,
@@ -11055,8 +11037,8 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
           hasAppPreview: false,
           appTitle: "",
           generatedAppHtml: "",
-          achievedAgreement: Math.min(100, safeTarget + 2),
-          iterationsRequired: actualRoundsCompleted,
+          achievedAgreement: actualAgreement,
+iterationsRequired: actualRoundsCompleted,
           consensusSummary:
             !strictQueryPriority && relation.hasRelation
               ? `Live multi-engine consensus converged across ${modelsList.length} AI engines with session memory continuity.`
@@ -11104,7 +11086,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         hasAppPreview: Boolean(parsed.hasAppPreview && shouldGenerateAppPreview),
         appTitle: String(parsed.appTitle || ""),
         generatedAppHtml: String(parsed.generatedAppHtml || ""),
-        achievedAgreement: Math.min(100, safeTarget + 2),
+        achievedAgreement: actualAgreement,
         iterationsRequired: actualRoundsCompleted,
         consensusSummary:
           !strictQueryPriority && relation.hasRelation
@@ -11271,8 +11253,8 @@ deterministicParsed = {
             ? `Interactive Application Preview (${nextVer})`
             : "",
           generatedAppHtml: "",
-          achievedAgreement: Math.min(100, safeTarget + 2),
-          iterationsRequired: actualRoundsCompleted,
+          achievedAgreement: actualAgreement,
+iterationsRequired: actualRoundsCompleted,
           consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
           convergenceRounds: [],
           nodeContributions: [],
@@ -11302,7 +11284,7 @@ deterministicParsed = {
                   ? `Interactive Application Preview (${nextVer})`
                   : "",
                 generatedAppHtml: "",
-                achievedAgreement: Math.min(100, safeTarget + 2),
+                achievedAgreement: actualAgreement,
                 iterationsRequired: actualRoundsCompleted,
                 consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
                 convergenceRounds: [],
