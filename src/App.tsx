@@ -5213,25 +5213,28 @@ const data = await res.json();
         liveFallbackData = null;
       }
 
-      const achieved = Math.max(target, 98);
+      const achieved =
+        typeof liveFallbackData?.achievedAgreement === "number"
+          ? liveFallbackData.achievedAgreement
+          : 0;
+
       const shouldShowPreview = Boolean(
         liveFallbackData?.hasAppPreview ??
           (runOptions?.forceAppPreview || isActualAdminUpgradeTask)
       );
+
       const clientRel = computeClientRelationWithPrevious(
         queryText,
         previousMessages
       );
+
       const liveComputedContent =
         typeof liveFallbackData?.finalAnswer === "string" &&
         liveFallbackData.finalAnswer.trim().length > 0
           ? liveFallbackData.finalAnswer
-          : `### Live Engine Dispatch Failure\n\n` +
-            `The live AI engine pipeline could not obtain a generated response for ` +
-            `the current query (**"${queryText}"**). ` +
-            `No predefined, canned, greeting, structure, or locally fabricated answer ` +
-            `was substituted. The query remained on the live engine path across ` +
-            `${activeModels.length} configured engines.`;
+          : `### Live Engine Dispatch Failure
+
+The live AI engine pipeline could not obtain a generated response for the current query (**"${queryText}"**). No fabricated engine answer or synthetic consensus was substituted.`;
 
       const fallbackRaw: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -5251,20 +5254,14 @@ const data = await res.json();
         cumulativeSavedPairsCount:
           liveFallbackData?.cumulativeSavedPairsCount ||
           clientRel.savedPairsCount + 1,
-        achievedAgreement:
-          typeof liveFallbackData?.achievedAgreement === "number"
-            ? liveFallbackData.achievedAgreement
-            : achieved,
-
+        achievedAgreement: achieved,
         iterationsRequired:
           Number.isInteger(liveFallbackData?.iterationsRequired)
             ? liveFallbackData.iterationsRequired
             : 0,
         consensusSummary:
           liveFallbackData?.consensusSummary ||
-          (clientRel.hasRelation
-            ? `Merged cumulative related history + current query into one query across ${activeModels.length} AI engines (${achieved}% match).`
-            : `Sent ONLY the current query to ${activeModels.length} AI engines (${achieved}% match) and saved cumulatively.`),
+          "No measured live consensus result was returned.",
         activeModels,
         hasAppPreview: shouldShowPreview,
         appTitle: shouldShowPreview
@@ -5273,31 +5270,13 @@ const data = await res.json();
         generatedAppHtml: shouldShowPreview
           ? liveFallbackData?.generatedAppHtml || instantFallbackApp.html
           : "",
-        convergenceRounds: Array.isArray(liveFallbackData?.convergenceRounds) &&
-          liveFallbackData.convergenceRounds.length > 0
+        convergenceRounds: Array.isArray(liveFallbackData?.convergenceRounds)
           ? liveFallbackData.convergenceRounds
-          : [
-              {
-                round: 1,
-                similarityScore: Math.max(75, target - 8),
-                note: `Collected independent Round #1 analyses across ${activeModels.length} AI engines.`,
-              },
-              {
-                round: 2,
-                similarityScore: achieved,
-                note: `Converged on unified verified answer (${achieved}% >= ${target}%).`,
-              },
-            ],
+          : [],
         nodeContributions:
-          Array.isArray(liveFallbackData?.nodeContributions) &&
-          liveFallbackData.nodeContributions.length > 0
+          Array.isArray(liveFallbackData?.nodeContributions)
             ? liveFallbackData.nodeContributions
-            : activeModels.map((m) => ({
-                modelName: m,
-                agreementScore: achieved,
-                initialReply: "",
-                finalMatchedReply: "",
-              })),
+            : [],
       };
       const enrichedFallbackMsg = enrichAndRepairAssistantMessage(
         fallbackRaw,
