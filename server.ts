@@ -5692,6 +5692,11 @@ jobs:
         req.body?.deviceCode || req.body?.device_code || ""
       ).trim();
 
+      const incomingStagedSessionId =
+        typeof req.body?.stagedSessionId === "string"
+          ? req.body.stagedSessionId.trim()
+          : undefined;
+
       if (
         incomingDeviceCode &&
         !pendingServerDeviceSessions.has(incomingDeviceCode) &&
@@ -5706,6 +5711,8 @@ jobs:
           expiresAt: Date.now() + 900 * 1000,
           intervalSec: 5,
           status: "pending",
+          stagedSessionId:
+            incomingStagedSessionId || undefined,
         };
         pendingServerDeviceSessions.set(incomingDeviceCode, adopted);
         if (!activeServerDeviceSession) {
