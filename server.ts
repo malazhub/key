@@ -3736,7 +3736,6 @@ Return ONLY JSON in this exact shape:
       const requestedRounds = Number(
         req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1
       );
-      const deploy = req.body?.deploy === undefined ? false : Boolean(req.body.deploy);
 
       const result = await runBoundedSelfUpgradeSession(
         {
@@ -3749,8 +3748,11 @@ Return ONLY JSON in this exact shape:
             Array.isArray(req.body?.candidates) && req.body.candidates.length > 0
               ? (req.body.candidates as SelfUpgradeRoundCandidate[])
               : undefined,
-                    deploy,
-         },
+
+          // This endpoint is staging-only.
+          // It must NEVER activate, deploy, or commit a generated upgrade.
+          deploy: false,
+        },
         {
           activeWorkspace: __dirname,
           githubToken:
