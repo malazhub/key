@@ -3586,7 +3586,7 @@ export default function App() {
     setSelfUpgradeApproved(true);
 
     setSelfUpgradeStatus(
-      "✓ Staged upgrade approved for local activation. GitHub Deploy remains separate."
+      "✓ Staged upgrade reviewed and approved. GitHub Deploy remains separate."
     );
   };
 
