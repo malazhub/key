@@ -4058,20 +4058,54 @@ export default function App() {
           }
         }
 
-        const currentMirroredSnapshot = buildLiveMirroredStateSnapshot();
+        const stagedSessionId =
+  stagedSelfUpgrade?.sessionId || "";
 
-        const res = await fetchFromKeyBackend("/api/admin/deploy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            githubToken: savedToken || undefined,
-            repoOwner: "malazhub",
-            repoName: "key",
-            branch: "main",
-            mirroredState: currentMirroredSnapshot,
-          }),
-        });
-        const data = await res.json();
+let res: Response;
+
+if (stagedSessionId) {
+  res = await fetchFromKeyBackend(
+    "/api/self-upgrade/deploy-staged",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: stagedSessionId,
+        githubToken:
+          savedToken || undefined,
+        repoOwner: "malazhub",
+        repoName: "key",
+        branch: "main",
+      }),
+    }
+  );
+} else {
+  const currentMirroredSnapshot =
+    buildLiveMirroredStateSnapshot();
+
+  res = await fetchFromKeyBackend(
+    "/api/admin/deploy",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        githubToken:
+          savedToken || undefined,
+        repoOwner: "malazhub",
+        repoName: "key",
+        branch: "main",
+        mirroredState:
+          currentMirroredSnapshot,
+      }),
+    }
+  );
+}
+
+const data = await res.json();
 
         if (data.needsGitHubAuth) {
           if (savedToken) {
@@ -4102,7 +4136,13 @@ export default function App() {
               "/api/admin/github-device-start",
               {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  stagedSessionId:
+                    stagedSessionId || undefined,
+                }),
               }
             );
             const devData = await devRes.json();
