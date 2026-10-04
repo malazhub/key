@@ -8500,122 +8500,87 @@ export function sanitizeAndEnrichConsensusResult(
       String(node.finalReply || "").trim().length > 0
   );
 
-  const perspectiveAngles = [
-    "Analyzed the core architectural requirements and structured the primary execution steps",
-    "Evaluated user interaction flow, functional state transitions, and responsive layout details",
-    "Verified edge-case handling, data validation, and immediate visual feedback mechanisms",
-    "Synthesized the step-by-step operational breakdown and clarity of key action controls",
-    "Cross-checked technical accuracy, completeness of parameters, and live component behavior",
-    "Reviewed modular structure, event handling reliability, and user-facing status indicators",
-    "Confirmed alignment between user query constraints and the final actionable implementation",
-    "Assessed performance, clean hierarchy, and seamless navigation across interactive sections",
-    "Validated semantic context continuity with prior memory and refined the output formatting",
-    "Consolidated multi-engine insights into the unified high-agreement executive response",
-  ];
+  // Only expose engine contributions that actually came back from the live dispatch.
+  // Never manufacture missing engines, replies, scores, latency, or detailed responses.
+  const enrichedNodes = rawNodes
+    .map((existing, idx) => {
+      const modelName = String(existing?.modelName || "").trim();
+      const initialReply = String(existing?.initialReply || "").trim();
+      const finalMatchedReply = String(existing?.finalMatchedReply || "").trim();
 
-  const enrichedNodes = modelsList.map((modelName, idx) => {
-    const existing =
-      rawNodes.find(
-        (n) =>
-          String(n?.modelName || "")
-            .toLowerCase()
-            .includes(modelName.toLowerCase())
-      ) || rawNodes[idx];
+      if (!modelName || !initialReply || !finalMatchedReply) {
+        return null;
+      }
 
-    const rawInit = String(existing?.initialReply || "").trim();
-    const rawFinal = String(existing?.finalMatchedReply || "").trim();
-    const rawDetailed = String(existing?.detailedResponse || "").trim();
-    const angle = perspectiveAngles[idx % perspectiveAngles.length];
-    const detailSnippet =
-      cleanSentences[idx % Math.max(1, cleanSentences.length)] ||
-      `Addressed "${question.slice(0, 80)}" with full structured detail`;
-    const secondarySnippet =
-      cleanSentences[(idx + 1) % Math.max(1, cleanSentences.length)] ||
-      detailSnippet;
-    const summarySnippet =
-      cleanSentences[0] ||
-      `Delivered the complete verified solution and interactive output for "${question.slice(0, 80)}"`;
+      const measuredAgreement =
+        typeof existing?.agreementScore === "number" &&
+        Number.isFinite(existing.agreementScore)
+          ? Math.min(100, Math.max(0, existing.agreementScore))
+          : computeCosineSimilarity(
+              extractSemanticTokens(finalMatchedReply),
+              extractSemanticTokens(finalAnswer)
+            ) * 100;
 
-    const isExistingInitGood = !hasLazyPlaceholders && rawInit.length >= 45;
-    const isExistingFinalGood =
-      !hasLazyPlaceholders && rawFinal.length >= 45 && rawFinal !== rawInit;
+      const existingLatency = Number(existing?.latencyMs);
+      const existingRound1Latency = Number(existing?.round1LatencyMs);
+      const existingConsensusSyncLatency = Number(existing?.consensusSyncLatencyMs);
 
-    const initialReply = rawInit;
+      const existingTokenUsage = existing?.tokenUsage as
+        | EngineTokenUsage
+        | undefined;
 
-    const finalMatchedReply = rawFinal;
+      const tokenUsage: EngineTokenUsage =
+        existingTokenUsage &&
+        Number.isFinite(existingTokenUsage.promptTokens) &&
+        Number.isFinite(existingTokenUsage.completionTokens) &&
+        Number.isFinite(existingTokenUsage.totalTokens)
+          ? existingTokenUsage
+          : {
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0,
+            };
 
-    const engineScore = Math.min(
-      100,
-      Math.max(
-        0,
-        Number(existing?.agreementScore) || achieved
-      )
+      const detailedResponse = String(existing?.detailedResponse || "").trim() ||
+        finalMatchedReply;
+
+      const contribution = computeReproducibleEngineContribution(
+        initialReply,
+        finalMatchedReply,
+        finalAnswer,
+        idx,
+        rawNodes.length
+      );
+
+      return {
+        modelName,
+        initialReply,
+        finalMatchedReply,
+        detailedResponse,
+        agreementScore: measuredAgreement,
+        latencyMs:
+          Number.isFinite(existingLatency) && existingLatency >= 0
+            ? existingLatency
+            : 0,
+        round1LatencyMs:
+          Number.isFinite(existingRound1Latency) && existingRound1Latency >= 0
+            ? existingRound1Latency
+            : 0,
+        consensusSyncLatencyMs:
+          Number.isFinite(existingConsensusSyncLatency) &&
+          existingConsensusSyncLatency >= 0
+            ? existingConsensusSyncLatency
+            : 0,
+        tokenUsage,
+        contributionScore: contribution.contributionScore,
+        contributionBreakdown: contribution.breakdown,
+      };
+    })
+    .filter(
+      (
+        node
+      ): node is NonNullable<typeof node> => Boolean(node)
     );
-
-    const detailedResponse =
-      rawDetailed.length >= 160
-        ? rawDetailed
-        : `### ${modelName} — Independent Detailed Engine Response (${engineScore}% Match)\n\n` +
-          `1. **Primary Analytical Focus (Engine #${idx + 1}):** ${angle}. Specifically evaluated: *"${detailSnippet}"*.\n` +
-          `2. **Round #1 Initial Formulation:** ${rawInit || initialReply}\n` +
-          `3. **Technical & Interactive Verification:** ${secondarySnippet}. ${
-            hasAppPreview
-              ? "Verified that clicking Dashboard, Settings, Sync Now, and Confirm & Send dynamically updates the workspace state without page reloads."
-              : "Validated structural clarity, sequential numbering, and accuracy of every section."
-          }\n` +
-          `4. **Final Consensus Alignment (${engineScore}% Agreement):** Cross-checked against all ${modelsList.length} active AI engines and confirmed full alignment with the final unified answer:\n\n` +
-          `${finalAnswer}`;
-
-    const existingLatency = Number(existing?.latencyMs);
-    const existingTokenUsage = existing?.tokenUsage as
-      | EngineTokenUsage
-      | undefined;
-
-    const telemetry = computeSingleEngineTelemetry(
-      modelName,
-      idx,
-      question,
-      String(parsed.payloadSentToEngines || question),
-      initialReply,
-      finalMatchedReply,
-      detailedResponse,
-      engineScore,
-      Number(parsed._wallClockElapsedMs) || 0
-    );
-
-    const latencyMs =
-      Number.isFinite(existingLatency) && existingLatency > 0
-        ? existingLatency
-        : telemetry.latencyMs;
-    const tokenUsage: EngineTokenUsage =
-      existingTokenUsage &&
-      Number.isFinite(existingTokenUsage.totalTokens) &&
-      existingTokenUsage.totalTokens > 0
-        ? existingTokenUsage
-        : telemetry.tokenUsage;
-
-    const contribution = computeReproducibleEngineContribution(
-      initialReply,
-      finalMatchedReply,
-      finalAnswer,
-      idx,
-      modelsList.length
-    );
-
-    return {
-      modelName,
-      initialReply,
-      finalMatchedReply,
-      detailedResponse,
-      agreementScore: engineScore,
-      latencyMs,
-      round1LatencyMs: telemetry.round1LatencyMs,
-      consensusSyncLatencyMs: telemetry.consensusSyncLatencyMs,
-      tokenUsage,
-      contributionScore: contribution.contributionScore,
-      contributionBreakdown: contribution.breakdown,
-    };
-  });
 
   const rawRounds: Array<Record<string, any>> = Array.isArray(
     parsed.convergenceRounds
