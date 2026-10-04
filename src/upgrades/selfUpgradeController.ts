@@ -27,8 +27,7 @@ export type SelfUpgradeSessionStatus =
   | "EXHAUSTED"
   | "STOPPED"
   | "FAILED"
-  | "PENDING_ADMIN_DECISION"
-  | "ACTIVATED_LOCALLY";
+  | "PENDING_ADMIN_DECISION";
 
 export interface SelfUpgradeControllerRequest {
   instruction: string;
