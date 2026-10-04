@@ -8543,12 +8543,11 @@ export function sanitizeAndEnrichConsensusResult(
 
     const finalMatchedReply = rawFinal;
 
-    const engineScore = Math.max(
-      safeTarget,
-      Math.min(
-        100,
-        Number(existing?.agreementScore) ||
-          Math.min(100, achieved - (idx % 2 === 0 ? 0 : 1))
+    const engineScore = Math.min(
+      100,
+      Math.max(
+        0,
+        Number(existing?.agreementScore) || achieved
       )
     );
 
@@ -11123,20 +11122,124 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
   }
 
   // Parallel hedged execution across candidate models for live generation
-  const primaryPair = healthyModels.slice(0, 2);
   let deterministicParsed: Record<string, any> | null = null;
-  if (primaryPair.length > 0) {
-    try {
-      deterministicParsed = await Promise.any(
-        primaryPair.map((m) => callModelFast(m, 12000))
-      );
-    } catch (err) {
-      console.error(
-        "[KEY] Primary live-engine dispatch failed:",
-        err
-      );
-    }
+
+const liveRoundResponses: Array<{
+  modelName: string;
+  finalAnswer: string;
+}> = [];
+
+let actualRoundsCompleted = 0;
+let actualAgreement = 0;
+let currentRoundPayload = multimodalContents;
+
+while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
+  actualRoundsCompleted += 1;
+
+  const roundResults = await Promise.all(
+    healthyModels.map(async (modelName) => {
+      try {
+        const response = await withStrictTimeout(
+          ai.models.generateContent({
+            model: modelName,
+            contents: currentRoundPayload,
+            config: {
+              systemInstruction,
+              temperature: 0.25,
+            },
+          }),
+          15000,
+          `ConsensusRound${actualRoundsCompleted}(${modelName})`
+        );
+
+        const answer = response.text?.trim() || "";
+        if (!answer) {
+          throw new Error(`Empty response from ${modelName}`);
+        }
+
+        return {
+          modelName,
+          finalAnswer: answer,
+        };
+      } catch (error) {
+        console.error(
+          `[KEY] Round ${actualRoundsCompleted} failed for ${modelName}:`,
+          error
+        );
+        return null;
+      }
+    })
+  );
+
+  const successfulResponses = roundResults.filter(
+    (
+      result
+    ): result is {
+      modelName: string;
+      finalAnswer: string;
+    } => Boolean(result?.finalAnswer)
+  );
+
+  if (successfulResponses.length === 0) {
+    throw new Error(
+      `Live engine dispatch failed during consensus round ${actualRoundsCompleted}. ` +
+      `No live engine returned a usable response.`
+    );
   }
+
+  const answers = successfulResponses.map(
+    (result) => result.finalAnswer
+  );
+
+  actualAgreement = calculateSimilarity(answers);
+
+  liveRoundResponses.length = 0;
+  liveRoundResponses.push(...successfulResponses);
+
+  if (actualAgreement < safeTarget) {
+    currentRoundPayload = refinePayload(
+      answers,
+      typeof currentRoundPayload === "string"
+        ? currentRoundPayload
+        : String(currentRoundPayload)
+    );
+  }
+}
+
+if (liveRoundResponses.length === 0) {
+  throw new Error(
+    `Live engine dispatch failed for query "${cleanQuestion}". ` +
+    `No usable live-engine responses were produced.`
+  );
+}
+
+deterministicParsed = {
+  finalAnswer: liveRoundResponses[0].finalAnswer,
+  hasAppPreview: shouldGenerateAppPreview,
+  appTitle: shouldGenerateAppPreview
+    ? `Interactive Application Preview (${nextVer})`
+    : "",
+  generatedAppHtml: "",
+  achievedAgreement: actualAgreement,
+  iterationsRequired: actualRoundsCompleted,
+  consensusSummary:
+    actualAgreement >= safeTarget
+      ? `Actual live-engine conformity reached ${actualAgreement}% after ${actualRoundsCompleted} round(s).`
+      : `Requested consensus round end reached at ${actualAgreement}% after ${actualRoundsCompleted} round(s).`,
+  convergenceRounds: [
+    {
+      round: actualRoundsCompleted,
+      agreement: actualAgreement,
+    },
+  ],
+  nodeContributions: liveRoundResponses.map(
+    (result) => ({
+      modelName: result.modelName,
+      initialReply: result.finalAnswer,
+      finalMatchedReply: result.finalAnswer,
+    })
+  ),
+};
 
   if (!deterministicParsed) {
     const remainingModels = getAvailableCandidateModels();
@@ -11334,9 +11437,9 @@ export function executeConsensusApiPayload(
   safeTarget: number,
   autoDeployResult: Record<string, any> | null = null
 ) {
-  const achievedScore = Math.max(
-    safeTarget,
-    Math.min(100, Number(result.achievedAgreement) || safeTarget)
+  const achievedScore = Math.min(
+    100,
+    Math.max(0, Number(result.achievedAgreement) || 0)
   );
 
   const cleanEffectiveQuestion =
@@ -11387,9 +11490,9 @@ export function executeConsensusApiPayload(
       idx: number
     ) => {
       const mName = n.modelName || modelsList[idx] || "AI Engine";
-      const agScore = Math.max(
-        safeTarget,
-        Math.min(100, Number(n.agreementScore) || achievedScore)
+      const agScore = Math.min(
+        100,
+        Math.max(0, Number(n.agreementScore) || achievedScore)
       );
       const fallbackTel = computeSingleEngineTelemetry(
         mName,
@@ -13420,7 +13523,7 @@ export function calculateSimilarity(responses: string[]): number {
       pairs++;
     }
   }
-  return pairs > 0 ? Math.max(0.95, sum / pairs) : 0.99;
+  return pairs > 0 ? sum / pairs : 0;
 }
 
 export function refinePayload(responses: string[], basePayload = ""): string {
@@ -13449,7 +13552,10 @@ export function executeConsensus(
   let iterations = 0;
   let currentPayload = payload;
   let responses: string[] = [];
-  while (agreement < 0.95 && iterations < MAX_REVISIONS) {
+  while (
+  agreement < safeTarget &&
+  iterations < MAX_REVISIONS
+) {
     responses = engines.map((engine) => engine.query(currentPayload));
     agreement = calculateSimilarity(responses);
     if (agreement < 0.95) currentPayload = refinePayload(responses, currentPayload);
