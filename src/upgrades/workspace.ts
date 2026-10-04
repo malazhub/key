@@ -17,9 +17,8 @@ export function resolveKeyWorkspaceRoot(activeWorkspace: string): WorkspaceRootI
   }
 
   const persistentRoot = path.resolve(
-    process.env.KEY_PERSISTENT_DATA_ROOT
-      ? process.env.KEY_PERSISTENT_DATA_ROOT
-      : path.join(activeWorkspace, "upgrade-workspaces")
+    process.env.KEY_PERSISTENT_DATA_ROOT ||
+      path.join(activeWorkspace, "upgrade-workspaces")
   );
 
   fs.mkdirSync(persistentRoot, { recursive: true });
