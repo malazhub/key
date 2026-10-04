@@ -3590,68 +3590,11 @@ export default function App() {
     );
   };
 
-  const handleActivateStagedSelfUpgradeLocally = async () => {
-    if (
-      !stagedSelfUpgrade ||
-      !selfUpgradeApproved ||
-      selfUpgradeBusy
-    ) {
-      return;
-    }
-
-    setSelfUpgradeBusy(true);
-    setSelfUpgradeStatus(
-      "Activating the verified staged upgrade locally..."
-    );
-
-    try {
-      const res = await fetchFromKeyBackend(
-        "/api/self-upgrade/activate-local",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            sessionId: stagedSelfUpgrade.sessionId,
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!data || !data.success) {
-        setSelfUpgradeStatus(
-          `Local activation failed: ${JSON.stringify(data)}`
-        );
-        return;
-      }
-
-      const activated = {
-        ...stagedSelfUpgrade,
-        status: "ACTIVATED_LOCALLY",
-      };
-
-      setStagedSelfUpgrade(activated);
-
-      localStorage.setItem(
-        STAGED_UPGRADE_STORAGE_KEY,
-        JSON.stringify(activated)
-      );
-
-      setSelfUpgradeStatus(
-        "✓ STAGED UPGRADE ACTIVATED LOCALLY. The verified staged source is now active in the local Key workspace. No GitHub commit or deployment was performed."
-      );
-    } catch (error) {
-      setSelfUpgradeStatus(
-        `Local activation error: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    } finally {
-      setSelfUpgradeBusy(false);
-    }
-  };
+  // Intentionally no local activation step.
+//
+// A generated upgrade remains staged and previewable.
+// Activation/deployment is handled only by the separate
+// GitHub deploy/commit workflow.
 
   // Restore browser-persisted staged upgrade whenever the app starts.
   useEffect(() => {
