@@ -800,53 +800,7 @@ async function executeBrowserNativeRoute(
     );
   }
 
-  if (cleanPath === "/api/self-upgrade/execute" && method === "POST") {
-    const nowIso = new Date().toISOString();
-    let prevCount = 4;
-    try {
-      const existing = JSON.parse(localStorage.getItem("malaz_key_self_upgrade_registry_v1") || "null");
-      if (existing && typeof existing.upgradeCount === "number") {
-        prevCount = existing.upgradeCount;
-      }
-    } catch {
-      // ignore
-    }
-    const nextCount = prevCount + 1;
-    const version = `v3.8.${nextCount}`;
-    const latestUpgrade = {
-      upgradeId: `upg_${Date.now().toString(36)}`,
-      version,
-      executedAt: nowIso,
-      workspaceRoot: "/workspace",
-      totalFilesOnDisk: Object.keys(KEY_CODEBASE_STRUCTURE_REGISTRY.files || {}).length,
-      triggerQuery: String(bodyObj.instruction || "Autonomous Key Self-Upgrade"),
-      consensusStrengthThreshold: Number(bodyObj.targetThreshold) || 99,
-      maxRevisionRounds: Number(bodyObj.revisionRounds) || 50,
-      zeroRefrainZeroObstruction: true,
-      mutatedFiles: [
-        "src/consensusEngine.ts",
-        "src/App.tsx",
-        "server.ts",
-        "src/selfUpgradeRegistry.json",
-        "src/upgrades/activeSelfUpgradeModule.ts",
-      ],
-    };
-    const payload = {
-      success: true,
-      active: true,
-      version,
-      upgradeCount: nextCount,
-      updatedAt: nowIso,
-      workspaceRoot: "/workspace",
-      latestUpgrade,
-    };
-    try {
-      localStorage.setItem("malaz_key_self_upgrade_registry_v1", JSON.stringify(payload));
-    } catch {
-      // ignore
-    }
-    return createJsonResponse(payload);
-  }
+  /* Removed: self-upgrade operations must use the real backend. */
 
   return null;
 }
