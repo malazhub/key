@@ -5235,7 +5235,6 @@ const data = await res.json();
         queryText,
         previousMessages
       );
-      const instantFallbackApp = buildInstantClientAppFromContext(queryText);
       const liveComputedContent =
         typeof liveFallbackData?.finalAnswer === "string" &&
         liveFallbackData.finalAnswer.trim().length > 0
