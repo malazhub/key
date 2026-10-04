@@ -2870,8 +2870,8 @@ export default function App() {
       "Improve Key's self-upgrade reliability while preserving all existing capabilities."
     );
 
-  const [selfUpgradeBusy, setSelfUpgradeBusy] =
-    useState<boolean>(false);
+  const [selfUpgradeRounds, setSelfUpgradeRounds] =
+    useState<number>(30);
 
   const [selfUpgradeStatus, setSelfUpgradeStatus] =
     useState<string>("");
@@ -3411,89 +3411,162 @@ export default function App() {
 
     // Generate, test, stage, and visually preview a Key self-upgrade.
   // This NEVER deploys to GitHub.
-  const handleGenerateSelfUpgrade = async () => {
+    const handleGenerateSelfUpgrade = async () => {
     if (selfUpgradeBusy) return;
 
     setSelfUpgradeBusy(true);
     setSelfUpgradeApproved(false);
-    setSelfUpgradeStatus("Generating and testing self-upgrade...");
+    setSelfUpgradeStatus(
+      `Running ${selfUpgradeRounds} cumulative self-upgrade rounds...`
+    );
 
     try {
-      const res = await fetchFromKeyBackend(
-        "/api/self-upgrade/execute",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            instruction: selfUpgradeInstruction,
-            requestedRounds: 1,
-            deploy: false,
-          }),
-        }
-      );
+      const res =
+        await fetchFromKeyBackend(
+          "/api/self-upgrade/execute",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              instruction:
+                selfUpgradeInstruction,
+              requestedRounds:
+                selfUpgradeRounds,
+              deploy: false,
+            }),
+          }
+        );
 
       const data = await res.json();
 
       if (
         !data ||
         !data.success ||
-        data.status !== "PENDING_ADMIN_DECISION"
+        data.status !==
+          "PENDING_ADMIN_DECISION"
       ) {
         setSelfUpgradeStatus(
-          `Self-upgrade staging failed: ${JSON.stringify(data)}`
+          `Self-upgrade staging failed: ${JSON.stringify(
+            data
+          )}`
         );
         return;
       }
 
+      const finalRoundNumber =
+        Number(data.finalRound);
+
       const round =
-        Array.isArray(data.rounds) && data.rounds.length > 0
-          ? data.rounds[data.rounds.length - 1]
+        Array.isArray(data.rounds)
+          ? data.rounds.find(
+              (r: any) =>
+                Number(r.round) ===
+                finalRoundNumber &&
+                r.successfulCandidate ===
+                  true &&
+                r.checks?.lint === true &&
+                r.checks?.build === true
+            )
           : null;
 
       if (
         !round ||
-        round.checks?.lint !== true ||
-        round.checks?.build !== true ||
-        typeof round.candidatePath !== "string" ||
-        typeof round.stagedFileContent !== "string"
+        typeof round.candidatePath !==
+          "string" ||
+        typeof round.candidateWorkspace !==
+          "string" ||
+        typeof round.stagedFileContent !==
+          "string"
       ) {
         setSelfUpgradeStatus(
-          "Self-upgrade was not staged because the candidate did not pass all verification gates."
+          "Self-upgrade finished without a verified final successful candidate."
         );
         return;
       }
 
       const staged = {
-        sessionId: String(data.sessionId),
-        candidatePath: String(round.candidatePath),
-        stagedFileContent: String(round.stagedFileContent),
+        sessionId:
+          String(data.sessionId),
+        candidatePath:
+          String(
+            data.finalCandidatePath ||
+              round.candidatePath
+          ),
+        stagedFileContent:
+          String(
+            round.stagedFileContent
+          ),
         previewHtml:
-          typeof round.previewHtml === "string"
+          typeof round.previewHtml ===
+          "string"
             ? round.previewHtml
             : "",
-        previewReady: Boolean(round.previewReady),
-        status: String(data.status),
-        updatedAt: new Date().toISOString(),
+        previewReady:
+          Boolean(
+            round.previewReady
+          ),
+        status:
+          String(data.status),
+        finalRound:
+          finalRoundNumber,
+        requestedRounds:
+          Number(
+            data.requestedRounds
+          ),
+        updatedAt:
+          new Date().toISOString(),
       };
 
       localStorage.setItem(
         STAGED_UPGRADE_STORAGE_KEY,
         JSON.stringify(staged)
       );
-      setStagedSelfUpgrade(staged);
-      setSelfUpgradePreviewOpen(true);
+
+      setStagedSelfUpgrade(
+        staged as any
+      );
+
+      setSelfUpgradePreviewOpen(
+        true
+      );
 
       setSelfUpgradeStatus(
-        staged.previewReady
-          ? "✓ Generated, linted, built, staged, and ready for visual review. Active Key is unchanged."
-          : "✓ Generated, linted, built, and staged."
+        `✓ Completed ${Number(
+          data.completedRounds
+        )} requested rounds. Final successful candidate: round ${finalRoundNumber}. It is staged and visible; GitHub has NOT been changed.`
       );
+
+      // Make the tested staged build the browser-visible working copy.
+      // This is a preview only; it does not activate/deploy the server workspace.
+      if (
+        typeof window !==
+          "undefined" &&
+        data.sessionId
+      ) {
+        const backendOrigin =
+          window.location.protocol !==
+            "file:" &&
+          !window.location.hostname.endsWith(
+            "github.io"
+          )
+            ? window.location.origin
+            : LIVE_BACKEND_ORIGINS[0];
+
+        window.location.assign(
+          `${backendOrigin}/api/self-upgrade/preview/${encodeURIComponent(
+            String(data.sessionId)
+          )}/`
+        );
+      }
     } catch (error) {
       setSelfUpgradeStatus(
         `Self-upgrade error: ${
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error
+            ? error.message
+            : String(error)
         }`
       );
     } finally {
@@ -3501,36 +3574,83 @@ export default function App() {
     }
   };
 
-  const handleRestoreStagedSelfUpgrade = async () => {
-    const raw = localStorage.getItem(
-      STAGED_UPGRADE_STORAGE_KEY
-    );
+    const handleRestoreStagedSelfUpgrade =
+    async () => {
+      const raw =
+        localStorage.getItem(
+          STAGED_UPGRADE_STORAGE_KEY
+        );
 
-    if (!raw) return;
+      if (!raw) return;
 
-    try {
-      const staged = JSON.parse(raw);
+      try {
+        const staged =
+          JSON.parse(raw);
 
-      if (
-        staged &&
-        typeof staged.sessionId === "string" &&
-        typeof staged.candidatePath === "string" &&
-        typeof staged.stagedFileContent === "string"
-      ) {
-        setStagedSelfUpgrade(staged);
-        setSelfUpgradePreviewOpen(true);
-        setSelfUpgradeApproved(false);
+        if (
+          staged &&
+          typeof staged.sessionId ===
+            "string" &&
+          typeof staged.candidatePath ===
+            "string" &&
+          typeof staged.stagedFileContent ===
+            "string"
+        ) {
+          setStagedSelfUpgrade(
+            staged
+          );
 
-        setSelfUpgradeStatus(
-          "✓ Staged self-upgrade restored after refresh. Active Key remains unchanged."
+          setSelfUpgradePreviewOpen(
+            true
+          );
+
+          setSelfUpgradeApproved(
+            false
+          );
+
+          setSelfUpgradeStatus(
+            `✓ Final staged upgrade restored after refresh. Final successful round: ${
+              staged.finalRound ??
+              "recorded"
+            }. The original GitHub copy was not restored.`
+          );
+
+          // If the user refreshed the normal GitHub/local app,
+          // immediately return them to the persistent tested staged build.
+          const alreadyOnPreview =
+            typeof window !==
+              "undefined" &&
+            window.location.pathname.includes(
+              "/api/self-upgrade/preview/"
+            );
+
+          if (
+            !alreadyOnPreview &&
+            typeof window !==
+              "undefined"
+          ) {
+            const backendOrigin =
+              window.location.protocol !==
+                "file:" &&
+              !window.location.hostname.endsWith(
+                "github.io"
+              )
+                ? window.location.origin
+                : LIVE_BACKEND_ORIGINS[0];
+
+            window.location.assign(
+              `${backendOrigin}/api/self-upgrade/preview/${encodeURIComponent(
+                staged.sessionId
+              )}/`
+            );
+          }
+        }
+      } catch {
+        localStorage.removeItem(
+          STAGED_UPGRADE_STORAGE_KEY
         );
       }
-    } catch {
-      localStorage.removeItem(
-        STAGED_UPGRADE_STORAGE_KEY
-      );
-    }
-  };
+    };
 
   const handleApproveStagedSelfUpgrade = () => {
     if (!stagedSelfUpgrade) {
@@ -3652,8 +3772,13 @@ export default function App() {
         const res = await fetchFromKeyBackend("/api/admin/github-device-poll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceCode: githubDeviceAuth.deviceCode }),
-        });
+          body: JSON.stringify({
+            deviceCode:
+              githubDeviceAuth.deviceCode,
+            stagedSessionId:
+              (githubDeviceAuth as any)
+                .stagedSessionId,
+          }),
         if (!res.ok) return;
         const data = await res.json();
         if (data.authorized && data.success) {
