@@ -5599,7 +5599,11 @@ jobs:
       !forceNew &&
       activeServerDeviceSession &&
       activeServerDeviceSession.status === "pending" &&
-      Date.now() < activeServerDeviceSession.expiresAt - 120000
+      Date.now() <
+        activeServerDeviceSession.expiresAt -
+          120000 &&
+      activeServerDeviceSession.stagedSessionId ===
+        stagedSessionId
     ) {
       pendingServerDeviceSessions.set(
         activeServerDeviceSession.deviceCode,
@@ -5725,23 +5729,54 @@ jobs:
       }
 
       // Or if a valid token is already saved on disk
-      const existingToken = readSavedGitHubToken();
-      if (existingToken) {
-        const deployResult = await executeFullGitHubStructureDeploy({
-          githubToken: existingToken,
-          repoOwner: "malazhub",
-          repoName: "key",
-          branch: "main",
-        });
-        if (deployResult.success) {
-          res.json({
-            authorized: true,
-            accessToken: existingToken,
-            ...deployResult,
-          });
-          return;
-        }
-      }
+      const existingToken =
+  readSavedGitHubToken();
+
+if (existingToken) {
+  let deployResult:
+    Record<string, unknown>;
+
+  const stagedSessionId =
+    activeServerDeviceSession?.stagedSessionId;
+
+  if (
+    typeof stagedSessionId === "string" &&
+    stagedSessionId.trim()
+  ) {
+    const staged =
+      readFinalStagedCandidate(
+        stagedSessionId
+      );
+
+    deployResult =
+      await executeFullGitHubStructureDeploy({
+        githubToken: existingToken,
+        repoOwner: "malazhub",
+        repoName: "key",
+        branch: "main",
+        sourceWorkspace:
+          staged.candidateWorkspace,
+        forceRebuild: false,
+      });
+  } else {
+    deployResult =
+      await executeFullGitHubStructureDeploy({
+        githubToken: existingToken,
+        repoOwner: "malazhub",
+        repoName: "key",
+        branch: "main",
+      });
+  }
+
+  if (deployResult.success) {
+    res.json({
+      authorized: true,
+      accessToken: existingToken,
+      ...deployResult,
+    });
+    return;
+  }
+}
 
       res.json({
         authorized: false,
@@ -5765,6 +5800,7 @@ jobs:
         branch = "main",
         mirroredState,
         workingCopyId,
+        stagedSessionId,
       } = req.body || {};
 
       let deploymentState =
@@ -5800,18 +5836,80 @@ jobs:
         writeMirroredKeyState(deploymentState);
       }
 
-      const result = await executeFullGitHubStructureDeploy({
-        githubToken,
-        repoOwner,
-        repoName,
-        branch,
-        mirroredState: deploymentState,
-        forceRebuild: true,
-      });
+      let result: Record<string, unknown>;
+
+if (
+  typeof stagedSessionId === "string" &&
+  stagedSessionId.trim()
+) {
+  const staged =
+    readFinalStagedCandidate(
+      stagedSessionId.trim()
+    );
+
+  result =
+    await executeFullGitHubStructureDeploy({
+      githubToken,
+      repoOwner,
+      repoName,
+      branch,
+      sourceWorkspace:
+        staged.candidateWorkspace,
+      forceRebuild: false,
+    });
+
+  if (
+    result.success === true &&
+    result.verified === true
+  ) {
+    staged.session.status =
+      "COMPLETED";
+
+    staged.session.updatedAt =
+      new Date().toISOString();
+
+    const workspaceRoot =
+      path.resolve(
+        resolveKeyWorkspaceRoot(
+          __dirname
+        ).root
+      );
+
+    fs.writeFileSync(
+      path.join(
+        workspaceRoot,
+        "sessions",
+        `${staged.session.sessionId}.json`
+      ),
+      JSON.stringify(
+        staged.session,
+        null,
+        2
+      ),
+      "utf8"
+    );
+  }
+} else {
+  result =
+    await executeFullGitHubStructureDeploy({
+      githubToken,
+      repoOwner,
+      repoName,
+      branch,
+      mirroredState: deploymentState,
+      forceRebuild: true,
+    });
+}
 
       if (result.needsGitHubAuth) {
         try {
-          const dev = await startOrReuseServerDeviceSession(false);
+          const dev =
+  await startOrReuseServerDeviceSession(
+    false,
+    typeof stagedSessionId === "string"
+      ? stagedSessionId.trim()
+      : undefined
+  );
           res.json({
             ...result,
             user_code: dev.user_code,
