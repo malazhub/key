@@ -3755,11 +3755,8 @@ Return ONLY JSON in this exact shape:
         },
         {
           activeWorkspace: __dirname,
-          githubToken:
-            typeof req.body?.githubToken === "string" &&
-            req.body.githubToken.trim()
-              ? req.body.githubToken
-              : undefined,
+          // Staging-only endpoint: never accept GitHub credentials from the browser.
+          githubToken: undefined,
           generateCandidate: generateAutonomousSelfUpgradeCandidate,
           deploy: async (args) =>
             (await executeFullGitHubStructureDeploy(args)) as Record<string, unknown>,
@@ -3767,9 +3764,7 @@ Return ONLY JSON in this exact shape:
       );
 
       res.json({
-        success:
-          result.status === "COMPLETED" ||
-          result.status === "PENDING_ADMIN_DECISION",
+        success: result.status === "PENDING_ADMIN_DECISION",
         controller: "bounded-autonomous-self-upgrade-v2",
         noLifetimeUpgradeLimit: true,
         ...result,
