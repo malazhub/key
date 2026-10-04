@@ -2801,6 +2801,7 @@ export default function App() {
     userCode: string;
     verificationUri: string;
     deviceCode: string;
+    stagedSessionId?: string;
   } | null>(null);
   const prewarmedDeviceRef = useRef<{
     userCode: string;
@@ -4166,6 +4167,8 @@ const data = await res.json();
                 userCode: String(devData.user_code),
                 verificationUri: String(verifyUrl),
                 deviceCode: String(devData.device_code),
+                stagedSessionId:
+                  stagedSessionId || undefined,
               };
               prewarmedDeviceRef.current = authObj;
               setGithubDeviceAuth(authObj);
