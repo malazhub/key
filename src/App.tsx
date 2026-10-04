@@ -1435,13 +1435,13 @@ function enrichAndRepairAssistantMessage(
         const maxLat =
           engines.length > 0
             ? Math.max(...engines.map((e) => e.latencyMs))
-            : 420;
+            : 0;
         const avgLat =
           engines.length > 0
             ? Math.round(
                 engines.reduce((a, e) => a + e.latencyMs, 0) / engines.length
               )
-            : 420;
+            : 0;
         const sorted = [...engines].sort((a, b) => a.latencyMs - b.latencyMs);
         const memOS =
           msg.memoryOS ||
@@ -1457,13 +1457,13 @@ function enrichAndRepairAssistantMessage(
                 modelName: sorted[0].modelName,
                 latencyMs: sorted[0].latencyMs,
               }
-            : { modelName: "AI Engine", latencyMs: 310 },
+            : undefined,
           slowestEngine: sorted[sorted.length - 1]
             ? {
                 modelName: sorted[sorted.length - 1].modelName,
                 latencyMs: sorted[sorted.length - 1].latencyMs,
               }
-            : { modelName: "AI Engine", latencyMs: 680 },
+            : undefined,
           totalPromptTokens,
           totalCompletionTokens,
           totalTokensUsed: totalPromptTokens + totalCompletionTokens,
