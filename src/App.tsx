@@ -879,12 +879,7 @@ async function fetchFromKeyBackend(
   }
 
   // Fallback to browser-native execution if offline
-  const nativeRes = await executeBrowserNativeRoute(apiPath, init);
-  if (nativeRes) {
-    return nativeRes;
-  }
-
-  throw lastErr || new Error("Unable to reach Key consensus backend.");
+  throw lastErr || new Error("Unable to reach Key live backend.");
 }
 
 interface ConvergenceRound {
