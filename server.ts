@@ -3839,8 +3839,9 @@ Return ONLY JSON in this exact shape:
     }
   });
 
-  // Activate the already-tested staged file locally.
-  // IMPORTANT: this does NOT deploy to GitHub and does NOT commit.
+  // No local activation is performed here.
+// Staged upgrades remain inactive until the separate
+// GitHub deployment/commit workflow is explicitly used.
   
 
   // Serve the actual tested staged build without activating or deploying it.
