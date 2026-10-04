@@ -1926,6 +1926,11 @@ function sanitizeAndEnrichConsensusResult(
 
   const convergenceRounds: ConvergenceRound[] = rawRounds;
 
+  const parsedIterations =
+    Number.isInteger(parsed.iterationsRequired) && parsed.iterationsRequired >= 0
+      ? parsed.iterationsRequired
+      : convergenceRounds.length;
+
   return {
     ...parsed,
     finalAnswer,
@@ -1933,10 +1938,7 @@ function sanitizeAndEnrichConsensusResult(
     appTitle,
     generatedAppHtml,
     achievedAgreement: achieved,
-    iterationsRequired: Math.max(
-      convergenceRounds.length,
-      Number(parsed.iterationsRequired) || 2
-    ),
+    iterationsRequired: parsedIterations,
     convergenceRounds,
     nodeContributions: enrichedNodes,
   };
