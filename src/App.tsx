@@ -402,7 +402,12 @@ async function executeBrowserNativeRoute(
   // Self-upgrade operations require the real backend.
   // Never simulate generation, testing, staging, activation,
   // or preview through the browser-native fallback.
-  if (cleanPath.startsWith("/api/self-upgrade/")) {
+  if (
+    cleanPath.startsWith("/api/self-upgrade/") ||
+    cleanPath === "/api/consensus-chat"
+  ) {
+    // These routes require the real Key backend.
+    // Browser-native simulation is forbidden.
     return null;
   }
 
@@ -1314,11 +1319,17 @@ function enrichAndRepairAssistantMessage(
       ? msg.activeModels
       : fallbackModels;
 
-  const safeTarget = msg.targetAgreement || 95;
-  const achieved = Math.max(
-    safeTarget,
-    Math.min(100, msg.achievedAgreement || safeTarget)
-  );
+  const safeTarget =
+    typeof msg.targetAgreement === "number" &&
+    Number.isFinite(msg.targetAgreement)
+      ? msg.targetAgreement
+      : 95;
+
+  const achieved =
+    typeof msg.achievedAgreement === "number" &&
+    Number.isFinite(msg.achievedAgreement)
+      ? Math.min(100, Math.max(0, msg.achievedAgreement))
+      : 0;
 
   const cleanSentences = (cleanContent || "")
     .replace(/#{1,4}\s+/g, "")
@@ -1480,26 +1491,7 @@ function enrichAndRepairAssistantMessage(
   const rawRounds = Array.isArray(msg.convergenceRounds)
     ? msg.convergenceRounds
     : [];
-  const round1Score = Math.max(68, Math.min(safeTarget - 6, 88));
-  const repairedRounds: ConvergenceRound[] =
-    rawRounds.length >= 2
-      ? rawRounds
-      : rawRounds.length === 1
-      ? [
-          {
-            round: 1,
-            similarityScore: round1Score,
-            note: `Opened fresh sessions across ${participatingModels.length} AI engines and collected independent detailed analyses (${round1Score}% initial similarity).`,
-          },
-          {
-            round: 2,
-            similarityScore: achieved,
-            note:
-              rawRounds[0].note ||
-              `Cross-examined and merged all ${participatingModels.length} engine outputs until reaching ${achieved}% consensus agreement.`,
-          },
-        ]
-      : [];
+  const repairedRounds: ConvergenceRound[] = rawRounds;
 
   return {
     ...msg,
@@ -1523,10 +1515,10 @@ function enrichAndRepairAssistantMessage(
       isGreetingMsg || isTopicIsolationMsg || isCapabilityQuestionMsg
         ? []
         : msg.workingMemoryFacts,
-    iterationsRequired: Math.max(
-      repairedRounds.length,
-      msg.iterationsRequired || 2
-    ),
+    iterationsRequired:
+      Number.isInteger(msg.iterationsRequired)
+        ? msg.iterationsRequired
+        : repairedRounds.length,
     convergenceRounds:
       repairedRounds.length > 0 ? repairedRounds : msg.convergenceRounds,
     nodeContributions:
@@ -5259,9 +5251,15 @@ const data = await res.json();
         cumulativeSavedPairsCount:
           liveFallbackData?.cumulativeSavedPairsCount ||
           clientRel.savedPairsCount + 1,
-        achievedAgreement: liveFallbackData?.achievedAgreement || achieved,
-        targetAgreement: target,
-        iterationsRequired: liveFallbackData?.iterationsRequired || 2,
+        achievedAgreement:
+          typeof liveFallbackData?.achievedAgreement === "number"
+            ? liveFallbackData.achievedAgreement
+            : achieved,
+
+        iterationsRequired:
+          Number.isInteger(liveFallbackData?.iterationsRequired)
+            ? liveFallbackData.iterationsRequired
+            : 0,
         consensusSummary:
           liveFallbackData?.consensusSummary ||
           (clientRel.hasRelation
@@ -5722,9 +5720,15 @@ const data = await res.json();
               historyMatchScore: data.historyMatchScore || 0,
               payloadSentToEngines:
                 data.payloadSentToEngines || contextUserMsg.content,
-              achievedAgreement: data.achievedAgreement || target,
-              targetAgreement: target,
-              iterationsRequired: data.iterationsRequired || 2,
+              achievedAgreement:
+                typeof data.achievedAgreement === "number"
+                  ? data.achievedAgreement
+                  : 0,
+
+              iterationsRequired:
+                Number.isInteger(data.iterationsRequired)
+                  ? data.iterationsRequired
+                  : 0,
               activeModels,
               convergenceRounds: data.convergenceRounds || [],
               nodeContributions: data.nodeContributions || [],
@@ -6913,7 +6917,7 @@ const data = await res.json();
                           <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
                             <span className="font-semibold text-slate-200">
                               Iterative Multi-AI Loop (
-                              {msg.iterationsRequired || 2} Rounds to reach ≥{" "}
+                              {msg.iterationsRequired ?? 0} Rounds to reach ≥{" "}
                               {msg.targetAgreement}%)
                             </span>
                             <span className="font-mono tabular-nums text-emerald-400 font-semibold">
