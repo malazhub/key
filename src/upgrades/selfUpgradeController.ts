@@ -538,32 +538,47 @@ export async function runBoundedSelfUpgradeSession(
       latestSuccessfulCandidate = candidate;
 
       const runtimeNext = path.join(
-        workspaceRoot,
-        "active-runtime-next"
-      );
+          workspaceRoot,
+          "active-runtime-next"
+        );
 
-      fs.rmSync(runtimeNext, {
-        recursive: true,
-        force: true,
-      });
-
-      copyWorkspace(
-        candidateWorkspace,
-        runtimeNext
-      );
-
-      fs.rmSync(
-        persistentRuntimeWorkspace,
-        {
+        fs.rmSync(runtimeNext, {
           recursive: true,
           force: true,
-        }
-      );
+        });
 
-      fs.renameSync(
-        runtimeNext,
-        persistentRuntimeWorkspace
-      );
+        copyWorkspace(
+          candidateWorkspace,
+          runtimeNext
+        );
+
+        fs.rmSync(
+          persistentRuntimeWorkspace,
+          {
+            recursive: true,
+            force: true,
+          }
+        );
+
+        fs.renameSync(
+          runtimeNext,
+          persistentRuntimeWorkspace
+        );
+
+        fs.writeFileSync(
+          path.join(workspaceRoot, "active-runtime.json"),
+          JSON.stringify(
+            {
+              runtimeWorkspace: persistentRuntimeWorkspace,
+              sessionId: session.sessionId,
+              sourceRound: round,
+              updatedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          ),
+          "utf8"
+        );
 
       session.finalRound = round;
       session.finalCandidatePath = rel;
