@@ -3754,13 +3754,13 @@ Return ONLY JSON in this exact shape:
               ? (req.body.candidates as SelfUpgradeRoundCandidate[])
               : undefined,
 
-          // This endpoint is staging-only.
-          // It must NEVER activate, deploy, or commit a generated upgrade.
+          // Self-upgrade staging still does not deploy to GitHub.
+          // The final successful runtime is persisted by the controller
+          // and becomes the runtime selected by the launcher on restart.
           deploy: false,
         },
         {
           activeWorkspace: __dirname,
-          // Staging-only endpoint: never accept GitHub credentials from the browser.
           githubToken: undefined,
           generateCandidate: generateAutonomousSelfUpgradeCandidate,
           deploy: async (args) =>
@@ -3774,6 +3774,31 @@ Return ONLY JSON in this exact shape:
         noLifetimeUpgradeLimit: true,
         ...result,
       });
+
+      // After the final successful requested round has been persisted,
+      // restart through runtimeLauncher.ts so the exact persisted
+      // active-runtime copy is loaded instead of the original checkout.
+      if (result.status === "PENDING_ADMIN_DECISION") {
+        setTimeout(() => {
+          const child = spawn(
+            process.execPath,
+            [
+              "--import",
+              "tsx",
+              path.join(__dirname, "runtimeLauncher.ts"),
+            ],
+            {
+              cwd: __dirname,
+              env: process.env,
+              detached: true,
+              stdio: "inherit",
+            }
+          );
+
+          child.unref();
+          process.exit(0);
+        }, 250);
+      }
     } catch (err: unknown) {
       res.status(500).json({
         success: false,
