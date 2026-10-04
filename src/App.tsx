@@ -5236,20 +5236,16 @@ const data = await res.json();
         previousMessages
       );
       const instantFallbackApp = buildInstantClientAppFromContext(queryText);
-      const isGreeting = isStandaloneGreetingOrSmallTalk(queryText);
-      const isTreeOrStructureAsk =
-        isCodebaseStructureOrFileTreeQuery(queryText) ||
-        /\b(structure|folder|folders|file|files|tree|directory)\b/i.test(queryText);
-
       const liveComputedContent =
         typeof liveFallbackData?.finalAnswer === "string" &&
         liveFallbackData.finalAnswer.trim().length > 0
           ? liveFallbackData.finalAnswer
-          : isGreeting
-          ? resolveNaturalGreetingOrSmallTalkAnswer(queryText)
-          : isTreeOrStructureAsk
-          ? `### Complete Folder & File Tree of Key Workspace (\`/\` → \`https://github.com/malazhub/key\`)\n\n\`\`\`text\n${KEY_COMPLETE_FILE_TREE_ASCII}\n\`\`\`\n\nAll files above are tracked in the live Key workspace and synchronized with \`https://github.com/malazhub/key\`.`
-          : `### Live Consensus Dispatch Status\n\nYour query (**"${queryText}"**) was dispatched to the ${activeModels.length} active AI engines, but the live model endpoint timed out. Please press **Send** again to retry.`;
+          : `### Live Engine Dispatch Failure\n\n` +
+            `The live AI engine pipeline could not obtain a generated response for ` +
+            `the current query (**"${queryText}"**). ` +
+            `No predefined, canned, greeting, structure, or locally fabricated answer ` +
+            `was substituted. The query remained on the live engine path across ` +
+            `${activeModels.length} configured engines.`;
 
       const fallbackRaw: ChatMessage = {
         id: `assistant-${Date.now()}`,
