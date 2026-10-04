@@ -5275,7 +5275,133 @@ jobs:
       pushedFiles,
       failedFiles,
     };
+}
+  function readFinalStagedCandidate(sessionId: string): {
+  session: Awaited<ReturnType<typeof runBoundedSelfUpgradeSession>>;
+  candidateWorkspace: string;
+  candidatePath: string;
+} {
+  const cleanSessionId = String(sessionId || "").trim();
+
+  if (!cleanSessionId) {
+    throw new Error("Staged self-upgrade sessionId is required.");
   }
+
+  if (!/^upgrade_[A-Za-z0-9._-]+$/.test(cleanSessionId)) {
+    throw new Error("Invalid staged self-upgrade sessionId.");
+  }
+
+  const workspaceRoot = path.resolve(
+    resolveKeyWorkspaceRoot(__dirname).root
+  );
+
+  const sessionFile = path.join(
+    workspaceRoot,
+    "sessions",
+    `${cleanSessionId}.json`
+  );
+
+  if (!fs.existsSync(sessionFile)) {
+    throw new Error("Staged self-upgrade session was not found.");
+  }
+
+  const session = JSON.parse(
+    fs.readFileSync(sessionFile, "utf8")
+  ) as Awaited<
+    ReturnType<typeof runBoundedSelfUpgradeSession>
+  >;
+
+  if (session.sessionId !== cleanSessionId) {
+    throw new Error("Staged self-upgrade session ID mismatch.");
+  }
+
+  if (session.status !== "PENDING_ADMIN_DECISION") {
+    throw new Error(
+      `Staged self-upgrade is not awaiting admin deployment. Current status: ${session.status}.`
+    );
+  }
+
+  if (
+    typeof session.finalRound !== "number" ||
+    !session.finalCandidatePath ||
+    !session.finalCandidateWorkspace
+  ) {
+    throw new Error(
+      "The staged self-upgrade does not contain a final successful candidate."
+    );
+  }
+
+  const finalRound = session.rounds.find(
+    (round) =>
+      round.round === session.finalRound &&
+      round.successfulCandidate === true &&
+      round.checks.lint === true &&
+      round.checks.build === true
+  );
+
+  if (!finalRound) {
+    throw new Error(
+      "The recorded final round is not a verified successful candidate."
+    );
+  }
+
+  const candidateWorkspace = path.resolve(
+    session.finalCandidateWorkspace
+  );
+
+  const relativeWorkspace = path.relative(
+    workspaceRoot,
+    candidateWorkspace
+  );
+
+  if (
+    relativeWorkspace.startsWith("..") ||
+    path.isAbsolute(relativeWorkspace)
+  ) {
+    throw new Error(
+      "Staged candidate workspace is outside the Key upgrade workspace."
+    );
+  }
+
+  if (!fs.existsSync(candidateWorkspace)) {
+    throw new Error(
+      "The final staged candidate workspace no longer exists."
+    );
+  }
+
+  const candidatePath = assertSafeRelativePath(
+    session.finalCandidatePath
+  );
+
+  const candidateFile = path.join(
+    candidateWorkspace,
+    candidatePath
+  );
+
+  if (!fs.existsSync(candidateFile)) {
+    throw new Error(
+      "The final staged candidate file no longer exists."
+    );
+  }
+
+  const previewIndex = path.join(
+    candidateWorkspace,
+    "dist",
+    "index.html"
+  );
+
+  if (!fs.existsSync(previewIndex)) {
+    throw new Error(
+      "The final staged candidate has no built dist/index.html preview."
+    );
+  }
+
+  return {
+    session,
+    candidateWorkspace,
+    candidatePath,
+  };
+}
 
   app.get("/api/project-export", async (_req, res) => {
     const files = await collectProjectFiles();
@@ -5514,6 +5640,8 @@ jobs:
         expiresAt: Date.now() + (Number(data.expires_in) || 900) * 1000,
         intervalSec: Math.max(5, Number(data.interval) || 5),
         status: "pending",
+        stagedSessionId:
+          stagedSessionId || undefined,
       };
       activeServerDeviceSession = newSess;
       pendingServerDeviceSessions.set(newSess.deviceCode, newSess);
