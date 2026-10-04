@@ -11135,8 +11135,11 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
       deterministicParsed = await Promise.any(
         primaryPair.map((m) => callModelFast(m, 12000))
       );
-    } catch {
-      // Fall through to remaining candidate models
+    } catch (err) {
+      console.error(
+        "[KEY] Primary live-engine dispatch failed:",
+        err
+      );
     }
   }
 
@@ -11209,8 +11212,11 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
               };
               break;
             }
-          } catch {
-            // try next model
+          } catch (err) {
+            console.error(
+              `[KEY] Sequential live model failed: ${modelName}`,
+              err
+            );
           }
         }
       }
