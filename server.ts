@@ -3877,8 +3877,13 @@ Return ONLY JSON in this exact shape:
 
         const latestRound =
           Array.isArray(session.rounds) &&
-          session.rounds.length > 0
-            ? session.rounds[session.rounds.length - 1]
+          typeof session.finalRound ===
+            "number"
+            ? session.rounds.find(
+                (round: any) =>
+                  round.round ===
+                  session.finalRound
+              )
             : null;
 
         if (
@@ -4411,26 +4416,40 @@ jobs:
     }
   }
 
-  async function collectProjectFiles(options?: { skipBuild?: boolean }) {
+  async function collectProjectFiles(options?: {
+    skipBuild?: boolean;
+    sourceWorkspace?: string;
+  }) {
+    const sourceRoot = path.resolve(
+      String(options?.sourceWorkspace || __dirname)
+    );
+
     const collected: Array<{
       path: string;
       category: string;
       sizeBytes: number;
       content: string;
     }> = [];
+
     const seenPaths = new Set<string>();
 
     for (const item of PROJECT_EXPORT_PATHS) {
       try {
-        const fullPath = path.join(__dirname, item.path);
-        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        const fullPath = path.join(sourceRoot, item.path);
+
+        if (
+          fs.existsSync(fullPath) &&
+          fs.statSync(fullPath).isFile()
+        ) {
           const content = fs.readFileSync(fullPath, "utf8");
+
           collected.push({
             path: item.path,
             category: item.category,
             sizeBytes: Buffer.byteLength(content, "utf8"),
             content,
           });
+
           seenPaths.add(item.path);
         }
       } catch {
@@ -4438,24 +4457,48 @@ jobs:
       }
     }
 
-    // Recursively walk src/ to ensure any additional files or subdirectories are automatically included
-    function walkDirectory(relDir: string, categoryLabel: string) {
+    function walkDirectory(
+      relDir: string,
+      categoryLabel: string
+    ) {
       try {
-        const absDir = path.join(__dirname, relDir);
+        const absDir = path.join(sourceRoot, relDir);
+
         if (!fs.existsSync(absDir)) return;
-        const entries = fs.readdirSync(absDir, { withFileTypes: true });
+
+        const entries = fs.readdirSync(
+          absDir,
+          { withFileTypes: true }
+        );
+
         for (const entry of entries) {
-          const relPath = path.posix.join(relDir, entry.name);
+          const relPath = path.posix.join(
+            relDir,
+            entry.name
+          );
+
           if (entry.isDirectory()) {
-            walkDirectory(relPath, categoryLabel);
-          } else if (entry.isFile() && !seenPaths.has(relPath)) {
-            const content = fs.readFileSync(path.join(__dirname, relPath), "utf8");
+            walkDirectory(
+              relPath,
+              categoryLabel
+            );
+          } else if (
+            entry.isFile() &&
+            !seenPaths.has(relPath)
+          ) {
+            const content = fs.readFileSync(
+              path.join(sourceRoot, relPath),
+              "utf8"
+            );
+
             collected.push({
               path: relPath,
               category: categoryLabel,
-              sizeBytes: Buffer.byteLength(content, "utf8"),
+              sizeBytes:
+                Buffer.byteLength(content, "utf8"),
               content,
             });
+
             seenPaths.add(relPath);
           }
         }
@@ -4464,101 +4507,175 @@ jobs:
       }
     }
 
-    walkDirectory("src", "Frontend Application (src/)");
+    walkDirectory(
+      "src",
+      "Frontend Application (src/)"
+    );
 
-    // Ensure compiled production bundle (dist/index.html + dist/assets/*) exists so GitHub Pages (https://malazhub.github.io/key/) serves the live React Key application immediately
+    // Only build automatically for the normal deployment path.
+    // A staged deployment MUST consume the already-tested staged build.
     if (!options?.skipBuild) {
       try {
-        const distIndex = path.join(__dirname, "dist", "index.html");
-        const distAssetsDir = path.join(__dirname, "dist", "assets");
-        if (!fs.existsSync(distIndex) || !fs.existsSync(distAssetsDir)) {
-          try {
-            await new Promise<void>((resolve) => {
-              exec("npm run build", { cwd: __dirname, timeout: 25000 }, () =>
-                resolve()
-              );
-            });
-          } catch {
-            // ignore build error if already built
-          }
+        const distIndex = path.join(
+          sourceRoot,
+          "dist",
+          "index.html"
+        );
+
+        const distAssetsDir = path.join(
+          sourceRoot,
+          "dist",
+          "assets"
+        );
+
+        if (
+          !fs.existsSync(distIndex) ||
+          !fs.existsSync(distAssetsDir)
+        ) {
+          await new Promise<void>((resolve) => {
+            exec(
+              "npm run build",
+              {
+                cwd: sourceRoot,
+                timeout: 25000,
+              },
+              () => resolve()
+            );
+          });
         }
       } catch {
         // ignore
       }
     }
 
-    // Add .nojekyll so GitHub Pages serves index.html and ./assets/* immediately without Jekyll processing delays
     if (!seenPaths.has(".nojekyll")) {
       collected.push({
         path: ".nojekyll",
-        category: "Production GitHub Pages Entry (index.html)",
+        category:
+          "Production GitHub Pages Entry (index.html)",
         sizeBytes: 0,
         content: "",
       });
+
       seenPaths.add(".nojekyll");
     }
 
-    // Include compiled production bundle (dist/index.html + dist/assets/*) so GitHub's pages-build-deployment serves the exact live React app from main root
     try {
-      const distIndex = path.join(__dirname, "dist", "index.html");
-      const distAssetsDir = path.join(__dirname, "dist", "assets");
-      if (fs.existsSync(distIndex) && fs.existsSync(distAssetsDir)) {
-        // Preserve raw Vite index.html as index.vite.html and set root index.html to compiled production bundle with relative ./assets/ paths
-        const rawViteIdx = collected.findIndex((f) => f.path === "index.html");
+      const distIndex = path.join(
+        sourceRoot,
+        "dist",
+        "index.html"
+      );
+
+      const distAssetsDir = path.join(
+        sourceRoot,
+        "dist",
+        "assets"
+      );
+
+      if (
+        fs.existsSync(distIndex) &&
+        fs.existsSync(distAssetsDir)
+      ) {
+        const rawViteIdx =
+          collected.findIndex(
+            (f) => f.path === "index.html"
+          );
+
         if (rawViteIdx !== -1) {
           collected.push({
             path: "index.vite.html",
-            category: "Root Configuration & Docs",
-            sizeBytes: collected[rawViteIdx].sizeBytes,
-            content: collected[rawViteIdx].content,
+            category:
+              "Root Configuration & Docs",
+            sizeBytes:
+              collected[rawViteIdx].sizeBytes,
+            content:
+              collected[rawViteIdx].content,
           });
+
           seenPaths.add("index.vite.html");
         }
 
-        let compiledIndexHtml = fs
-          .readFileSync(distIndex, "utf8")
-          .replace(/(src|href)="\/assets\//g, '$1="./assets/');
+        let compiledIndexHtml =
+          fs.readFileSync(
+            distIndex,
+            "utf8"
+          ).replace(
+            /(src|href)="\/assets\//g,
+            '$1="./assets/'
+          );
 
-        const assetEntries = fs.readdirSync(distAssetsDir, {
-          withFileTypes: true,
-        });
+        const assetEntries =
+          fs.readdirSync(
+            distAssetsDir,
+            { withFileTypes: true }
+          );
+
         for (const entry of assetEntries) {
-          if (entry.isFile()) {
-            const relAssetPath = path.posix.join("assets", entry.name);
-            const assetContent = fs.readFileSync(
-              path.join(distAssetsDir, entry.name),
+          if (!entry.isFile()) continue;
+
+          const relAssetPath =
+            path.posix.join(
+              "assets",
+              entry.name
+            );
+
+          const assetContent =
+            fs.readFileSync(
+              path.join(
+                distAssetsDir,
+                entry.name
+              ),
               "utf8"
             );
-            if (entry.name.endsWith(".css")) {
-              compiledIndexHtml = compiledIndexHtml.replace(
+
+          if (entry.name.endsWith(".css")) {
+            compiledIndexHtml =
+              compiledIndexHtml.replace(
                 "</head>",
                 `<style>${assetContent}</style>\n  </head>`
               );
-            }
-            if (!seenPaths.has(relAssetPath)) {
-              collected.push({
-                path: relAssetPath,
-                category: "Compiled Production Bundle (assets/)",
-                sizeBytes: Buffer.byteLength(assetContent, "utf8"),
-                content: assetContent,
-              });
-              seenPaths.add(relAssetPath);
-            }
+          }
+
+          if (!seenPaths.has(relAssetPath)) {
+            collected.push({
+              path: relAssetPath,
+              category:
+                "Compiled Production Bundle (assets/)",
+              sizeBytes:
+                Buffer.byteLength(
+                  assetContent,
+                  "utf8"
+                ),
+              content: assetContent,
+            });
+
+            seenPaths.add(relAssetPath);
           }
         }
 
         if (rawViteIdx !== -1) {
           collected[rawViteIdx] = {
             path: "index.html",
-            category: "Production GitHub Pages Entry (index.html)",
-            sizeBytes: Buffer.byteLength(compiledIndexHtml, "utf8"),
+            category:
+              "Production GitHub Pages Entry (index.html)",
+            sizeBytes:
+              Buffer.byteLength(
+                compiledIndexHtml,
+                "utf8"
+              ),
             content: compiledIndexHtml,
           };
         } else {
           collected.push({
             path: "index.html",
-            category: "Production GitHub Pages Entry (index.html)",
-            sizeBytes: Buffer.byteLength(compiledIndexHtml, "utf8"),
+            category:
+              "Production GitHub Pages Entry (index.html)",
+            sizeBytes:
+              Buffer.byteLength(
+                compiledIndexHtml,
+                "utf8"
+              ),
             content: compiledIndexHtml,
           });
         }
@@ -4567,16 +4684,26 @@ jobs:
       // ignore dist bundle read error
     }
 
-    const DEPLOY_WORKFLOW_PATH = ".github/workflows/deploy.yml";
+    const DEPLOY_WORKFLOW_PATH =
+      ".github/workflows/deploy.yml";
 
     if (!seenPaths.has(DEPLOY_WORKFLOW_PATH)) {
       collected.push({
         path: DEPLOY_WORKFLOW_PATH,
-        category: "GitHub Actions Deployment",
-        sizeBytes: Buffer.byteLength(GITHUB_ACTIONS_DEPLOY_YML, "utf8"),
-        content: GITHUB_ACTIONS_DEPLOY_YML,
+        category:
+          "GitHub Actions Deployment",
+        sizeBytes:
+          Buffer.byteLength(
+            GITHUB_ACTIONS_DEPLOY_YML,
+            "utf8"
+          ),
+        content:
+          GITHUB_ACTIONS_DEPLOY_YML,
       });
-      seenPaths.add(DEPLOY_WORKFLOW_PATH);
+
+      seenPaths.add(
+        DEPLOY_WORKFLOW_PATH
+      );
     }
 
     return collected;
@@ -4589,6 +4716,7 @@ jobs:
     branch?: string;
     mirroredState?: Record<string, unknown>;
     forceRebuild?: boolean;
+    sourceWorkspace?: string;
   }) {
     const owner = "malazhub";
     const repo = "key";
@@ -4598,6 +4726,12 @@ jobs:
       ? rawProvided
       : "";
     const token = providedToken || readSavedGitHubToken();
+        const deploymentSourceRoot = path.resolve(
+      String(options?.sourceWorkspace || __dirname)
+    );
+
+    const deployingCachedStagedWorkspace =
+      Boolean(options?.sourceWorkspace);
 
     // Persist the complete administrative deployment snapshot before building dist/.
     // This path is intentionally outside Defender: deployment is an administrative operation,
@@ -4624,34 +4758,88 @@ jobs:
       volatileKeyRuntimeState = readMirroredKeyState();
     }
 
-    // Build is a hard prerequisite: deployment must never continue after a build failure.
+        // Normal deployment may build the active workspace.
+    // Staged deployment MUST NOT rebuild the original active workspace.
     let buildError: string | null = null;
+
     try {
-      const distDir = path.join(__dirname, "dist");
-      if (options?.forceRebuild !== false) {
-        fs.rmSync(distDir, { recursive: true, force: true });
-      }
-      if (!fs.existsSync(path.join(distDir, "index.html"))) {
-        await new Promise<void>((resolve, reject) => {
-          exec("npm run build", { cwd: __dirname, timeout: 45000 }, (err) => {
-            if (err) reject(err);
-            else resolve();
+      const distDir = path.join(
+        deploymentSourceRoot,
+        "dist"
+      );
+
+      if (!deployingCachedStagedWorkspace) {
+        if (options?.forceRebuild !== false) {
+          fs.rmSync(distDir, {
+            recursive: true,
+            force: true,
           });
-        });
+        }
+
+        if (
+          !fs.existsSync(
+            path.join(
+              distDir,
+              "index.html"
+            )
+          )
+        ) {
+          await new Promise<void>(
+            (resolve, reject) => {
+              exec(
+                "npm run build",
+                {
+                  cwd: deploymentSourceRoot,
+                  timeout: 45000,
+                },
+                (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                }
+              );
+            }
+          );
+        }
+      } else {
+        // The staged workspace was already linted and built
+        // by the self-upgrade loop. Deployment consumes it exactly.
+        if (
+          !fs.existsSync(
+            path.join(
+              distDir,
+              "index.html"
+            )
+          )
+        ) {
+          throw new Error(
+            "Final staged candidate has no verified dist/index.html."
+          );
+        }
       }
     } catch (err) {
-      buildError = err instanceof Error ? err.message : String(err);
+      buildError =
+        err instanceof Error
+          ? err.message
+          : String(err);
     }
+
     if (buildError) {
       return {
         success: false,
         verified: false,
-        error: `Build failed; deployment aborted: ${buildError}`,
-        repoUrl: `https://github.com/${owner}/${repo}`,
+        error: `Build/staged-build verification failed; deployment aborted: ${buildError}`,
+        repoUrl:
+          `https://github.com/${owner}/${repo}`,
       };
     }
 
-    const files = await collectProjectFiles();
+    const files =
+      await collectProjectFiles({
+        sourceWorkspace:
+          deploymentSourceRoot,
+        skipBuild:
+          deployingCachedStagedWorkspace,
+      });
 
     // Stage all collected files into a clean temporary Git repository (/tmp/malazhub_key_force_deploy)
     // and execute local git init + git commit so it is 100% ready for atomic `git push --force`
@@ -5115,6 +5303,10 @@ jobs:
     status: "pending" | "authorized" | "expired";
     accessToken?: string;
     deployResult?: Record<string, unknown>;
+
+    // If present, the OAuth session is specifically deploying
+    // this persistent staged self-upgrade.
+    stagedSessionId?: string;
   }
 
   let activeServerDeviceSession: ServerDeviceSession | null = null;
@@ -5176,12 +5368,78 @@ jobs:
           if (pollData.access_token && isValidGitHubTokenFormat(pollData.access_token)) {
             writeSavedGitHubToken(pollData.access_token);
             sess.accessToken = pollData.access_token;
-            const deployResult = await executeFullGitHubStructureDeploy({
-              githubToken: pollData.access_token,
-              repoOwner: "malazhub",
-              repoName: "key",
-              branch: "main",
-            });
+                      let deployResult: Record<
+            string,
+            unknown
+          >;
+
+          if (sess.stagedSessionId) {
+            const staged =
+              readFinalStagedCandidate(
+                sess.stagedSessionId
+              );
+
+            deployResult =
+              await executeFullGitHubStructureDeploy(
+                {
+                  githubToken:
+                    pollData.access_token,
+                  repoOwner:
+                    "malazhub",
+                  repoName: "key",
+                  branch: "main",
+                  sourceWorkspace:
+                    staged.candidateWorkspace,
+                  forceRebuild: false,
+                }
+              );
+
+            if (
+              deployResult.success ===
+                true &&
+              deployResult.verified ===
+                true
+            ) {
+              staged.session.status =
+                "COMPLETED";
+              staged.session.updatedAt =
+                new Date().toISOString();
+
+              const workspaceRoot =
+                path.resolve(
+                  resolveKeyWorkspaceRoot(
+                    __dirname
+                  ).root
+                );
+
+              fs.writeFileSync(
+                path.join(
+                  workspaceRoot,
+                  "sessions",
+                  `${sess.stagedSessionId}.json`
+                ),
+                JSON.stringify(
+                  staged.session,
+                  null,
+                  2
+                ),
+                "utf8"
+              );
+            }
+          } else {
+            // Preserve the normal deployment path.
+            deployResult =
+              await executeFullGitHubStructureDeploy(
+                {
+                  githubToken:
+                    pollData.access_token,
+                  repoOwner:
+                    "malazhub",
+                  repoName: "key",
+                  branch: "main",
+                }
+              );
+          }
             sess.deployResult = deployResult;
             sess.status = "authorized";
             activeServerDeviceSession = sess;
@@ -5207,7 +5465,10 @@ jobs:
     }, waitMs);
   }
 
-  async function startOrReuseServerDeviceSession(forceNew = false) {
+  async function startOrReuseServerDeviceSession(
+    forceNew = false,
+    stagedSessionId?: string
+  ) {
     if (
       !forceNew &&
       activeServerDeviceSession &&
@@ -5264,9 +5525,21 @@ jobs:
 
   app.post("/api/admin/github-device-start", async (req, res) => {
     try {
-      const forceNew = Boolean(req.body?.forceNew);
+            const forceNew = Boolean(
+        req.body?.forceNew
+      );
+
+      const stagedSessionId =
+        typeof req.body?.stagedSessionId ===
+        "string"
+          ? req.body.stagedSessionId.trim()
+          : undefined;
       const savedToken = readSavedGitHubToken();
-      const data = await startOrReuseServerDeviceSession(forceNew);
+            const data =
+        await startOrReuseServerDeviceSession(
+          forceNew,
+          stagedSessionId
+        );
       res.json({
         ...data,
         hasSavedGitHubToken: Boolean(savedToken),
