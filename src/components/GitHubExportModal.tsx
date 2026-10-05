@@ -15,6 +15,15 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+
+const WORKING_COPY_STORAGE_KEY = "key_working_copy_v1";
+async function persistWorkingCopy(): Promise<void> {
+  try { localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), source: "Key Browser" })); } catch {}
+}
+function restoreWorkingCopy(): void {
+  try { void localStorage.getItem(WORKING_COPY_STORAGE_KEY); } catch {}
+}
+
 interface ExportedProjectFile {
   path: string;
   category: string;
