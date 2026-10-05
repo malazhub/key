@@ -317,18 +317,18 @@ export async function runBoundedSelfUpgradeSession(
           "Baseline lint failed; refusing to replace a known-good active version.",
       };
 
-  if (!baselineLint.ok || !baselineBuild.ok || !baselineSelfTest.ok) {
-    throw new Error(
-      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}, SelfTest=${baselineSelfTest.ok}.`
-    );
-  }
-
   const baselineSelfTest = baselineBuild.ok
     ? await runCheck(
         activeRoot,
         "node --import tsx --input-type=module -e \"import { run_self_tests } from './src/upgrades/version8Harness.ts'; const r = await run_self_tests(); if (!r.passed) process.exit(1); console.log(JSON.stringify({ passed_checks: r.passed_checks, total_checks: r.total_checks }));\""
       )
     : { ok: false, output: "Baseline build failed; self-test was not executed." };
+
+  if (!baselineLint.ok || !baselineBuild.ok || !baselineSelfTest.ok) {
+    throw new Error(
+      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}, SelfTest=${baselineSelfTest.ok}.`
+    );
+  }
 
   const baselineCapabilities: CapabilityTestResult[] = [
     { id: "lint", passed: baselineLint.ok },
