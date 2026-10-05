@@ -32,6 +32,7 @@ export type SelfUpgradeSessionStatus =
 export interface SelfUpgradeControllerRequest {
   instruction: string;
   requestedRounds: number;
+  conformityTarget?: number;
   candidates?: SelfUpgradeRoundCandidate[];
   deploy: boolean;
   workspaceRoot?: string;
@@ -44,7 +45,9 @@ export interface SelfUpgradeRoundResult {
   checks: {
     lint: boolean;
     build: boolean;
+    selfTest: boolean;
   };
+  conformityScore: number;
   generated: boolean;
   deployed: boolean;
   deployment?: Record<string, unknown>;
@@ -255,6 +258,15 @@ export async function runBoundedSelfUpgradeSession(
   }
 ): Promise<SelfUpgradeSession> {
   const requestedRounds = Number(request.requestedRounds);
+  const conformityTarget = Number(request.conformityTarget ?? 100);
+
+  if (
+    !Number.isFinite(conformityTarget) ||
+    conformityTarget < 1 ||
+    conformityTarget > 100
+  ) {
+    throw new Error("conformityTarget must be a number from 1 to 100.");
+  }
 
   if (
     !Number.isInteger(requestedRounds) ||
@@ -305,21 +317,30 @@ export async function runBoundedSelfUpgradeSession(
           "Baseline lint failed; refusing to replace a known-good active version.",
       };
 
-  if (!baselineLint.ok || !baselineBuild.ok) {
+  if (!baselineLint.ok || !baselineBuild.ok || !baselineSelfTest.ok) {
     throw new Error(
-      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}.`
+      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}, SelfTest=${baselineSelfTest.ok}.`
     );
   }
+
+  const baselineSelfTest = baselineBuild.ok
+    ? await runCheck(
+        activeRoot,
+        "node --import tsx --input-type=module -e \"import { run_self_tests } from './src/upgrades/version8Harness.ts'; const r = await run_self_tests(); if (!r.passed) process.exit(1); console.log(JSON.stringify({ passed_checks: r.passed_checks, total_checks: r.total_checks }));\""
+      )
+    : { ok: false, output: "Baseline build failed; self-test was not executed." };
 
   const baselineCapabilities: CapabilityTestResult[] = [
     { id: "lint", passed: baselineLint.ok },
     { id: "build", passed: baselineBuild.ok },
+    { id: "self-test", passed: baselineSelfTest.ok },
   ];
 
   const session: SelfUpgradeSession = {
     sessionId: safeSessionId(),
     instruction: String(request.instruction || "").slice(0, 1000),
     requestedRounds,
+    conformityTarget,
     completedRounds: 0,
     status: "FAILED",
     workspaceRoot,
@@ -431,7 +452,9 @@ export async function runBoundedSelfUpgradeSession(
           checks: {
             lint: false,
             build: false,
+            selfTest: false,
           },
+          conformityScore: 0,
           generated,
           deployed: false,
           successfulCandidate: false,
@@ -453,6 +476,15 @@ export async function runBoundedSelfUpgradeSession(
         "npm run build"
       );
 
+      const selfTest = await runCheck(
+        candidateWorkspace,
+        "node --import tsx --input-type=module -e \"import { run_self_tests } from './src/upgrades/version8Harness.ts'; const r = await run_self_tests(); if (!r.passed) process.exit(1); console.log(JSON.stringify({ passed_checks: r.passed_checks, total_checks: r.total_checks }));\""
+      );
+
+      const conformityScore = Number(
+        (((Number(lint.ok) + Number(build.ok) + Number(selfTest.ok)) / 3) * 100).toFixed(2)
+      );
+
       const candidateCapabilities: CapabilityTestResult[] = [
         {
           id: "lint",
@@ -462,6 +494,10 @@ export async function runBoundedSelfUpgradeSession(
           id: "build",
           passed: build.ok,
         },
+        {
+          id: "self-test",
+          passed: selfTest.ok,
+        },
       ];
 
       const lostCapabilities = detectCapabilityLoss(
@@ -469,11 +505,11 @@ export async function runBoundedSelfUpgradeSession(
         candidateCapabilities
       );
 
-      if (lostCapabilities.length > 0) {
+      if (lostCapabilities.length > 0 || conformityScore < conformityTarget) {
         const error =
-          `OLD PASS + NEW FAIL: ${lostCapabilities.join(
-            ", "
-          )}. Latest successful candidate retained; trying next round.`;
+          lostCapabilities.length > 0
+            ? `OLD PASS + NEW FAIL: ${lostCapabilities.join(", ")}. Latest successful candidate retained; trying next round.`
+            : `Conformity ${conformityScore}% is below the selected ${conformityTarget}% target. Latest successful candidate retained; trying next round.`;
 
         session.rounds.push({
           round,
@@ -482,7 +518,9 @@ export async function runBoundedSelfUpgradeSession(
           checks: {
             lint: lint.ok,
             build: build.ok,
+            selfTest: false,
           },
+          conformityScore: Number(((Number(lint.ok) + Number(build.ok)) / 3 * 100).toFixed(2)),
           generated,
           deployed: false,
           successfulCandidate: false,
@@ -513,7 +551,9 @@ export async function runBoundedSelfUpgradeSession(
           checks: {
             lint: true,
             build: false,
+            selfTest: false,
           },
+          conformityScore: Number((100 / 3).toFixed(2)),
           generated,
           deployed: false,
           successfulCandidate: false,
@@ -526,6 +566,18 @@ export async function runBoundedSelfUpgradeSession(
         session.completedRounds = round;
         session.updatedAt = new Date().toISOString();
 
+        persistSession(session);
+        continue;
+      }
+
+      // ============================================================
+      // A successful upgrade is a real conformity result, not a fabricated
+      // score. The loop stops as soon as the selected target is actually met.
+      if (conformityScore < conformityTarget) {
+        previousFailure = `Conformity ${conformityScore}% < target ${conformityTarget}%.`;
+        previousCandidate = candidate;
+        session.completedRounds = round;
+        session.updatedAt = new Date().toISOString();
         persistSession(session);
         continue;
       }
@@ -607,7 +659,9 @@ export async function runBoundedSelfUpgradeSession(
         checks: {
           lint: true,
           build: true,
+          selfTest: true,
         },
+        conformityScore: 100,
         generated,
         deployed: false,
         successfulCandidate: true,
@@ -732,7 +786,9 @@ export async function runBoundedSelfUpgradeSession(
         checks: {
           lint: false,
           build: false,
+          selfTest: false,
         },
+        conformityScore: 0,
         generated,
         deployed: false,
         successfulCandidate: false,
