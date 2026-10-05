@@ -1,11 +1,11 @@
 import express from "express";
-import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate } from "./src/upgrades/selfUpgradeController";
+import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate, assertSafeRelativePath } from "./src/upgrades/selfUpgradeController";
 import { resolveKeyWorkspaceRoot, resolveAuditRoot, safeAuditPath, isAuditReadablePath } from "./src/upgrades/workspace";
 import path from "path";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -23,9 +23,7 @@ import {
   isVersion8HarnessQuery,
   KEY_COMPLETE_FILE_TREE_ASCII,
   KEY_CODEBASE_STRUCTURE_REGISTRY,
-  extractSemanticTokens,
-  computeCosineSimilarity,
-} from "./src/consensusEngine";
+ } from "./src/consensusEngine";
 import {
   HARNESS_VERSION as V8_HARNESS_VERSION,
   FIXTURE_REGISTRY as V8_FIXTURE_REGISTRY,
@@ -1940,7 +1938,7 @@ function sanitizeAndEnrichConsensusResult(
     ? parsed.convergenceRounds
     : [];
 
-  const convergenceRounds: ConvergenceRound[] = rawRounds;
+  const convergenceRounds: Array<{ round: number; similarityScore: number; note: string }> = rawRounds as any;
 
   const parsedIterations =
     Number.isInteger(parsed.iterationsRequired) && parsed.iterationsRequired >= 0
@@ -2343,7 +2341,7 @@ Mode: ${
         const response = await ai.models.generateContent({
           model: modelName,
           contents: [
-            ...multimodalContents,
+            ...(typeof multimodalContents === "string" ? [multimodalContents] : multimodalContents.parts.map((part) => ({ role: "user", parts: [part] }))),
             { role: "user", parts: [{ text: roundContext }] },
           ],
           config: {
@@ -4352,7 +4350,7 @@ Return ONLY JSON in this exact shape:
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.json({
       success: true,
-      volatileRuntimeState,
+      volatileRuntimeState: volatileKeyRuntimeState,
     });
   });
 
