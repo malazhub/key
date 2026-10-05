@@ -1865,7 +1865,7 @@ export function isPassiveReportTranslationReply(rawText: string): boolean {
 }
 
 export function buildFramework2026SelfUpgradedExecutionReport(
-  achievedScore = 99,
+  achievedScore = 0,
   modelsList: string[] = [
     "ChatGPT 4o",
     "Claude 3.5 Sonnet",
@@ -11698,7 +11698,7 @@ export function runAdaptiveResponseOrchestrationV21(
   rawQuery: string,
   modelsList: string[],
   memoryOS: MemoryOSPipelineTrace,
-  achievedAgreement = 97
+  achievedAgreement = 0
 ): AdaptiveResponseTraceV21 {
   const cleanQ = (rawQuery || "").trim();
   const activeCount = modelsList.length || 10;
@@ -13196,14 +13196,14 @@ export function buildHistoryGraphProjection(
         turnNumber: rec.turnNumber + 1,
         messageId: rec.assistantMessageId || rec.messageId,
         nodeType: "consensus",
-        label: `CONSENSUS #${rec.pairIndex} (${rec.assistantMsg.achievedAgreement || 97}%): ${shortAns}`,
+        label: `CONSENSUS #${rec.pairIndex} (${rec.assistantMsg.achievedAgreement || 0}%): ${shortAns}`,
         subtitle: `${normalizedVM.totalLatencyMs}ms · ${normalizedVM.usage.totalTokens} tok · ${normalizedVM.cost.formattedUsd}`,
         fullText: plainSummary.slice(0, 260),
         timestamp: String(rec.assistantMsg.timestamp || rec.timestamp),
         metrics: {
           latencyMs: normalizedVM.totalLatencyMs,
           totalTokens: normalizedVM.usage.totalTokens,
-          agreementScore: rec.assistantMsg.achievedAgreement || 97,
+          agreementScore: rec.assistantMsg.achievedAgreement || 0,
         },
         tokens: extractSemanticTokens(plainSummary).slice(0, 12),
       });
