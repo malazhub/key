@@ -8590,7 +8590,7 @@ export function sanitizeAndEnrichConsensusResult(
     ? parsed.convergenceRounds
     : [];
 
-  const convergenceRounds: ConvergenceRound[] = rawRounds;
+  const convergenceRounds: ConvergenceRound[] = rawRounds as unknown as ConvergenceRound[];
 
   const isForcedIsolatedInSanitizer =
     isGreeting ||
@@ -11319,64 +11319,7 @@ iterationsRequired: actualRoundsCompleted,
   `No live engine returned a usable response, so no consensus result was generated.`
 );
 
-  const liveTransparentReport =
-    `### Live Engine Dispatch Failure\n\n` +
-    `The live AI engine pipeline could not obtain a generated response for ` +
-    `the current query (**"${cleanQuestion}"**). ` +
-    `No predefined or locally fabricated answer was substituted. ` +
-    `The query remained on the live engine path across ${modelsList.length} configured engines.`;
 
-  const enrichedResilient = sanitizeAndEnrichConsensusResult(
-    {
-      contextMode: strictQueryPriority
-        ? "NEW_QUERY_ONLY"
-        : relation.contextMode,
-      historyMatchScore: strictQueryPriority ? 0 : relation.historyMatchScore,
-      matchedPairIndices: strictQueryPriority ? [] : relation.matchedPairIndices,
-      payloadSentToEngines: strictQueryPriority
-        ? isolatedPayloadSentToEngines
-        : relation.payloadSentToEngines,
-      finalAnswer: liveTransparentReport,
-      hasAppPreview: shouldGenerateAppPreview,
-      appTitle: shouldGenerateAppPreview
-        ? `Key (${nextVer}) — Interactive Application Preview`
-        : "",
-      generatedAppHtml: "",
-      achievedAgreement: achievedFallback,
-      iterationsRequired: actualRoundsCompleted,
-      consensusSummary: `Dispatched live query across ${modelsList.length} AI engines.`,
-      convergenceRounds: [],
-      nodeContributions: [],
-      _wallClockElapsedMs: Date.now() - loopStartTimeMs,
-      _memoryOSTrace: memoryOSTrace,
-    },
-    modelsList,
-    safeTarget,
-    cleanQuestion,
-    shouldGenerateAppPreview,
-    cumulativeSpec
-  );
-
-  return {
-    ...enrichedResilient,
-    memoryOS: memoryOSTrace,
-    strictQueryPriority,
-    groundingSources,
-    workingMemoryFacts: strictQueryPriority
-      ? []
-      : relation.workingMemoryFacts || [],
-    contextMode: strictQueryPriority
-      ? ("NEW_QUERY_ONLY" as const)
-      : relation.contextMode,
-    historyMatchScore: strictQueryPriority ? 0 : relation.historyMatchScore,
-    matchedPairIndices: strictQueryPriority ? [] : relation.matchedPairIndices,
-    payloadSentToEngines: strictQueryPriority
-      ? isolatedPayloadSentToEngines
-      : relation.payloadSentToEngines,
-    cumulativeSavedPairsCount: allPairsCount + 1,
-    droppedOldestCount,
-    cacheHit: false,
-  };
 }
 
 export function executeConsensusApiPayload(
