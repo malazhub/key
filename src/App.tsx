@@ -6027,6 +6027,39 @@ The live AI engine pipeline could not obtain a generated response for the curren
                     aria-label="Self-upgrade instruction"
                   />
 
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-[11px] text-slate-300">
+                      <span className="block mb-1 font-bold text-slate-400">Max rounds (1–50)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={selfUpgradeRounds}
+                        onChange={(e) =>
+                          setSelfUpgradeRounds(
+                            Math.max(1, Math.min(50, Number(e.target.value) || 1))
+                          )
+                        }
+                        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-white"
+                      />
+                    </label>
+                    <label className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-[11px] text-slate-300">
+                      <span className="block mb-1 font-bold text-slate-400">Conformity target (1–100%)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={selfUpgradeConformityTarget}
+                        onChange={(e) =>
+                          setSelfUpgradeConformityTarget(
+                            Math.max(1, Math.min(100, Number(e.target.value) || 1))
+                          )
+                        }
+                        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-white"
+                      />
+                    </label>
+                  </div>
+
                   <button
                     type="button"
                     disabled={selfUpgradeBusy}
