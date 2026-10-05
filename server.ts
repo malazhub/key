@@ -148,10 +148,10 @@ const ai = new GoogleGenAI({
 
 // Verified available models with parallel hedging and automatic 503 retry
 const CANDIDATE_MODELS = [
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite-preview",
-  "gemini-flash-lite-latest",
-  "gemini-flash-latest",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
   "gemini-2.5-flash",
 ];
 
@@ -196,6 +196,22 @@ function markModelCooldown(modelName: string, err: unknown): void {
 function isModelAvailable(modelName: string): boolean {
   const until = modelCooldownUntil.get(modelName) || 0;
   return Date.now() >= until;
+}
+
+function describeProviderError(err: unknown): string {
+  const raw =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+      ? err
+      : JSON.stringify(err || "");
+  return String(raw)
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_KEY]")
+    .replace(/([?&]key=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/(api[-_ ]?key\s*[:=]\s*)[^\s,}]+/gi, "$1[REDACTED]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 600);
 }
 
 interface HistoryTurn {
@@ -2435,9 +2451,20 @@ Mode: ${
         );
 
       if (successfulResults.length === 0) {
+        const failures = settledResults
+          .map((result, index) =>
+            result.status === "rejected"
+              ? `${parallelCandidates[index]}: ${describeProviderError(result.reason)}`
+              : null
+          )
+          .filter((value): value is string => Boolean(value));
+
         if (round === 1) {
           throw new Error(
-            `No live AI engine returned a usable response for "${question}".`
+            `No live AI engine returned a usable response for "${question}". ` +
+              (failures.length > 0
+                ? `Provider diagnostics: ${failures.join(" | ")}`
+                : "No provider error details were returned.")
           );
         }
         break;
@@ -2564,7 +2591,8 @@ Mode: ${
   }
 
   throw new Error(
-    `No live AI engine returned a usable response for "${question}".`
+    `No live AI engine returned a usable response for "${question}". ` +
+      `Provider diagnostics: all configured Gemini candidates were unavailable or rejected the request.`
   );
 
   throw new Error(
@@ -6387,6 +6415,58 @@ if (
   }
 
   hydrateVolatileKeyRuntimeState();
+
+  // Runtime Gemini diagnostics. This endpoint is intentionally opt-in so normal
+  // requests do not spend quota merely to report backend health.
+  app.get("/api/engine-health", async (_req, res) => {
+    const startedAt = Date.now();
+    const models = getOrderedCandidateModels();
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        provider: "google-gemini",
+        error: "GEMINI_API_KEY is not configured in the backend runtime.",
+        checkedAt: new Date().toISOString(),
+        totalLatencyMs: Date.now() - startedAt,
+      });
+    }
+
+    const checks = await Promise.all(
+      models.map(async (model) => {
+        const modelStartedAt = Date.now();
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: "Health check. Reply with OK.",
+            config: { maxOutputTokens: 8 },
+          });
+          return {
+            model,
+            ok: Boolean(response.text?.trim()),
+            latencyMs: Date.now() - modelStartedAt,
+            responsePresent: Boolean(response.text?.trim()),
+          };
+        } catch (err) {
+          if (isQuotaOrRateLimitError(err)) markModelCooldown(model, err);
+          return {
+            model,
+            ok: false,
+            latencyMs: Date.now() - modelStartedAt,
+            error: describeProviderError(err),
+          };
+        }
+      })
+    );
+
+    const ok = checks.some((check) => check.ok);
+    return res.status(ok ? 200 : 503).json({
+      ok,
+      provider: "google-gemini",
+      checkedAt: new Date().toISOString(),
+      totalLatencyMs: Date.now() - startedAt,
+      models: checks,
+    });
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
