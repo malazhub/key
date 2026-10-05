@@ -146,10 +146,11 @@ const ai = new GoogleGenAI({
 
 // Verified available models with parallel hedging and automatic 503 retry
 const CANDIDATE_MODELS = [
-  "gemini-3.5-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-flash-lite-latest",
-  "gemini-flash-latest",
+  // Current stable Gemini API production models (2026-10).
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
   "gemini-2.5-flash",
 ];
 
