@@ -4089,6 +4089,7 @@ Return ONLY JSON in this exact shape:
   );
 
   app.get("/api/fs/tree", async (_req, res) => {
+    try {
       const files = await collectProjectFiles({ skipBuild: true });
       res.json({
         ok: true,
