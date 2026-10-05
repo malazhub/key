@@ -5485,7 +5485,9 @@ jobs:
       round.round === session.finalRound &&
       round.successfulCandidate === true &&
       round.checks.lint === true &&
-      round.checks.build === true
+      round.checks.build === true &&
+      round.checks.selfTest === true &&
+      round.checks.selfDiagnosis === true
   );
 
   if (!finalRound) {
