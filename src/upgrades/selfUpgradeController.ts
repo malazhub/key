@@ -394,7 +394,7 @@ export async function runBoundedSelfUpgradeSession(
     | undefined;
 
   for (let round = 1; round <= requestedRounds; round += 1) {
-    let candidate: SelfUpgradeRoundCandidate;
+    let candidate: SelfUpgradeRoundCandidate | undefined;
     let generated = false;
 
     try {
@@ -416,6 +416,7 @@ export async function runBoundedSelfUpgradeSession(
         generated = true;
       }
 
+      if (!candidate) throw new Error("Candidate generation returned no candidate.");
       const rel = assertSafeRelativePath(candidate.filePath);
 
       if (
