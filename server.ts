@@ -2341,7 +2341,7 @@ Mode: ${
         const response = await ai.models.generateContent({
           model: modelName,
           contents: [
-            ...(typeof multimodalContents === "string" ? [multimodalContents] : multimodalContents.parts.map((part) => ({ role: "user", parts: [part] }))),
+            ...(typeof multimodalContents === "string" ? [multimodalContents] : multimodalContents.parts.map((part) => ({ role: "user" as const, parts: [part] }))),
             { role: "user", parts: [{ text: roundContext }] },
           ],
           config: {
