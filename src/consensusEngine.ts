@@ -8621,7 +8621,7 @@ export function sanitizeAndEnrichConsensusResult(
   const maxEngineLatency =
     engineTelemetryList.length > 0
       ? Math.max(...engineTelemetryList.map((e) => e.latencyMs))
-      : 420;
+      : 0;
   const sumEngineLatency = engineTelemetryList.reduce(
     (acc, e) => acc + e.latencyMs,
     0
@@ -12665,10 +12665,11 @@ export function normalizeConsensusRunToUIViewModel(
     runOrMessage?.payloadSentToEngines || runOrMessage?.resolvedMergedQuery || "Query"
   );
 
-  // Build normalized engine list whether the source has 10 engines, 20 engines, or `meta.engines` dictionary
-  const engineKeys = rawMeta?.engines
-    ? Object.keys(rawMeta.engines)
-    : rawNodes.map((n, idx) => String(n?.modelName || `Engine #${idx + 1}`));
+  // Only normalize engine records that actually came back from the live dispatch.
+  // Metadata without a corresponding live engine contribution is not an engine reply.
+  const engineKeys = rawNodes
+    .map((n) => String(n?.modelName || "").trim())
+    .filter(Boolean);
 
   const normalizedEngines: NormalizedEngineCardViewModel[] = engineKeys.map(
     (engineKey, idx) => {
@@ -12683,7 +12684,7 @@ export function normalizeConsensusRunToUIViewModel(
         metaRec?.agreementScore ??
           nodeRec?.agreementScore ??
           runOrMessage?.achievedAgreement ??
-          97
+          0
       );
 
       const fallbackTel = computeSingleEngineTelemetry(
@@ -12831,16 +12832,10 @@ export function normalizeConsensusRunToUIViewModel(
         outputHash,
         progressiveDisclosureStage,
         engineOutputV2,
-        initialReply: String(
-          nodeRec?.initialReply ||
-            `[${engineKey} · ${specialistRole} · Round #1]: Evaluated controlled context packet (${inputContextHash}) and synthesized primary evidence.`
-        ),
-        finalMatchedReply: String(
-          nodeRec?.finalMatchedReply ||
-            `[${engineKey} · ${specialistRole} · Final (${agreementScore}% Match)]: Verified structured engine_output_v2 (${outputHash}) against Golden State.`
-        ),
+        initialReply: String(nodeRec?.initialReply || ""),
+        finalMatchedReply: String(nodeRec?.finalMatchedReply || ""),
         detailedResponse: String(
-          nodeRec?.detailedResponse || finalAnswerText || "Converged response."
+          nodeRec?.detailedResponse || ""
         ),
       };
     }
@@ -12920,7 +12915,7 @@ export function normalizeConsensusRunToUIViewModel(
       questionText,
       normalizedEngines.map((e) => e.displayName),
       memOSFallback,
-      Number(runOrMessage?.achievedAgreement ?? 97)
+      Number(runOrMessage?.achievedAgreement ?? 0)
     );
 
   return {
