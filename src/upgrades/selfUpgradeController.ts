@@ -92,7 +92,7 @@ function safeSessionId(): string {
     .toString("hex")}`;
 }
 
-function assertSafeRelativePath(filePath: string): string {
+export function assertSafeRelativePath(filePath: string): string {
   const clean = String(filePath || "").trim().replace(/^[/\\]+/, "");
 
   if (!clean || path.isAbsolute(clean)) {
