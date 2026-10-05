@@ -3248,7 +3248,9 @@ export default function App() {
                 r.successfulCandidate ===
                   true &&
                 r.checks?.lint === true &&
-                r.checks?.build === true
+                r.checks?.build === true &&
+                r.checks?.selfTest === true &&
+                r.checks?.selfDiagnosis === true
             )
           : null;
 
