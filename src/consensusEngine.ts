@@ -12687,40 +12687,29 @@ export function normalizeConsensusRunToUIViewModel(
           0
       );
 
-      const fallbackTel = computeSingleEngineTelemetry(
-        engineKey,
-        idx,
-        questionText,
-        questionText,
-        String(nodeRec?.initialReply || ""),
-        String(nodeRec?.finalMatchedReply || ""),
-        String(nodeRec?.detailedResponse || ""),
-        agreementScore
-      );
-
       const latencyMs = Number(
-        metaRec?.latencyMs ?? nodeRec?.latencyMs ?? fallbackTel.latencyMs
+        metaRec?.latencyMs ?? nodeRec?.latencyMs ?? 0
       );
       const round1LatencyMs = Number(
         metaRec?.round1LatencyMs ??
           nodeRec?.round1LatencyMs ??
-          fallbackTel.round1LatencyMs
+          0
       );
       const consensusSyncLatencyMs = Number(
         metaRec?.consensusSyncLatencyMs ??
           nodeRec?.consensusSyncLatencyMs ??
-          fallbackTel.consensusSyncLatencyMs
+          0
       );
 
       const promptTokens = Number(
         metaRec?.tokens?.prompt ??
           nodeRec?.tokenUsage?.promptTokens ??
-          fallbackTel.tokenUsage.promptTokens
+          0
       );
       const completionTokens = Number(
         metaRec?.tokens?.completion ??
           nodeRec?.tokenUsage?.completionTokens ??
-          fallbackTel.tokenUsage.completionTokens
+          0
       );
       const totalTokens = Number(
         metaRec?.tokens?.total ??
