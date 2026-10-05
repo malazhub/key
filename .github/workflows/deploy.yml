@@ -24,6 +24,12 @@ jobs:
           node-version: "20"
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
+      - name: Self-Diagnosis
+        run: npm run lint
+
+      - name: Version 8 Self-Tests
+        run: node --import tsx --input-type=module -e "import { run_self_tests } from './src/upgrades/version8Harness.ts'; const r = await run_self_tests(); if (!r.passed) { console.error(JSON.stringify(r)); process.exit(1); } console.log(JSON.stringify({ passed_checks: r.passed_checks, total_checks: r.total_checks }));"
+
       - name: Build Production Bundle
         run: npm run build
       - name: Upload Pages Artifact
