@@ -2645,6 +2645,9 @@ export default function App() {
   const [selfUpgradeRounds, setSelfUpgradeRounds] =
     useState<number>(30);
 
+  const [selfUpgradeConformityTarget, setSelfUpgradeConformityTarget] =
+    useState<number>(100);
+
   const [selfUpgradeStatus, setSelfUpgradeStatus] =
     useState<string>("");
 
@@ -3210,6 +3213,8 @@ export default function App() {
                 selfUpgradeInstruction,
               requestedRounds:
                 selfUpgradeRounds,
+              conformityTarget:
+                selfUpgradeConformityTarget,
               deploy: false,
             }),
           }
