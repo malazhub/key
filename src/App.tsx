@@ -1317,10 +1317,10 @@ function enrichAndRepairAssistantMessage(
           .map((n, idx) => ({
             engineIndex: idx + 1,
             modelName: n.modelName,
-            latencyMs: n.latencyMs,
-            round1LatencyMs: n.round1LatencyMs,
-            consensusSyncLatencyMs: n.consensusSyncLatencyMs,
-            tokenUsage: n.tokenUsage,
+            latencyMs: n.latencyMs ?? 0,
+            round1LatencyMs: n.round1LatencyMs ?? 0,
+            consensusSyncLatencyMs: n.consensusSyncLatencyMs ?? 0,
+            tokenUsage: n.tokenUsage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
             agreementScore: n.agreementScore,
             status: "converged" as const,
           }));
@@ -5027,6 +5027,8 @@ const data = await res.json();
 
 The live AI engine pipeline could not obtain a generated response for the current query (**"${queryText}"**). No fabricated engine answer or synthetic consensus was substituted.`;
 
+      const instantFallbackApp = buildInstantClientAppFromContext(queryText, liveComputedContent, liveFallbackData?.generatedAppHtml || "", liveFallbackData?.appTitle || "Interactive Application Preview");
+
       const fallbackRaw: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -5048,7 +5050,7 @@ The live AI engine pipeline could not obtain a generated response for the curren
         achievedAgreement: achieved,
         iterationsRequired:
           Number.isInteger(liveFallbackData?.iterationsRequired)
-            ? liveFallbackData.iterationsRequired
+            ? liveFallbackData?.iterationsRequired ?? 0
             : 0,
         consensusSummary:
           liveFallbackData?.consensusSummary ||
