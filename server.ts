@@ -3839,6 +3839,7 @@ Return ONLY JSON in this exact shape:
               "Improve KEY's architecture, resilience, defender integration, and self-upgrade reliability."
           ),
           requestedRounds,
+          conformityTarget: Number(req.body?.conformityTarget ?? req.body?.targetConformity ?? 100),
           candidates:
             Array.isArray(req.body?.candidates) && req.body.candidates.length > 0
               ? (req.body.candidates as SelfUpgradeRoundCandidate[])
