@@ -11081,6 +11081,7 @@ const liveRoundResponses: Array<{
 let actualRoundsCompleted = 0;
 let actualAgreement = 0;
 let currentRoundPayload = multimodalContents;
+const liveDispatchFailures: Array<{ modelName: string; reason: string }> = [];
 
 while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
   actualRoundsCompleted += 1;
@@ -11111,9 +11112,18 @@ while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
           finalAnswer: answer,
         };
       } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : String(error);
+        if (isQuotaOrRateLimitError(error)) {
+          markModelCooldown(modelName, error);
+        }
+        liveDispatchFailures.push({
+          modelName,
+          reason: reason.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_KEY]").slice(0, 600),
+        });
         console.error(
           `[KEY] Round ${actualRoundsCompleted} failed for ${modelName}:`,
-          error
+          reason
         );
         return null;
       }
@@ -11130,10 +11140,10 @@ while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
   );
 
   if (successfulResponses.length === 0) {
-    throw new Error(
-      `Live engine dispatch failed during consensus round ${actualRoundsCompleted}. ` +
-      `No live engine returned a usable response.`
-    );
+    // Do not terminate here: the sequential Promise.any fallback below is the
+    // recovery path for a completely failed parallel hedge. The previous
+    // implementation threw at this point, making that fallback unreachable.
+    break;
   }
 
   const answers = successfulResponses.map(
@@ -11155,13 +11165,7 @@ while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
   }
 }
 
-if (liveRoundResponses.length === 0) {
-  throw new Error(
-    `Live engine dispatch failed for query "${cleanQuestion}". ` +
-    `No usable live-engine responses were produced.`
-  );
-}
-
+if (liveRoundResponses.length > 0) {
 deterministicParsed = {
   finalAnswer: liveRoundResponses[0].finalAnswer,
   hasAppPreview: shouldGenerateAppPreview,
@@ -11189,6 +11193,7 @@ deterministicParsed = {
     })
   ),
 };
+}
 
   if (!deterministicParsed) {
     const remainingModels = getAvailableCandidateModels();
@@ -11312,12 +11317,18 @@ iterationsRequired: actualRoundsCompleted,
     };
   }
 
-  // All user queries, including greetings/small-talk, must remain on the
-  // live engine path. Never synthesize a predefined answer locally.
+  // All live recovery paths failed. Surface the actual provider diagnostics
+  // instead of a generic zero-millisecond failure.
+  const failureSummary =
+    liveDispatchFailures.length > 0
+      ? liveDispatchFailures
+          .map((f) => `${f.modelName}: ${f.reason}`)
+          .join(" | ")
+      : "No provider diagnostics were captured.";
   throw new Error(
-  `Live engine dispatch failed for query "${cleanQuestion}". ` +
-  `No live engine returned a usable response, so no consensus result was generated.`
-);
+    `Live engine dispatch failed for query "${cleanQuestion}". ` +
+    `No live engine returned a usable response. Attempts: ${failureSummary}`
+  );
 
 
 }
