@@ -2340,10 +2340,15 @@ Mode: ${
 
         const response = await ai.models.generateContent({
           model: modelName,
-          contents: [
-            ...(typeof multimodalContents === "string" ? [multimodalContents] : multimodalContents.parts.map((part) => ({ role: "user" as const, parts: [part] }))),
-            { role: "user", parts: [{ text: roundContext }] },
-          ],
+          contents:
+            typeof multimodalContents === "string"
+              ? multimodalContents + roundContext
+              : {
+                  parts: [
+                    ...multimodalContents.parts,
+                    { text: roundContext },
+                  ],
+                },
           config: {
             systemInstruction,
             temperature: 0.35,
