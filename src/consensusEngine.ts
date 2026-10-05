@@ -13566,7 +13566,7 @@ export function repairJsonStructure(rawData: string): Record<string, any> {
     hasAppPreview: false,
     appTitle: "",
     generatedAppHtml: "",
-    achievedAgreement: 99,
+    achievedAgreement: 0,
     repairedJson: true,
   };
 }
