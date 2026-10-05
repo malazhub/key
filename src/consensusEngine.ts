@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 export * from "./upgrades/version8Harness";
+
+type ConvergenceRound = { round: number; similarityScore: number; note: string };
 import {
   HARNESS_VERSION as V8_HARNESS_VERSION,
   CANARY_TOKEN as V8_CANARY_TOKEN,
@@ -13484,7 +13486,7 @@ export function executeConsensus(
   let currentPayload = payload;
   let responses: string[] = [];
   while (
-  agreement < safeTarget &&
+  agreement < 0.95 &&
   iterations < MAX_REVISIONS
 ) {
     responses = engines.map((engine) => engine.query(currentPayload));
