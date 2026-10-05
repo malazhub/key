@@ -1369,7 +1369,7 @@ function enrichAndRepairAssistantMessage(
           totalTokensUsed: totalPromptTokens + totalCompletionTokens,
           timestamp: msg.timestamp || new Date().toISOString(),
           memoryOS: memOS,
-        };
+        } as ConsensusLoopMetadata;
       })(),
   };
 }
