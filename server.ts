@@ -3747,6 +3747,45 @@ export const VERSION8_SUPERSEDING_ENGINE = {
     }
   });
 
+  app.get("/api/engine-health", async (_req, res) => {
+    const startedAt = Date.now();
+    const results = await Promise.all(
+      CANDIDATE_MODELS.map(async (modelName) => {
+        const modelStarted = Date.now();
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: "Reply with exactly HEALTH_OK.",
+            config: { temperature: 0 },
+          });
+          const text = String(response.text || "").trim();
+          return {
+            model: modelName,
+            ok: text.length > 0,
+            latencyMs: Date.now() - modelStarted,
+            response: text.slice(0, 40),
+          };
+        } catch (error) {
+          return {
+            model: modelName,
+            ok: false,
+            latencyMs: Date.now() - modelStarted,
+            error: describeProviderError(error),
+          };
+        }
+      })
+    );
+    const successful = results.filter((r) => r.ok).length;
+    res.status(successful > 0 ? 200 : 503).json({
+      ok: successful > 0,
+      apiKeyConfigured: Boolean(process.env.GEMINI_API_KEY),
+      attempted: results.length,
+      successful,
+      totalLatencyMs: Date.now() - startedAt,
+      models: results,
+    });
+  });
+
   app.get("/api/self-upgrade-structure", (_req, res) => {
     try {
       const registryPath = path.join(
