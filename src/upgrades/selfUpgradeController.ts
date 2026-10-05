@@ -46,6 +46,7 @@ export interface SelfUpgradeRoundResult {
     lint: boolean;
     build: boolean;
     selfTest: boolean;
+    selfDiagnosis: boolean;
   };
   conformityScore: number;
   generated: boolean;
@@ -191,6 +192,17 @@ function persistSession(session: SelfUpgradeSession): void {
   );
 }
 
+async function runSelfDiagnosis(
+  workspace: string
+): Promise<{ ok: boolean; output: string }> {
+  const diagnosisCommand =
+    "node --import tsx --input-type=module -e " +
+    JSON.stringify(
+      "import fs from 'fs'; const required=['package.json','src/consensusEngine.ts','src/upgrades/version8Harness.ts','src/upgrades/selfUpgradeController.ts','dist/index.html']; const missing=required.filter(p=>!fs.existsSync(p)); if(missing.length){console.error('SELF_DIAGNOSIS_MISSING:'+missing.join(','));process.exit(1)}; const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); if(!pkg.scripts?.build||!pkg.scripts?.lint){console.error('SELF_DIAGNOSIS_PACKAGE_SCRIPTS_MISSING');process.exit(1)}; console.log('SELF_DIAGNOSIS_OK')"
+    );
+  return runCheck(workspace, diagnosisCommand);
+}
+
 async function runCheck(
   workspace: string,
   command: string
@@ -325,9 +337,13 @@ export async function runBoundedSelfUpgradeSession(
       )
     : { ok: false, output: "Baseline build failed; self-test was not executed." };
 
-  if (!baselineLint.ok || !baselineBuild.ok || !baselineSelfTest.ok) {
+  const baselineSelfDiagnosis = baselineBuild.ok
+    ? await runSelfDiagnosis(activeRoot)
+    : { ok: false, output: "Baseline build failed; self-diagnosis was not executed." };
+
+  if (!baselineLint.ok || !baselineBuild.ok || !baselineSelfTest.ok || !baselineSelfDiagnosis.ok) {
     throw new Error(
-      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}, SelfTest=${baselineSelfTest.ok}.`
+      `Active version failed its baseline capability gate. Lint=${baselineLint.ok}, Build=${baselineBuild.ok}, SelfTest=${baselineSelfTest.ok}, SelfDiagnosis=${baselineSelfDiagnosis.ok}.`
     );
   }
 
@@ -335,6 +351,7 @@ export async function runBoundedSelfUpgradeSession(
     { id: "lint", passed: baselineLint.ok },
     { id: "build", passed: baselineBuild.ok },
     { id: "self-test", passed: baselineSelfTest.ok },
+    { id: "self-diagnosis", passed: baselineSelfDiagnosis.ok },
   ];
 
   const session: SelfUpgradeSession = {
@@ -454,6 +471,7 @@ export async function runBoundedSelfUpgradeSession(
             lint: false,
             build: false,
             selfTest: false,
+            selfDiagnosis: false,
           },
           conformityScore: 0,
           generated,
@@ -482,8 +500,10 @@ export async function runBoundedSelfUpgradeSession(
         "node --import tsx --input-type=module -e \"import { run_self_tests } from './src/upgrades/version8Harness.ts'; const r = await run_self_tests(); if (!r.passed) process.exit(1); console.log(JSON.stringify({ passed_checks: r.passed_checks, total_checks: r.total_checks }));\""
       );
 
+      const selfDiagnosis = await runSelfDiagnosis(candidateWorkspace);
+
       const conformityScore = Number(
-        (((Number(lint.ok) + Number(build.ok) + Number(selfTest.ok)) / 3) * 100).toFixed(2)
+        (((Number(lint.ok) + Number(build.ok) + Number(selfTest.ok) + Number(selfDiagnosis.ok)) / 4) * 100).toFixed(2)
       );
 
       const candidateCapabilities: CapabilityTestResult[] = [
@@ -498,6 +518,10 @@ export async function runBoundedSelfUpgradeSession(
         {
           id: "self-test",
           passed: selfTest.ok,
+        },
+        {
+          id: "self-diagnosis",
+          passed: selfDiagnosis.ok,
         },
       ];
 
@@ -519,9 +543,10 @@ export async function runBoundedSelfUpgradeSession(
           checks: {
             lint: lint.ok,
             build: build.ok,
-            selfTest: false,
+            selfTest: selfTest.ok,
+            selfDiagnosis: selfDiagnosis.ok,
           },
-          conformityScore: Number(((Number(lint.ok) + Number(build.ok)) / 3 * 100).toFixed(2)),
+          conformityScore: conformityScore,
           generated,
           deployed: false,
           successfulCandidate: false,
@@ -552,7 +577,8 @@ export async function runBoundedSelfUpgradeSession(
           checks: {
             lint: true,
             build: false,
-            selfTest: false,
+            selfTest: selfTest.ok,
+            selfDiagnosis: selfDiagnosis.ok,
           },
           conformityScore: Number((100 / 3).toFixed(2)),
           generated,
@@ -684,13 +710,10 @@ export async function runBoundedSelfUpgradeSession(
       // It only records the successful candidate and continues
       // the cumulative upgrade loop.
       if (!request.deploy) {
+        // A verified conformity result is terminal for this campaign:
+        // keep the exact cumulative runtime candidate and stop immediately.
         previousFailure = "";
         previousCandidate = candidate;
-
-        if (round < requestedRounds) {
-          continue;
-        }
-
         session.status = "PENDING_ADMIN_DECISION";
         session.updatedAt = new Date().toISOString();
         persistSession(session);
