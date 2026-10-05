@@ -62,6 +62,7 @@ export interface SelfUpgradeSession {
   sessionId: string;
   instruction: string;
   requestedRounds: number;
+  conformityTarget: number;
   completedRounds: number;
   status: SelfUpgradeSessionStatus;
   workspaceRoot: string;
