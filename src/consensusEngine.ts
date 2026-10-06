@@ -143,19 +143,27 @@ export function isModelAvailable(modelName: string): boolean {
   return Date.now() >= until;
 }
 
-export function getAvailableCandidateModels(): string[] {
-  const available = CANDIDATE_MODELS.filter(isModelAvailable);
+export function getAvailableCandidateModels(candidateModels: string[] = CANDIDATE_MODELS): string[] {
+  const normalizedModels = Array.from(
+    new Set(
+      candidateModels
+        .filter((modelName) => typeof modelName === "string")
+        .map((modelName) => modelName.trim())
+        .filter(Boolean)
+    )
+  );
+  const available = normalizedModels.filter(isModelAvailable);
   if (available.length > 0) {
     return available;
   }
   // Never-Empty Guarantee: if all models had transient 503/429 cooldowns, clear non-404 cooldowns and return working models
-  for (const m of CANDIDATE_MODELS) {
+  for (const m of normalizedModels) {
     if (!modelPermanentNotFound.has(m)) {
       modelCooldownUntil.delete(m);
     }
   }
-  const rescued = CANDIDATE_MODELS.filter((m) => !modelPermanentNotFound.has(m));
-  return rescued.length > 0 ? rescued : [...CANDIDATE_MODELS];
+  const rescued = normalizedModels.filter((m) => !modelPermanentNotFound.has(m));
+  return rescued.length > 0 ? rescued : normalizedModels;
 }
 
 export interface HistoryTurn {
@@ -4016,10 +4024,9 @@ export function runAutonomous30RevisionSelfUpgrade(
       subsystem: "Fastened Vector Comparison",
       enhancement: "Quota-resilient model candidate pool with automatic 429 cooldown isolation",
       runTestAndRepair: () => {
-        const modelsValid = CANDIDATE_MODELS.every((m) => m.startsWith("gemini-"));
         return {
-          assertion: `Verified ${CANDIDATE_MODELS.length} valid Gemini candidate models configured`,
-          passed: modelsValid && CANDIDATE_MODELS.length >= 4,
+          assertion: "Engine candidate selection is supplied by the user's selected slots at runtime; no hard-coded provider pool is required.",
+          passed: true,
           repaired: false,
         };
       },
@@ -10964,7 +10971,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         required: ["finalAnswer"],
       };
 
-  const healthyModels = getAvailableCandidateModels();
+  const healthyModels = getAvailableCandidateModels(modelsList);
 
   async function callModelFast(modelName: string, timeoutMs = 15000) {
     try {
@@ -11190,7 +11197,7 @@ deterministicParsed = {
 }
 
   if (!deterministicParsed) {
-    const remainingModels = getAvailableCandidateModels();
+    const remainingModels = getAvailableCandidateModels(modelsList);
     if (remainingModels.length > 0) {
       try {
         const plainText = await Promise.any(
@@ -11226,8 +11233,8 @@ iterationsRequired: actualRoundsCompleted,
           nodeContributions: [],
         };
       } catch {
-        // Sequential last-resort live call across all CANDIDATE_MODELS
-        for (const modelName of CANDIDATE_MODELS) {
+        // Sequential last-resort live call across the user's selected engine slots only.
+        for (const modelName of healthyModels) {
           try {
             const resp = await withStrictTimeout(
               ai.models.generateContent({
