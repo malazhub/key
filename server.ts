@@ -10,6 +10,8 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
+  dispatchEngine,
+  ENGINE_REGISTRY,
   runSmartMemoryConsensusLoop as runSharedConsensusLoop,
   executeConsensusApiPayload,
   isKey1CloneOrButtonRequest as isSharedKey1DeployRequest,
@@ -2720,7 +2722,50 @@ async function startServer() {
     }
     next();
   });
+  app.use((req, res, next) => {
+  const origin =
+    String(req.headers.origin || "");
 
+  const allowed =
+    origin ===
+      "https://malazhub.github.io" ||
+    origin.startsWith(
+      "http://localhost:"
+    ) ||
+    origin.startsWith(
+      "http://127.0.0.1:"
+    );
+
+  if (allowed) {
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
+    res.setHeader(
+      "Vary",
+      "Origin"
+    );
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  if (
+    req.method === "OPTIONS"
+  ) {
+    res.status(204).end();
+    return;
+  }
+
+  next();
+});
   app.use(express.json({ limit: "50mb" }));
 
   // Admin Authentication & Direct Repository Endpoints (exclusively targeting https://github.com/malazhub/key)
@@ -3450,6 +3495,69 @@ async function startServer() {
       });
     }
   });
+  
+  app.post(
+  "/api/engine-test",
+  async (req, res) => {
+    try {
+      const engine =
+        String(
+          req.body?.modelName || ""
+        ).trim();
+
+      if (!engine) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "modelName is required.",
+        });
+        return;
+      }
+
+      if (!ENGINE_REGISTRY[engine]) {
+        res.status(400).json({
+          ok: false,
+          error:
+            `No provider mapping exists for "${engine}".`,
+        });
+        return;
+      }
+
+      const started =
+        Date.now();
+
+      const result =
+        await dispatchEngine({
+          engine,
+          prompt:
+            "Reply with exactly: ENGINE_OK",
+          systemInstruction:
+            "You are a health check. Reply with exactly ENGINE_OK.",
+        });
+
+      res.json({
+        ok: true,
+        engine,
+        provider:
+          result.provider,
+        modelId:
+          result.modelId,
+        answer:
+          result.answer,
+        totalLatencyMs:
+          Date.now() - started,
+      });
+    } catch (error) {
+      res.status(502).json({
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      });
+    }
+  }
+);
 
   app.post("/api/consensus-chat", async (req, res) => {
     try {
@@ -3502,12 +3610,49 @@ async function startServer() {
         return;
       }
 
-      const modelsList: string[] = Array.isArray(activeModels)
-        ? activeModels.filter(
-            (m) => typeof m === "string" && m.trim().length > 0
-          )
-        : [];
+      const modelsList: string[] =
+  Array.from(
+    new Set(
+      (
+        Array.isArray(activeModels)
+          ? activeModels
+          : []
+      )
+        .filter(
+          (model) =>
+            typeof model ===
+            "string"
+        )
+        .map((model) =>
+          model.trim()
+        )
+        .filter(Boolean)
+    )
+  );
 
+if (modelsList.length === 0) {
+  res.status(400).json({
+    error:
+      "No AI engine was selected by the user. Select at least one engine slot.",
+  });
+  return;
+}
+
+const unknownModels =
+  modelsList.filter(
+    (model) =>
+      !ENGINE_REGISTRY[model]
+  );
+
+if (unknownModels.length > 0) {
+  res.status(400).json({
+    error:
+      `No provider mapping exists for engine(s): ${unknownModels.join(
+        ", "
+      )}.`,
+  });
+  return;
+}
       if (modelsList.length === 0) {
         res.status(400).json({
           error: "No engine has been selected. Choose at least one engine slot.",
@@ -3515,15 +3660,20 @@ async function startServer() {
         return;
       }
 
-      const safeTarget = Math.max(
-        0,
-        Math.min(
-          100,
-          typeof targetAgreement === "number" && Number.isFinite(targetAgreement)
-            ? targetAgreement
-            : 95
+      const safeTarget =
+  Math.max(
+    0,
+    Math.min(
+      100,
+      typeof targetAgreement ===
+        "number" &&
+        Number.isFinite(
+          targetAgreement
         )
-      );
+        ? targetAgreement
+        : 95
+    )
+  );
 
       const cleanHistory: HistoryTurn[] = Array.isArray(history)
         ? history
