@@ -164,6 +164,162 @@ function createGenAIClient(): GoogleGenAI {
 // Current production models with Google Search grounding support.
 // Keep the first model stable/current; older preview aliases can be shut down without notice.
 export const CANDIDATE_MODELS: string[] = [];
+function getServerEnv(name: string): string {
+  try {
+    if (
+      typeof process !== "undefined" &&
+      process.env &&
+      typeof process.env[name] === "string"
+    ) {
+      return process.env[name]!.trim();
+    }
+  } catch {
+    // Browser-safe.
+  }
+
+  return "";
+}
+
+function redactProviderError(value: unknown): string {
+  const raw =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+      ? value
+      : JSON.stringify(value ?? "");
+
+  return String(raw)
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_KEY]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/([?&]key=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(
+      /(api[-_ ]?key\s*[:=]\s*)[^\s,}]+/gi,
+      "$1[REDACTED]"
+    )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1200);
+}
+
+function promptToText(prompt: unknown): string {
+  if (typeof prompt === "string") {
+    return prompt;
+  }
+
+  if (
+    prompt &&
+    typeof prompt === "object" &&
+    Array.isArray((prompt as any).parts)
+  ) {
+    return (prompt as any).parts
+      .map((part: any) => {
+        if (typeof part?.text === "string") {
+          return part.text;
+        }
+
+        if (part?.inlineData) {
+          return `[Attached ${
+            part.inlineData.mimeType || "binary"
+          } content omitted for text-only provider]`;
+        }
+
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  try {
+    return JSON.stringify(prompt);
+  } catch {
+    return String(prompt ?? "");
+  }
+}
+
+async function readProviderJson(
+  response: Response,
+  engine: string,
+  provider: string
+): Promise<any> {
+  const raw = await response.text();
+
+  let data: any;
+
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `${engine}: ${provider} returned invalid JSON (HTTP ${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    const providerMessage =
+      data?.error?.message ||
+      data?.error?.detail ||
+      data?.message ||
+      data?.error ||
+      raw;
+
+    throw new Error(
+      `${engine}: ${provider} HTTP ${response.status}: ${providerMessage}`
+    );
+  }
+
+  return data;
+}
+
+function extractChoiceText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((part: any) =>
+        typeof part === "string"
+          ? part
+          : typeof part?.text === "string"
+          ? part.text
+          : ""
+      )
+      .join("")
+      .trim();
+  }
+
+  return "";
+}
+
+function schemaInstruction(responseSchema: unknown): string {
+  if (!responseSchema) {
+    return "";
+  }
+
+  let serialized = "";
+
+  try {
+    serialized = JSON.stringify(responseSchema);
+  } catch {
+    serialized = "";
+  }
+
+  return [
+    "",
+    "STRUCTURED OUTPUT REQUIREMENT:",
+    "Return valid JSON only.",
+    "Do not use markdown fences.",
+    "The JSON must conform to this schema:",
+    serialized,
+  ].join("\n");
+}
+
+function shouldRetryProviderError(error: unknown): boolean {
+  const message = redactProviderError(error);
+
+  return /(?:HTTP\s+)?(?:401|403|408|409|425|429|500|502|503|504)\b|quota|rate.?limit|resource.?exhausted|overloaded|temporarily unavailable|timeout/i.test(
+    message
+  );
+}
 
 export function withStrictTimeout<T>(
   promise: Promise<T>,
@@ -11202,91 +11358,385 @@ let actualAgreement = 0;
 let currentRoundPayload = multimodalContents;
 const liveDispatchFailures: Array<{ modelName: string; reason: string }> = [];
 
-while (actualAgreement < safeTarget && actualRoundsCompleted < 50) {
+const MAX_ROUNDS = 50;
+
+const selectedModels =
+  Array.from(
+    new Set(
+      (
+        Array.isArray(modelsList)
+          ? modelsList
+          : []
+      )
+        .map((model) =>
+          String(model || "").trim()
+        )
+        .filter(Boolean)
+    )
+  );
+
+if (selectedModels.length === 0) {
+  throw new Error(
+    "No AI engine was selected. Select at least one engine slot."
+  );
+}
+
+const unknownModels =
+  selectedModels.filter(
+    (model) =>
+      !ENGINE_REGISTRY[model]
+  );
+
+if (unknownModels.length > 0) {
+  throw new Error(
+    `No provider mapping exists for engine(s): ${unknownModels.join(
+      ", "
+    )}.`
+  );
+}
+
+const safeTarget =
+  Math.max(
+    0,
+    Math.min(
+      100,
+      typeof targetAgreement ===
+        "number" &&
+        Number.isFinite(
+          targetAgreement
+        )
+        ? targetAgreement
+        : 95
+    )
+  );
+
+let actualRoundsCompleted = 0;
+let actualAgreement = 0;
+
+let currentRoundPayload: unknown =
+  multimodalContents;
+
+let lastRoundResults:
+  EngineDispatchResult[] = [];
+
+const liveDispatchFailures: Array<{
+  modelName: string;
+  provider?: string;
+  reason: string;
+  round: number;
+}> = [];
+
+const convergenceRounds: Array<{
+  round: number;
+  agreement: number;
+  note: string;
+}> = [];
+
+do {
   actualRoundsCompleted += 1;
 
-  const roundResults = await Promise.all(
-    healthyModels.map(async (modelName) => {
-      try {
-        const response = await withStrictTimeout(
-          ai.models.generateContent({
-            model: modelName,
-            contents: currentRoundPayload,
-            config: {
-              systemInstruction,
-              temperature: 0.25,
-            },
-          }),
-          15000,
-          `ConsensusRound${actualRoundsCompleted}(${modelName})`
-        );
+  const roundNumber =
+    actualRoundsCompleted;
 
-        const answer = response.text?.trim() || "";
-        if (!answer) {
-          throw new Error(`Empty response from ${modelName}`);
+  const settledResults =
+    await Promise.all(
+      selectedModels.map(
+        async (modelName) => {
+          try {
+            const dispatched =
+              await withStrictTimeout(
+                dispatchEngine({
+                  engine: modelName,
+                  prompt:
+                    currentRoundPayload,
+                  systemInstruction,
+                  responseSchema:
+                    shouldGenerateAppPreview
+                      ? responseSchemaConfig
+                      : undefined,
+                }),
+                15000,
+                `ConsensusRound${roundNumber}(${modelName})`
+              );
+
+            const answer =
+              dispatched.answer.trim();
+
+            if (!answer) {
+              throw new Error(
+                `${modelName}: empty provider response`
+              );
+            }
+
+            return {
+              ...dispatched,
+              answer,
+            };
+          } catch (error) {
+            const reason =
+              redactProviderError(
+                error
+              );
+
+            liveDispatchFailures.push(
+              {
+                modelName,
+                provider:
+                  ENGINE_REGISTRY[
+                    modelName
+                  ]?.provider,
+                reason,
+                round:
+                  roundNumber,
+              }
+            );
+
+            console.error(
+              `[KEY] Round ${roundNumber} failed for ${modelName}: ${reason}`
+            );
+
+            return null;
+          }
         }
+      )
+    );
 
-        return {
-          modelName,
-          finalAnswer: answer,
-        };
-      } catch (error) {
-        const reason =
-          error instanceof Error ? error.message : String(error);
-        if (isQuotaOrRateLimitError(error)) {
-          markModelCooldown(modelName, error);
-        }
-        liveDispatchFailures.push({
-          modelName,
-          reason: reason.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_KEY]").slice(0, 600),
-        });
-        console.error(
-          `[KEY] Round ${actualRoundsCompleted} failed for ${modelName}:`,
-          reason
-        );
-        return null;
-      }
-    })
-  );
+  const successfulResults =
+    settledResults.filter(
+      (
+        result
+      ): result is EngineDispatchResult =>
+        result !== null &&
+        typeof result.answer ===
+          "string" &&
+        result.answer
+          .trim()
+          .length > 0
+    );
 
-  const successfulResponses = roundResults.filter(
-    (
-      result
-    ): result is {
-      modelName: string;
-      finalAnswer: string;
-    } => Boolean(result?.finalAnswer)
-  );
+  if (
+    successfulResults.length === 0
+  ) {
+    const failures =
+      liveDispatchFailures
+        .filter(
+          (failure) =>
+            failure.round ===
+            roundNumber
+        )
+        .map(
+          (failure) =>
+            `- ${failure.modelName}${
+              failure.provider
+                ? ` [${failure.provider}]`
+                : ""
+            }: ${failure.reason}`
+        )
+        .join("\n");
 
-  if (successfulResponses.length === 0) {
-    // Do not terminate here: the sequential Promise.any fallback below is the
-    // recovery path for a completely failed parallel hedge. The previous
-    // implementation threw at this point, making that fallback unreachable.
-    break;
-  }
-
-  const answers = successfulResponses.map(
-    (result) => result.finalAnswer
-  );
-
-  actualAgreement = calculateSimilarity(answers);
-
-  liveRoundResponses.length = 0;
-  liveRoundResponses.push(...successfulResponses);
-
-  if (actualAgreement < safeTarget) {
-    currentRoundPayload = refinePayload(
-      answers,
-      typeof currentRoundPayload === "string"
-        ? currentRoundPayload
-        : String(currentRoundPayload)
+    throw new Error(
+      [
+        "KEY LIVE ENGINE DISPATCH FAILED",
+        "",
+        `Round: ${roundNumber}`,
+        `Selected engines: ${selectedModels.length}`,
+        "Successful engines: 0",
+        "",
+        "Engine failures:",
+        failures ||
+          "- No provider diagnostic was captured.",
+        "",
+        "No fabricated engine answer was produced.",
+        "No synthetic consensus was produced.",
+      ].join("\n")
     );
   }
-}
+
+  lastRoundResults =
+    successfulResults;
+
+  const answers =
+    successfulResults.map(
+      (result) =>
+        result.answer.trim()
+    );
+
+  actualAgreement =
+    calculateSimilarity(
+      answers
+    );
+
+  convergenceRounds.push({
+    round: roundNumber,
+    agreement:
+      actualAgreement,
+    note:
+      actualAgreement >=
+      safeTarget
+        ? `Real agreement reached ${actualAgreement}% against target ${safeTarget}%.`
+        : `Real agreement is ${actualAgreement}%; another live round is required.`,
+  });
+
+  if (
+    actualAgreement <
+      safeTarget &&
+    roundNumber <
+      MAX_ROUNDS
+  ) {
+    currentRoundPayload =
+      refinePayload(
+        answers,
+        typeof currentRoundPayload ===
+          "string"
+          ? currentRoundPayload
+          : promptToText(
+              currentRoundPayload
+            )
+      );
+  }
+} while (
+  actualAgreement <
+    safeTarget &&
+  actualRoundsCompleted <
+    MAX_ROUNDS
+);
 
 if (liveRoundResponses.length > 0) {
 deterministicParsed = {
-  finalAnswer: liveRoundResponses[0].finalAnswer,
+  export function selectConsensusAnswer(
+  answers: string[],
+  similarity: (
+    a: string,
+    b: string
+  ) => number
+): string {
+  if (answers.length === 0) {
+    return "";
+  }
+
+  if (answers.length === 1) {
+    return answers[0];
+  }
+
+  let bestIndex = 0;
+  let bestScore = -Infinity;
+
+  for (
+    let i = 0;
+    i < answers.length;
+    i += 1
+  ) {
+    let score = 0;
+
+    for (
+      let j = 0;
+      j < answers.length;
+      j += 1
+    ) {
+      if (i === j) {
+        continue;
+      }
+
+      score += similarity(
+        answers[i],
+        answers[j]
+      );
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
+  return answers[bestIndex];
+}
+  const answers =
+  lastRoundResults.map(
+    (result) =>
+      result.answer
+  );
+
+const finalAnswer =
+  selectConsensusAnswer(
+    answers,
+    (a, b) =>
+      calculateSimilarity([
+        a,
+        b,
+      ])
+  );
+
+const reachedTarget =
+  actualAgreement >=
+  safeTarget;
+
+const hitCeiling =
+  !reachedTarget &&
+  actualRoundsCompleted >=
+    MAX_ROUNDS;
+
+deterministicParsed = {
+  finalAnswer,
+
+  hasAppPreview:
+    shouldGenerateAppPreview,
+
+  appTitle:
+    shouldGenerateAppPreview
+      ? `Interactive Application Preview (${nextVer})`
+      : "",
+
+  generatedAppHtml: "",
+
+  achievedAgreement:
+    actualAgreement,
+
+  targetAgreement:
+    safeTarget,
+
+  iterationsRequired:
+    actualRoundsCompleted,
+
+  stopReason:
+    reachedTarget
+      ? "TARGET_REACHED"
+      : hitCeiling
+      ? "ROUND_CEILING_REACHED"
+      : "ENGINE_FAILURE",
+
+  consensusSummary:
+    reachedTarget
+      ? `Real agreement reached ${actualAgreement}% after ${actualRoundsCompleted} round(s).`
+      : `50-round ceiling reached at ${actualAgreement}% against target ${safeTarget}%.`,
+
+  convergenceRounds,
+
+  nodeContributions:
+    lastRoundResults.map(
+      (result) => ({
+        modelName:
+          result.engine,
+        provider:
+          result.provider,
+        providerModel:
+          result.modelId,
+        initialReply:
+          result.answer,
+        finalMatchedReply:
+          result.answer,
+        detailedResponse:
+          result.answer,
+        agreementScore:
+          calculateSimilarity([
+            result.answer,
+            finalAnswer,
+          ]),
+        latencyMs:
+          result.latencyMs,
+      })
+    ),
+};
   hasAppPreview: shouldGenerateAppPreview,
   appTitle: shouldGenerateAppPreview
     ? `Interactive Application Preview (${nextVer})`
@@ -13516,20 +13966,450 @@ export function buildHistoryGraphProjection(
 // ============================================================================
 
 const MAX_REVISIONS = 50;
+export async function dispatchEngine(
+  request: EngineDispatchRequest
+): Promise<EngineDispatchResult> {
+  const startedAt = Date.now();
 
-export function calculateSimilarity(responses: string[]): number {
-  if (!Array.isArray(responses) || responses.length === 0) return 0;
-  if (responses.length === 1) return 1;
-  const tokenSets = responses.map((r) => extractSemanticTokens(r || ""));
+  const engine = String(request.engine || "").trim();
+  const registryEntry = ENGINE_REGISTRY[engine];
+
+  if (!registryEntry) {
+    throw new Error(`No provider mapping exists for "${engine}".`);
+  }
+
+  const {
+    provider,
+    modelEnv,
+    apiKeyEnv,
+    defaultModel,
+  } = registryEntry;
+
+  const modelId =
+    getServerEnv(modelEnv) || defaultModel;
+
+  if (!modelId) {
+    throw new Error(
+      `${engine}: provider model ID is missing.`
+    );
+  }
+
+  const systemInstruction =
+    `${request.systemInstruction || ""}${schemaInstruction(
+      request.responseSchema
+    )}`.trim();
+
+  const promptText = promptToText(request.prompt);
+
+  const finish = (
+    answer: string
+  ): EngineDispatchResult => {
+    const cleanAnswer =
+      String(answer || "").trim();
+
+    if (!cleanAnswer) {
+      throw new Error(
+        `${engine}: ${provider} returned an empty response.`
+      );
+    }
+
+    return {
+      engine,
+      provider,
+      modelId,
+      answer: cleanAnswer,
+      latencyMs:
+        Date.now() - startedAt,
+    };
+  };
+
+  try {
+    if (provider === "google") {
+      const primaryKey =
+        getServerEnv("GEMINI_API_KEY");
+
+      const secondaryKey =
+        getServerEnv("GEMINI_API_KEY_2");
+
+      const keys = Array.from(
+        new Set(
+          [primaryKey, secondaryKey]
+            .filter(Boolean)
+        )
+      );
+
+      if (keys.length === 0) {
+        throw new Error(
+          `${engine}: GEMINI_API_KEY and GEMINI_API_KEY_2 are not configured.`
+        );
+      }
+
+      let lastError: unknown = null;
+
+      for (
+        let index = 0;
+        index < keys.length;
+        index += 1
+      ) {
+        const key = keys[index];
+
+        try {
+          const parts =
+            request.prompt &&
+            typeof request.prompt ===
+              "object" &&
+            Array.isArray(
+              (request.prompt as any).parts
+            )
+              ? (request.prompt as any).parts
+              : [{ text: promptText }];
+
+          const generationConfig:
+            Record<string, unknown> = {};
+
+          if (request.responseSchema) {
+            generationConfig.responseMimeType =
+              "application/json";
+
+            generationConfig.responseSchema =
+              request.responseSchema;
+          }
+
+          const response =
+            await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+                modelId
+              )}:generateContent?key=${encodeURIComponent(
+                key
+              )}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+                body: JSON.stringify({
+                  systemInstruction: {
+                    parts: [
+                      {
+                        text:
+                          systemInstruction,
+                      },
+                    ],
+                  },
+                  contents: [
+                    {
+                      role: "user",
+                      parts,
+                    },
+                  ],
+                  ...(Object.keys(
+                    generationConfig
+                  ).length > 0
+                    ? { generationConfig }
+                    : {}),
+                }),
+              }
+            );
+
+          const data =
+            await readProviderJson(
+              response,
+              engine,
+              provider
+            );
+
+          const answer =
+            data?.candidates?.[0]?.content?.parts
+              ?.map(
+                (part: any) =>
+                  part?.text || ""
+              )
+              .join("")
+              .trim() || "";
+
+          return finish(answer);
+        } catch (error) {
+          lastError = error;
+
+          if (
+            index < keys.length - 1 &&
+            shouldRetryProviderError(error)
+          ) {
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(
+            `${engine}: Google provider failed.`
+          );
+    }
+
+    if (provider === "anthropic") {
+      const apiKey =
+        getServerEnv(apiKeyEnv);
+
+      if (!apiKey) {
+        throw new Error(
+          `${engine}: ${apiKeyEnv} is not configured.`
+        );
+      }
+
+      const response =
+        await fetch(
+          "https://api.anthropic.com/v1/messages",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "x-api-key": apiKey,
+              "anthropic-version":
+                "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              max_tokens: 4096,
+              temperature: 0,
+              system: systemInstruction,
+              messages: [
+                {
+                  role: "user",
+                  content: promptText,
+                },
+              ],
+            }),
+          }
+        );
+
+      const data =
+        await readProviderJson(
+          response,
+          engine,
+          provider
+        );
+
+      const answer =
+        extractChoiceText(
+          Array.isArray(data?.content)
+            ? data.content
+                .map(
+                  (part: any) =>
+                    part?.text || ""
+                )
+                .join("")
+            : data?.content
+        );
+
+      return finish(answer);
+    }
+
+    if (provider === "cohere") {
+      const apiKey =
+        getServerEnv(apiKeyEnv);
+
+      if (!apiKey) {
+        throw new Error(
+          `${engine}: ${apiKeyEnv} is not configured.`
+        );
+      }
+
+      const response =
+        await fetch(
+          "https://api.cohere.com/v2/chat",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: modelId,
+              temperature: 0,
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    systemInstruction,
+                },
+                {
+                  role: "user",
+                  content: promptText,
+                },
+              ],
+            }),
+          }
+        );
+
+      const data =
+        await readProviderJson(
+          response,
+          engine,
+          provider
+        );
+
+      return finish(
+        extractChoiceText(
+          data?.message?.content
+        )
+      );
+    }
+
+    const endpoints: Record<
+      string,
+      string
+    > = {
+      openai:
+        "https://api.openai.com/v1/chat/completions",
+
+      deepseek:
+        "https://api.deepseek.com/chat/completions",
+
+      groq:
+        "https://api.groq.com/openai/v1/chat/completions",
+
+      xai:
+        "https://api.x.ai/v1/chat/completions",
+
+      mistral:
+        "https://api.mistral.ai/v1/chat/completions",
+
+      perplexity:
+        "https://api.perplexity.ai/chat/completions",
+    };
+
+    const endpoint =
+      endpoints[provider];
+
+    if (!endpoint) {
+      throw new Error(
+        `${engine}: unsupported provider "${provider}".`
+      );
+    }
+
+    const apiKey =
+      getServerEnv(apiKeyEnv);
+
+    if (!apiKey) {
+      throw new Error(
+        `${engine}: ${apiKeyEnv} is not configured.`
+      );
+    }
+
+    const body: Record<
+      string,
+      unknown
+    > = {
+      model: modelId,
+      messages: [
+        {
+          role: "system",
+          content: systemInstruction,
+        },
+        {
+          role: "user",
+          content: promptText,
+        },
+      ],
+      temperature: 0,
+    };
+
+    if (request.responseSchema) {
+      body.response_format = {
+        type: "json_object",
+      };
+    }
+
+    const response =
+      await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+          Authorization:
+            `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+    const data =
+      await readProviderJson(
+        response,
+        engine,
+        provider
+      );
+
+    return finish(
+      extractChoiceText(
+        data?.choices?.[0]?.message
+          ?.content ??
+          data?.choices?.[0]?.text ??
+          data?.output_text
+      )
+    );
+  } catch (error) {
+    throw new Error(
+      redactProviderError(error)
+    );
+  }
+}
+
+export function calculateSimilarity(
+  responses: string[]
+): number {
+  if (
+    !Array.isArray(responses) ||
+    responses.length === 0
+  ) {
+    return 0;
+  }
+
+  if (responses.length === 1) {
+    return 100;
+  }
+
+  const tokenSets =
+    responses.map((response) =>
+      extractSemanticTokens(
+        response || ""
+      )
+    );
+
   let sum = 0;
   let pairs = 0;
-  for (let i = 0; i < tokenSets.length; i++) {
-    for (let j = i + 1; j < tokenSets.length; j++) {
-      sum += computeCosineSimilarity(tokenSets[i], tokenSets[j]);
-      pairs++;
+
+  for (
+    let i = 0;
+    i < tokenSets.length;
+    i += 1
+  ) {
+    for (
+      let j = i + 1;
+      j < tokenSets.length;
+      j += 1
+    ) {
+      sum +=
+        computeCosineSimilarity(
+          tokenSets[i],
+          tokenSets[j]
+        );
+
+      pairs += 1;
     }
   }
-  return pairs > 0 ? sum / pairs : 0;
+
+  return pairs > 0
+    ? Math.round(
+        (sum / pairs) * 100
+      )
+    : 0;
 }
 
 export function refinePayload(
@@ -13816,5 +14696,3 @@ export function buildVersion8SelfUpgradedPortalHtml(): string {
 </body>
 </html>`;
 }
-
-
