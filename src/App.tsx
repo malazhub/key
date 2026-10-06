@@ -536,15 +536,21 @@ async function executeBrowserNativeRoute(
     const question = String(bodyObj.question || "");
     const history = Array.isArray(bodyObj.history) ? bodyObj.history : [];
     const activeModels = Array.isArray(bodyObj.activeModels)
-      ? bodyObj.activeModels
-          .map((model) => String(model || "").trim())
-          .filter(Boolean)
+      ? Array.from(
+          new Set(
+            bodyObj.activeModels
+              .map((model) => String(model || "").trim())
+              .filter((model) => model.length > 0)
+          )
+        )
       : [];
+
     if (activeModels.length === 0) {
       return createJsonResponse(
         {
           success: false,
-          error: "No engine has been selected. Choose at least one engine slot.",
+          error:
+            "No AI engine was selected. Select at least one engine from the KEY engine dropdown.",
         },
         400
       );
@@ -2722,7 +2728,9 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const activeModels = models.map((m) => m.trim()).filter(Boolean);
+  const activeModels = models
+  .map((model) => model.trim())
+  .filter((model) => model.length > 0);
   const currentThread =
     threads.find((t) => t.id === activeThreadId) || threads[0];
 
@@ -4384,7 +4392,7 @@ const data = await res.json();
 
     if (activeModels.length === 0) {
       setErrorBanner(
-        "Please select at least 1 AI engine on the left sidebar before sending a query."
+        "Please select at least one AI engine from the engine dropdown before sending your query."
       );
       return;
     }
@@ -5852,10 +5860,18 @@ The live AI engine pipeline could not obtain a generated response for the curren
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (!customEngineInput.trim()) return;
-                                      const copy = [...models];
-                                      copy[idx] = customEngineInput.trim();
-                                      setModels(copy);
+                                      const selectedEngine = customEngineInput.trim();
+
+                                      if (!selectedEngine) {
+                                        return;
+                                      }
+
+                                      setModels((previousModels) => {
+                                        const nextModels = [...previousModels];
+                                        nextModels[idx] = selectedEngine;
+                                        return nextModels;
+                                      });
+
                                       setCustomEngineInput("");
                                       setOpenDropdown(null);
                                     }}
