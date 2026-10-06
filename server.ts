@@ -3610,70 +3610,48 @@ async function startServer() {
         return;
       }
 
-      const modelsList: string[] =
-  Array.from(
-    new Set(
-      (
-        Array.isArray(activeModels)
-          ? activeModels
-          : []
-      )
-        .filter(
-          (model) =>
-            typeof model ===
-            "string"
+      const modelsList: string[] = Array.from(
+        new Set(
+          (Array.isArray(activeModels) ? activeModels : [])
+            .filter(
+              (model) =>
+                typeof model === "string"
+            )
+            .map((model) => model.trim())
+            .filter(Boolean)
         )
-        .map((model) =>
-          model.trim()
-        )
-        .filter(Boolean)
-    )
-  );
+      );
 
-if (modelsList.length === 0) {
-  res.status(400).json({
-    error:
-      "No AI engine was selected by the user. Select at least one engine slot.",
-  });
-  return;
-}
-
-const unknownModels =
-  modelsList.filter(
-    (model) =>
-      !ENGINE_REGISTRY[model]
-  );
-
-if (unknownModels.length > 0) {
-  res.status(400).json({
-    error:
-      `No provider mapping exists for engine(s): ${unknownModels.join(
-        ", "
-      )}.`,
-  });
-  return;
-}
       if (modelsList.length === 0) {
         res.status(400).json({
-          error: "No engine has been selected. Choose at least one engine slot.",
+          error:
+            "No AI engine was selected by the user. Select at least one engine slot.",
         });
         return;
       }
 
-      const safeTarget =
-  Math.max(
-    0,
-    Math.min(
-      100,
-      typeof targetAgreement ===
-        "number" &&
-        Number.isFinite(
-          targetAgreement
+      const unknownModels = modelsList.filter(
+        (model) => !ENGINE_REGISTRY[model]
+      );
+
+      if (unknownModels.length > 0) {
+        res.status(400).json({
+          error:
+            `No provider mapping exists for engine(s): ${unknownModels.join(", ")}.`,
+        });
+        return;
+      }
+
+      const safeTarget = Math.max(
+        0,
+        Math.min(
+          100,
+          typeof targetAgreement === "number" &&
+          Number.isFinite(targetAgreement)
+            ? targetAgreement
+            : 95
         )
-        ? targetAgreement
-        : 95
-    )
-  );
+      );
 
       const cleanHistory: HistoryTurn[] = Array.isArray(history)
         ? history
@@ -6623,48 +6601,48 @@ if (
   // requests do not spend quota merely to report backend health.
   app.get("/api/engine-health", async (_req, res) => {
     const startedAt = Date.now();
-    const models = getOrderedCandidateModels();
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(503).json({
-        ok: false,
-        provider: "google-gemini",
-        error: "GEMINI_API_KEY is not configured in the backend runtime.",
-        checkedAt: new Date().toISOString(),
-        totalLatencyMs: Date.now() - startedAt,
-      });
-    }
+    const models = Object.keys(ENGINE_REGISTRY);
 
     const checks = await Promise.all(
       models.map(async (model) => {
         const modelStartedAt = Date.now();
+
         try {
-          const response = await ai.models.generateContent({
-            model,
-            contents: "Health check. Reply with OK.",
-            config: { maxOutputTokens: 8 },
+          const result = await dispatchEngine({
+            engine: model,
+            prompt: "Health check. Reply with exactly HEALTH_OK.",
+            systemInstruction:
+              "You are a health check. Reply with exactly HEALTH_OK.",
           });
+
           return {
             model,
-            ok: Boolean(response.text?.trim()),
+            provider: result.provider,
+            modelId: result.modelId,
+            ok: result.answer.trim().length > 0,
             latencyMs: Date.now() - modelStartedAt,
-            responsePresent: Boolean(response.text?.trim()),
+            response: result.answer.slice(0, 80),
           };
-        } catch (err) {
-          if (isQuotaOrRateLimitError(err)) markModelCooldown(model, err);
+        } catch (error) {
           return {
             model,
             ok: false,
             latencyMs: Date.now() - modelStartedAt,
-            error: describeProviderError(err),
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error),
           };
         }
       })
     );
 
-    const ok = checks.some((check) => check.ok);
+    const ok =
+      checks.length > 0 &&
+      checks.every((check) => check.ok);
+
     return res.status(ok ? 200 : 503).json({
       ok,
-      provider: "google-gemini",
       checkedAt: new Date().toISOString(),
       totalLatencyMs: Date.now() - startedAt,
       models: checks,
