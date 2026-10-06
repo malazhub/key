@@ -2497,12 +2497,19 @@ Mode: ${
     }
 
     if (finalSuccessfulResults.length > 0) {
-      const best = finalSuccessfulResults[0];
       const groundingSources = await groundingPromise;
+      const completeFinalAnswer = finalSuccessfulResults
+        .map((result, index) =>
+          `[ENGINE SLOT ${index + 1}]\n${String(
+            result.finalAnswer || ""
+          ).trim()}`
+        )
+        .join("\n\n--- ENGINE ANSWER ---\n\n");
 
       const enriched = sanitizeAndEnrichConsensusResult(
         {
-          ...best,
+          ...finalSuccessfulResults[0],
+          finalAnswer: completeFinalAnswer,
           achievedAgreement,
           iterationsRequired,
           convergenceRounds,
@@ -2541,7 +2548,7 @@ Mode: ${
   // If structured consensus cannot be produced, still return a real live
   // answer when one is available. Its agreement remains 0 because no
   // consensus was measured; nothing is fabricated.
-  for (const modelName of getOrderedCandidateModels()) {
+  for (const modelName of parallelCandidates) {
     if (!isModelAvailable(modelName)) continue;
 
     try {
@@ -3495,27 +3502,27 @@ async function startServer() {
         return;
       }
 
-      const modelsList: string[] =
-        Array.isArray(activeModels) && activeModels.length > 0
-          ? activeModels.filter(
-              (m) => typeof m === "string" && m.trim().length > 0
-            )
-          : [
-              "ChatGPT 4o",
-              "Claude 3.5 Sonnet",
-              "DeepSeek V3",
-              "Gemini 2.5",
-              "Qwen 2.5",
-              "Llama 3.3 70B",
-              "Grok 2",
-              "Mistral Large 2",
-              "Perplexity Pro",
-              "Command R+",
-            ];
+      const modelsList: string[] = Array.isArray(activeModels)
+        ? activeModels.filter(
+            (m) => typeof m === "string" && m.trim().length > 0
+          )
+        : [];
+
+      if (modelsList.length === 0) {
+        res.status(400).json({
+          error: "No engine has been selected. Choose at least one engine slot.",
+        });
+        return;
+      }
 
       const safeTarget = Math.max(
-        1,
-        Math.min(100, Number(targetAgreement) || 95)
+        0,
+        Math.min(
+          100,
+          typeof targetAgreement === "number" && Number.isFinite(targetAgreement)
+            ? targetAgreement
+            : 95
+        )
       );
 
       const cleanHistory: HistoryTurn[] = Array.isArray(history)

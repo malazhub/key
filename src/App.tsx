@@ -132,54 +132,8 @@ import {
 } from "./firebase";
 import mirroredKeyStateJson from "./mirroredKeyState.json";
 
-const TOP_20 = [
-  "ChatGPT 4o",
-  "Claude 3.5 Sonnet",
-  "DeepSeek V3",
-  "Gemini 2.5 Pro",
-  "Qwen 2.5 72B",
-  "Llama 3.3 70B",
-  "Grok 2",
-  "Mistral Large 2",
-  "Perplexity Sonar",
-  "DeepSeek R1",
-  "Command R+",
-  "Phi-4 14B",
-  "Gemma 2 27B",
-  "Nemotron 70B",
-  "Codestral 22B",
-  "Yi-1.5 34B",
-  "MiniMax-01",
-  "Solar 10.7B",
-  "Falcon 2 11B",
-  "Stable LM 2 12B",
-];
-
-const DEFAULT_SLOTS = [
-  "ChatGPT 4o",
-  "Claude 3.5 Sonnet",
-  "DeepSeek V3",
-  "Gemini 2.5",
-  "Qwen 2.5",
-  "Llama 3.3 70B",
-  "Grok 2",
-  "Mistral Large 2",
-  "Perplexity Pro",
-  "Command R+",
-];
-
-const ALL_10 = [
-  "ChatGPT 4o",
-  "Claude 3.5 Sonnet",
-  "DeepSeek V3",
-  "Gemini 2.5",
-  "Qwen 2.5",
-  "Llama 3.3 70B",
-  "Grok 2",
-  "Mistral Large 2",
-  "Perplexity Pro",
-  "Command R+",
-];
+const ENGINE_SLOT_COUNT = 10;
+const EMPTY_ENGINE_SLOTS = Array.from({ length: ENGINE_SLOT_COUNT }, () => "");
 
 const PRIMARY_GITHUB_REPO_URL = "https://github.com/malazhub/key";
 const PRIMARY_AI_KEY_LIVE_URL = "https://malazhub.github.io/key/";
@@ -2281,7 +2235,7 @@ export default function App() {
     } catch {
       // ignore
     }
-    return DEFAULT_SLOTS;
+    return [...EMPTY_ENGINE_SLOTS];
   });
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [customEngineInput, setCustomEngineInput] = useState<string>("");
@@ -2296,7 +2250,7 @@ export default function App() {
       const savedTarget = localStorage.getItem(TARGET_MATCH_STORAGE_KEY);
       if (savedTarget) {
         const n = Number(savedTarget);
-        if (n >= 1 && n <= 100) return n;
+        if (n >= 0 && n <= 100) return n;
       }
     } catch {
       // ignore
@@ -2753,7 +2707,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const activeModels = models.filter((m) => m.trim().length > 0);
+  const activeModels = models.map((m) => m.trim()).filter(Boolean);
   const currentThread =
     threads.find((t) => t.id === activeThreadId) || threads[0];
 
@@ -5877,7 +5831,7 @@ The live AI engine pipeline could not obtain a generated response for the curren
                                     onChange={(e) =>
                                       setCustomEngineInput(e.target.value)
                                     }
-                                    placeholder="e.g. OpenAI/o3 or https://..."
+                                    placeholder="Enter configured engine ID or model..."
                                     className="flex-1 min-w-0 text-xs px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
                                   />
                                   <button
@@ -5900,11 +5854,11 @@ The live AI engine pipeline could not obtain a generated response for the curren
                                     How to write engine format / URL:
                                   </div>
                                   <div>
-                                    • Name: Provider / Model (e.g. OpenAI/o3)
+                                    • Engine ID / model name: use the configured runtime engine identifier
                                   </div>
-                                  <div>• Web URL: https://chat.openai.com</div>
+                                  <div>• Engine configuration is provided by the runtime</div>
                                   <div>
-                                    • API URL: https://api.deepseek.com/v1
+                                    • No provider is selected automatically
                                   </div>
                                 </div>
                               </div>
@@ -5929,29 +5883,7 @@ The live AI engine pipeline could not obtain a generated response for the curren
                                   </span>
                                 </button>
 
-                                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                                  Or Pick Top AI Engine
-                                </div>
-                                {TOP_20.map((name, rank) => (
-                                  <button
-                                    key={name}
-                                    type="button"
-                                    onClick={() => {
-                                      const copy = [...models];
-                                      copy[idx] = name;
-                                      setModels(copy);
-                                      setOpenDropdown(null);
-                                    }}
-                                    className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-800 text-xs text-slate-200 flex items-center justify-between gap-1 cursor-pointer"
-                                  >
-                                    <span className="truncate">
-                                      <span className="font-mono tabular-nums text-slate-500 mr-1">
-                                        #{rank + 1}
-                                      </span>
-                                      {name}
-                                    </span>
-                                  </button>
-                                ))}
+                                <div className="px-2 py-1 text-[10px] text-slate-500">Select a configured engine by entering its engine ID/model above.</div>
                               </div>
                             </div>
                           )}

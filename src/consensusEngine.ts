@@ -66,13 +66,7 @@ function createGenAIClient(): GoogleGenAI {
 // Verified fastest healthy models prioritized first for deterministic identical response across both server & GitHub Pages
 // Current production models with Google Search grounding support.
 // Keep the first model stable/current; older preview aliases can be shut down without notice.
-export const CANDIDATE_MODELS = [
-  "gemini-3.8-flash",
-  "gemini-3.7-flash",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-2.5-flash",
-];
+export const CANDIDATE_MODELS: string[] = [];
 
 export function withStrictTimeout<T>(
   promise: Promise<T>,
@@ -13413,9 +13407,24 @@ export function calculateSimilarity(responses: string[]): number {
   return pairs > 0 ? sum / pairs : 0;
 }
 
-export function refinePayload(responses: string[], basePayload = ""): string {
-  const best = responses.find((r) => r && r.trim().length > 0) || "";
-  return `${basePayload}\n[Consensus Critique Synthesis]: ${best.slice(0, 400)}`.trim();
+export function refinePayload(
+  responses: string[],
+  basePayload = ""
+): string {
+  const completeAnswers = responses
+    .filter((answer) => typeof answer === "string" && answer.trim().length > 0)
+    .map(
+      (answer, index) =>
+        "[ENGINE SLOT " + (index + 1) + " — COMPLETE ANSWER]\n" + answer.trim()
+    )
+    .join("\n\n");
+
+  return [
+    basePayload,
+    "[KEY CONSENSUS ROUND FEEDBACK — COMPLETE ENGINE ANSWERS]",
+    completeAnswers,
+    "[KEY RULE] Preserve every selected engine answer in full. Do not truncate, select, discard, or summarize an engine answer.",
+  ].filter(Boolean).join("\n\n").trim();
 }
 
 export function finalize(responses: string[]): {
@@ -13424,7 +13433,7 @@ export function finalize(responses: string[]): {
   synchronizedEngines: number;
 } {
   return {
-    finalAnswer: responses[0] || "",
+    finalAnswer: responses.filter((response) => typeof response === "string" && response.trim()).join("\n\n--- ENGINE ANSWER ---\n\n"),
     agreement: calculateSimilarity(responses),
     synchronizedEngines: responses.length,
   };

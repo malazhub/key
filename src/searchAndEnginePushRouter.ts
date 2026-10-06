@@ -139,24 +139,22 @@ export async function pushQueryToEnginesAndConverge(
       reason: "Query rejected by defender.",
     };
   }
-  const modelsList =
-    Array.isArray(request.activeModels) && request.activeModels.length > 0
-      ? request.activeModels
-      : [
-          "ChatGPT 4o",
-          "Claude 3.5 Sonnet",
-          "DeepSeek V3",
-          "Gemini 2.5",
-          "Qwen 2.5",
-          "Llama 3.3 70B",
-          "Grok 2",
-          "Mistral Large 2",
-          "Perplexity Pro",
-          "Command R+",
-        ];
+  const modelsList = Array.isArray(request.activeModels)
+    ? request.activeModels.map((model) => String(model || "").trim()).filter(Boolean)
+    : [];
+
+  if (modelsList.length === 0) {
+    throw new Error("No engine has been selected. Choose at least one engine slot.");
+  }
+
   const safeTarget = Math.max(
-    1,
-    Math.min(100, Number(request.targetAgreement) || 95)
+    0,
+    Math.min(
+      100,
+      typeof request.targetAgreement === "number" && Number.isFinite(request.targetAgreement)
+        ? request.targetAgreement
+        : 95
+    )
   );
 
   const loopResult = await runSmartMemoryConsensusLoop(
