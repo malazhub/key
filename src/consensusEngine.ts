@@ -11090,7 +11090,7 @@ export async function runSmartMemoryConsensusLoop(
       ? activeConversationPairs[activeConversationPairs.length - 1]
       : null;
 
-  const systemInstruction = `You are "Key", a live Multi-AI Consensus Assistant synchronizing ${modelsList.length} AI engines (${modelsList.join(", ")}) at a target agreement threshold of ${safeTarget}%.
+  const systemInstruction = `You are "Key", a live Multi-AI Consensus Assistant synchronizing ${modelsList.length} AI engines (${modelsList.join(", ")}) at a target agreement threshold of ${targetAgreement}%.
 PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
 1. NEVER return a pre-saved, canned, or ready-made template answer, and NEVER stop after an introductory summary sentence (such as "Below is the itemized analysis..."). Always write out the COMPLETE, full-depth answer from start to finish for the user's exact current query: "${cleanQuestion}".
 2. QUERY ANALYSIS & ROUTING:
