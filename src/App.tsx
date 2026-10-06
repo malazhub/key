@@ -537,8 +537,23 @@ async function executeBrowserNativeRoute(
     const history = Array.isArray(bodyObj.history) ? bodyObj.history : [];
     const activeModels = Array.isArray(bodyObj.activeModels)
       ? bodyObj.activeModels
-      : ALL_10;
-    const targetAgreement = Number(bodyObj.targetAgreement) || 95;
+          .map((model) => String(model || "").trim())
+          .filter(Boolean)
+      : [];
+    if (activeModels.length === 0) {
+      return createJsonResponse(
+        {
+          success: false,
+          error: "No engine has been selected. Choose at least one engine slot.",
+        },
+        400
+      );
+    }
+    const targetAgreement =
+      typeof bodyObj.targetAgreement === "number" &&
+      Number.isFinite(bodyObj.targetAgreement)
+        ? Math.max(0, Math.min(100, bodyObj.targetAgreement))
+        : 95;
     const strictQueryPriority =
       typeof bodyObj.strictQueryPriority === "boolean"
         ? bodyObj.strictQueryPriority
