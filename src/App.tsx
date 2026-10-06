@@ -726,8 +726,9 @@ async function fetchFromKeyBackend(
       );
       const contentType = localRes.headers.get("content-type") || "";
       if (
-        (localRes.ok || localRes.status === 400 || localRes.status === 401) &&
-        contentType.includes("application/json")
+        contentType
+          .toLowerCase()
+          .includes("application/json")
       ) {
         return localRes;
       }
@@ -748,8 +749,9 @@ async function fetchFromKeyBackend(
       );
       const contentType = res.headers.get("content-type") || "";
       if (
-        (res.ok || res.status === 400 || res.status === 401) &&
-        contentType.includes("application/json")
+        contentType
+          .toLowerCase()
+          .includes("application/json")
       ) {
         return res;
       }
@@ -812,6 +814,7 @@ interface ChatMessage {
   activeModels?: string[];
   convergenceRounds?: ConvergenceRound[];
   nodeContributions?: NodeContribution[];
+  stopReason?: string;
   metadata?: ConsensusLoopMetadata;
   memoryOS?: MemoryOSPipelineTrace;
   hasAppPreview?: boolean;
@@ -4883,6 +4886,7 @@ const data = await res.json();
         targetAgreement: data.targetAgreement,
         iterationsRequired: data.iterationsRequired,
         consensusSummary: data.consensusSummary,
+        stopReason: data.stopReason || "UNKNOWN",
         activeModels: data.activeModels || activeModels,
         convergenceRounds: data.convergenceRounds || [],
         nodeContributions: data.nodeContributions || [],
@@ -4951,124 +4955,29 @@ const data = await res.json();
             : t
         )
       );
-    } catch {
-      // Execute the shared live consensus engine directly in-process rather than returning any predefined stub
-      let liveFallbackData: Record<string, any> | null = null;
-      try {
-        const nativeRes = await executeBrowserNativeRoute("/api/consensus-chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question: queryText,
-            history: previousMessages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-            activeModels,
-            targetAgreement: target,
-            buildAppMode: Boolean(
-              runOptions?.forceAppPreview || isActualAdminUpgradeTask || isDeployCommandQuery
-            ),
-            adminUpgradeMode: isActualAdminUpgradeTask,
-            nextVersionTag: "key",
-            strictQueryPriority: hasExplicitTopicResetDirective(queryText),
-          }),
-        });
-        if (nativeRes && nativeRes.ok) {
-          liveFallbackData = await nativeRes.json();
-        }
-      } catch {
-        liveFallbackData = null;
-      }
+    } catch (error) {
+      const diagnostic =
+        error instanceof Error
+          ? error.message
+          : String(error);
 
-      const achieved =
-        typeof liveFallbackData?.achievedAgreement === "number"
-          ? liveFallbackData.achievedAgreement
-          : 0;
-
-      const shouldShowPreview = Boolean(
-        liveFallbackData?.hasAppPreview ??
-          (runOptions?.forceAppPreview || isActualAdminUpgradeTask)
+      setErrorBanner(
+        diagnostic ||
+          "Live engine dispatch failed."
       );
 
-      const clientRel = computeClientRelationWithPrevious(
-        queryText,
-        previousMessages
-      );
-
-      const liveComputedContent =
-        typeof liveFallbackData?.finalAnswer === "string" &&
-        liveFallbackData.finalAnswer.trim().length > 0
-          ? liveFallbackData.finalAnswer
-          : `### Live Engine Dispatch Failure
-
-The live AI engine pipeline could not obtain a generated response for the current query (**"${queryText}"**). No fabricated engine answer or synthetic consensus was substituted.`;
-
-      const instantFallbackApp = buildInstantClientAppFromContext(queryText, liveComputedContent, liveFallbackData?.generatedAppHtml || "", liveFallbackData?.appTitle || "Interactive Application Preview");
-
-      const fallbackRaw: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: liveComputedContent,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        resolvedMergedQuery:
-          liveFallbackData?.resolvedMergedQuery || clientRel.payloadSentToEngines,
-        contextMode: liveFallbackData?.contextMode || clientRel.contextMode,
-        historyMatchScore:
-          liveFallbackData?.historyMatchScore ?? clientRel.historyMatchScore,
-        payloadSentToEngines:
-          liveFallbackData?.payloadSentToEngines || clientRel.payloadSentToEngines,
-        cumulativeSavedPairsCount:
-          liveFallbackData?.cumulativeSavedPairsCount ||
-          clientRel.savedPairsCount + 1,
-        achievedAgreement: achieved,
-        iterationsRequired:
-          Number.isInteger(liveFallbackData?.iterationsRequired)
-            ? liveFallbackData?.iterationsRequired ?? 0
-            : 0,
-        consensusSummary:
-          liveFallbackData?.consensusSummary ||
-          "No measured live consensus result was returned.",
-        activeModels,
-        hasAppPreview: shouldShowPreview,
-        appTitle: shouldShowPreview
-          ? liveFallbackData?.appTitle || instantFallbackApp.title
-          : "",
-        generatedAppHtml: shouldShowPreview
-          ? liveFallbackData?.generatedAppHtml || instantFallbackApp.html
-          : "",
-        convergenceRounds: Array.isArray(liveFallbackData?.convergenceRounds)
-          ? liveFallbackData.convergenceRounds
-          : [],
-        nodeContributions:
-          Array.isArray(liveFallbackData?.nodeContributions)
-            ? liveFallbackData.nodeContributions
-            : [],
-      };
-      const enrichedFallbackMsg = enrichAndRepairAssistantMessage(
-        fallbackRaw,
-        activeModels,
-        queryText
-      );
       if (runOptions?.forceAppPreview) {
         setActivePreviewModal((prev) =>
-          prev ? { ...prev, isSyncingWithEngines: false } : prev
+          prev
+            ? {
+                ...prev,
+                isSyncingWithEngines: false,
+              }
+            : prev
         );
       }
-      setThreads((prev) =>
-        prev.map((t) =>
-          t.id === activeThreadId
-            ? {
-                ...t,
-                updatedAt: enrichedFallbackMsg.timestamp,
-                messages: [...updatedMessages, enrichedFallbackMsg],
-              }
-            : t
-        )
-      );
+
+      return;
     } finally {
       setProcessing(false);
     }
