@@ -70,7 +70,7 @@ export const ENGINE_REGISTRY: Record<
     provider: "google",
     modelEnv: "GEMINI_MODEL",
     apiKeyEnv: "GEMINI_API_KEY",
-    defaultModel: "gemini-3.5-flash-lite",
+        defaultModel: "gemini-2.5-flash",
   },
   "Qwen 2.5": {
     provider: "groq",
@@ -11345,184 +11345,128 @@ iterationsRequired: actualRoundsCompleted,
     }
   }
 
-  // Parallel hedged execution across candidate models for live generation
+    // Parallel hedged execution across the selected provider engines for live generation
   let deterministicParsed: Record<string, any> | null = null;
 
-const liveRoundResponses: Array<{
-  modelName: string;
-  finalAnswer: string;
-}> = [];
+  const MAX_ROUNDS = 50;
 
-let actualRoundsCompleted = 0;
-let actualAgreement = 0;
-let currentRoundPayload = multimodalContents;
-const liveDispatchFailures: Array<{ modelName: string; reason: string }> = [];
-
-const MAX_ROUNDS = 50;
-
-const selectedModels =
-  Array.from(
+  const selectedModels = Array.from(
     new Set(
-      (
-        Array.isArray(modelsList)
-          ? modelsList
-          : []
-      )
-        .map((model) =>
-          String(model || "").trim()
-        )
+      (Array.isArray(modelsList) ? modelsList : [])
+        .map((model) => String(model || "").trim())
         .filter(Boolean)
     )
   );
 
-if (selectedModels.length === 0) {
-  throw new Error(
-    "No AI engine was selected. Select at least one engine slot."
-  );
-}
+  if (selectedModels.length === 0) {
+    throw new Error(
+      "No AI engine was selected. Select at least one engine slot."
+    );
+  }
 
-const unknownModels =
-  selectedModels.filter(
-    (model) =>
-      !ENGINE_REGISTRY[model]
+  const unknownModels = selectedModels.filter(
+    (model) => !ENGINE_REGISTRY[model]
   );
 
-if (unknownModels.length > 0) {
-  throw new Error(
-    `No provider mapping exists for engine(s): ${unknownModels.join(
-      ", "
-    )}.`
-  );
-}
+  if (unknownModels.length > 0) {
+    throw new Error(
+      `No provider mapping exists for engine(s): ${unknownModels.join(", ")}.`
+    );
+  }
 
-const safeTarget =
-  Math.max(
+  const safeTarget = Math.max(
     0,
     Math.min(
       100,
-      typeof targetAgreement ===
-        "number" &&
-        Number.isFinite(
-          targetAgreement
-        )
+      typeof targetAgreement === "number" &&
+      Number.isFinite(targetAgreement)
         ? targetAgreement
         : 95
     )
   );
 
-let actualRoundsCompleted = 0;
-let actualAgreement = 0;
+  let actualRoundsCompleted = 0;
+  let actualAgreement = 0;
+  let currentRoundPayload: unknown = multimodalContents;
 
-let currentRoundPayload: unknown =
-  multimodalContents;
+  let lastRoundResults: EngineDispatchResult[] = [];
 
-let lastRoundResults:
-  EngineDispatchResult[] = [];
+  const liveDispatchFailures: Array<{
+    modelName: string;
+    provider?: string;
+    reason: string;
+    round: number;
+  }> = [];
 
-const liveDispatchFailures: Array<{
-  modelName: string;
-  provider?: string;
-  reason: string;
-  round: number;
-}> = [];
+  const convergenceRounds: Array<{
+    round: number;
+    agreement: number;
+    note: string;
+  }> = [];
 
-const convergenceRounds: Array<{
-  round: number;
-  agreement: number;
-  note: string;
-}> = [];
+  do {
+    actualRoundsCompleted += 1;
 
-do {
-  actualRoundsCompleted += 1;
+    const roundNumber = actualRoundsCompleted;
 
-  const roundNumber =
-    actualRoundsCompleted;
+    const settledResults = await Promise.all(
+      selectedModels.map(async (modelName) => {
+        try {
+          const dispatched = await withStrictTimeout(
+            dispatchEngine({
+              engine: modelName,
+              prompt: currentRoundPayload,
+              systemInstruction,
+              responseSchema: shouldGenerateAppPreview
+                ? responseSchemaConfig
+                : undefined,
+            }),
+            15000,
+            `ConsensusRound${roundNumber}(${modelName})`
+          );
 
-  const settledResults =
-    await Promise.all(
-      selectedModels.map(
-        async (modelName) => {
-          try {
-            const dispatched =
-              await withStrictTimeout(
-                dispatchEngine({
-                  engine: modelName,
-                  prompt:
-                    currentRoundPayload,
-                  systemInstruction,
-                  responseSchema:
-                    shouldGenerateAppPreview
-                      ? responseSchemaConfig
-                      : undefined,
-                }),
-                15000,
-                `ConsensusRound${roundNumber}(${modelName})`
-              );
+          const answer = dispatched.answer.trim();
 
-            const answer =
-              dispatched.answer.trim();
-
-            if (!answer) {
-              throw new Error(
-                `${modelName}: empty provider response`
-              );
-            }
-
-            return {
-              ...dispatched,
-              answer,
-            };
-          } catch (error) {
-            const reason =
-              redactProviderError(
-                error
-              );
-
-            liveDispatchFailures.push(
-              {
-                modelName,
-                provider:
-                  ENGINE_REGISTRY[
-                    modelName
-                  ]?.provider,
-                reason,
-                round:
-                  roundNumber,
-              }
+          if (!answer) {
+            throw new Error(
+              `${modelName}: empty provider response`
             );
-
-            console.error(
-              `[KEY] Round ${roundNumber} failed for ${modelName}: ${reason}`
-            );
-
-            return null;
           }
+
+          return {
+            ...dispatched,
+            answer,
+          };
+        } catch (error) {
+          const reason = redactProviderError(error);
+
+          liveDispatchFailures.push({
+            modelName,
+            provider: ENGINE_REGISTRY[modelName]?.provider,
+            reason,
+            round: roundNumber,
+          });
+
+          console.error(
+            `[KEY] Round ${roundNumber} failed for ${modelName}: ${reason}`
+          );
+
+          return null;
         }
-      )
+      })
     );
 
-  const successfulResults =
-    settledResults.filter(
-      (
-        result
-      ): result is EngineDispatchResult =>
+    const successfulResults = settledResults.filter(
+      (result): result is EngineDispatchResult =>
         result !== null &&
-        typeof result.answer ===
-          "string" &&
-        result.answer
-          .trim()
-          .length > 0
+        typeof result.answer === "string" &&
+        result.answer.trim().length > 0
     );
 
-  if (
-    successfulResults.length === 0
-  ) {
-    const failures =
-      liveDispatchFailures
+    if (successfulResults.length === 0) {
+      const failures = liveDispatchFailures
         .filter(
-          (failure) =>
-            failure.round ===
-            roundNumber
+          (failure) => failure.round === roundNumber
         )
         .map(
           (failure) =>
@@ -11534,314 +11478,130 @@ do {
         )
         .join("\n");
 
-    throw new Error(
-      [
-        "KEY LIVE ENGINE DISPATCH FAILED",
-        "",
-        `Round: ${roundNumber}`,
-        `Selected engines: ${selectedModels.length}`,
-        "Successful engines: 0",
-        "",
-        "Engine failures:",
-        failures ||
-          "- No provider diagnostic was captured.",
-        "",
-        "No fabricated engine answer was produced.",
-        "No synthetic consensus was produced.",
-      ].join("\n")
-    );
-  }
-
-  lastRoundResults =
-    successfulResults;
-
-  const answers =
-    successfulResults.map(
-      (result) =>
-        result.answer.trim()
-    );
-
-  actualAgreement =
-    calculateSimilarity(
-      answers
-    );
-
-  convergenceRounds.push({
-    round: roundNumber,
-    agreement:
-      actualAgreement,
-    note:
-      actualAgreement >=
-      safeTarget
-        ? `Real agreement reached ${actualAgreement}% against target ${safeTarget}%.`
-        : `Real agreement is ${actualAgreement}%; another live round is required.`,
-  });
-
-  if (
-    actualAgreement <
-      safeTarget &&
-    roundNumber <
-      MAX_ROUNDS
-  ) {
-    currentRoundPayload =
-      refinePayload(
-        answers,
-        typeof currentRoundPayload ===
-          "string"
-          ? currentRoundPayload
-          : promptToText(
-              currentRoundPayload
-            )
+      throw new Error(
+        [
+          "KEY LIVE ENGINE DISPATCH FAILED",
+          "",
+          `Round: ${roundNumber}`,
+          `Selected engines: ${selectedModels.length}`,
+          "Successful engines: 0",
+          "",
+          "Engine failures:",
+          failures || "- No provider diagnostic was captured.",
+          "",
+          "No fabricated engine answer was produced.",
+          "No synthetic consensus was produced.",
+        ].join("\n")
       );
-  }
-} while (
-  actualAgreement <
-    safeTarget &&
-  actualRoundsCompleted <
-    MAX_ROUNDS
-);
+    }
 
-if (liveRoundResponses.length > 0) {
-deterministicParsed = {
-  export function selectConsensusAnswer(
-  answers: string[],
-  similarity: (
-    a: string,
-    b: string
-  ) => number
-): string {
-  if (answers.length === 0) {
-    return "";
-  }
+    lastRoundResults = successfulResults;
 
-  if (answers.length === 1) {
-    return answers[0];
-  }
+    const answers = successfulResults.map(
+      (result) => result.answer.trim()
+    );
 
-  let bestIndex = 0;
-  let bestScore = -Infinity;
+    actualAgreement = calculateSimilarity(answers);
 
-  for (
-    let i = 0;
-    i < answers.length;
-    i += 1
-  ) {
-    let score = 0;
+    convergenceRounds.push({
+      round: roundNumber,
+      agreement: actualAgreement,
+      note:
+        actualAgreement >= safeTarget
+          ? `Real agreement reached ${actualAgreement}% against target ${safeTarget}%.`
+          : `Real agreement is ${actualAgreement}%; another live round is required.`,
+    });
 
-    for (
-      let j = 0;
-      j < answers.length;
-      j += 1
+    if (
+      actualAgreement < safeTarget &&
+      roundNumber < MAX_ROUNDS
     ) {
-      if (i === j) {
-        continue;
+      currentRoundPayload = refinePayload(
+        answers,
+        typeof currentRoundPayload === "string"
+          ? currentRoundPayload
+          : promptToText(currentRoundPayload)
+      );
+    }
+  } while (
+    actualAgreement < safeTarget &&
+    actualRoundsCompleted < MAX_ROUNDS
+  );
+
+  if (lastRoundResults.length > 0) {
+    const answers = lastRoundResults.map(
+      (result) => result.answer
+    );
+
+    let finalAnswer = answers[0];
+
+    if (answers.length > 1) {
+      let bestIndex = 0;
+      let bestScore = -Infinity;
+
+      for (let i = 0; i < answers.length; i += 1) {
+        let score = 0;
+
+        for (let j = 0; j < answers.length; j += 1) {
+          if (i === j) continue;
+
+          score += calculateSimilarity([
+            answers[i],
+            answers[j],
+          ]);
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = i;
+        }
       }
 
-      score += similarity(
-        answers[i],
-        answers[j]
-      );
+      finalAnswer = answers[bestIndex];
     }
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = i;
-    }
-  }
+    const reachedTarget =
+      actualAgreement >= safeTarget;
 
-  return answers[bestIndex];
-}
-  const answers =
-  lastRoundResults.map(
-    (result) =>
-      result.answer
-  );
+    const hitCeiling =
+      !reachedTarget &&
+      actualRoundsCompleted >= MAX_ROUNDS;
 
-const finalAnswer =
-  selectConsensusAnswer(
-    answers,
-    (a, b) =>
-      calculateSimilarity([
-        a,
-        b,
-      ])
-  );
-
-const reachedTarget =
-  actualAgreement >=
-  safeTarget;
-
-const hitCeiling =
-  !reachedTarget &&
-  actualRoundsCompleted >=
-    MAX_ROUNDS;
-
-deterministicParsed = {
-  finalAnswer,
-
-  hasAppPreview:
-    shouldGenerateAppPreview,
-
-  appTitle:
-    shouldGenerateAppPreview
-      ? `Interactive Application Preview (${nextVer})`
-      : "",
-
-  generatedAppHtml: "",
-
-  achievedAgreement:
-    actualAgreement,
-
-  targetAgreement:
-    safeTarget,
-
-  iterationsRequired:
-    actualRoundsCompleted,
-
-  stopReason:
-    reachedTarget
-      ? "TARGET_REACHED"
-      : hitCeiling
-      ? "ROUND_CEILING_REACHED"
-      : "ENGINE_FAILURE",
-
-  consensusSummary:
-    reachedTarget
-      ? `Real agreement reached ${actualAgreement}% after ${actualRoundsCompleted} round(s).`
-      : `50-round ceiling reached at ${actualAgreement}% against target ${safeTarget}%.`,
-
-  convergenceRounds,
-
-  nodeContributions:
-    lastRoundResults.map(
-      (result) => ({
-        modelName:
-          result.engine,
-        provider:
-          result.provider,
-        providerModel:
-          result.modelId,
-        initialReply:
-          result.answer,
-        finalMatchedReply:
-          result.answer,
-        detailedResponse:
-          result.answer,
-        agreementScore:
-          calculateSimilarity([
+    deterministicParsed = {
+      finalAnswer,
+      hasAppPreview: shouldGenerateAppPreview,
+      appTitle: shouldGenerateAppPreview
+        ? `Interactive Application Preview (${nextVer})`
+        : "",
+      generatedAppHtml: "",
+      achievedAgreement: actualAgreement,
+      targetAgreement: safeTarget,
+      iterationsRequired: actualRoundsCompleted,
+      stopReason: reachedTarget
+        ? "TARGET_REACHED"
+        : hitCeiling
+        ? "ROUND_CEILING_REACHED"
+        : "ENGINE_FAILURE",
+      consensusSummary: reachedTarget
+        ? `Real agreement reached ${actualAgreement}% after ${actualRoundsCompleted} round(s).`
+        : `50-round ceiling reached at ${actualAgreement}% against target ${safeTarget}%.`,
+      convergenceRounds,
+      nodeContributions: lastRoundResults.map(
+        (result) => ({
+          modelName: result.engine,
+          provider: result.provider,
+          providerModel: result.modelId,
+          initialReply: result.answer,
+          finalMatchedReply: result.answer,
+          detailedResponse: result.answer,
+          agreementScore: calculateSimilarity([
             result.answer,
             finalAnswer,
           ]),
-        latencyMs:
-          result.latencyMs,
-      })
-    ),
-};
-  hasAppPreview: shouldGenerateAppPreview,
-  appTitle: shouldGenerateAppPreview
-    ? `Interactive Application Preview (${nextVer})`
-    : "",
-  generatedAppHtml: "",
-  achievedAgreement: actualAgreement,
-  iterationsRequired: actualRoundsCompleted,
-  consensusSummary:
-    actualAgreement >= safeTarget
-      ? `Actual live-engine conformity reached ${actualAgreement}% after ${actualRoundsCompleted} round(s).`
-      : `Requested consensus round end reached at ${actualAgreement}% after ${actualRoundsCompleted} round(s).`,
-  convergenceRounds: [
-    {
-      round: actualRoundsCompleted,
-      agreement: actualAgreement,
-    },
-  ],
-  nodeContributions: liveRoundResponses.map(
-    (result) => ({
-      modelName: result.modelName,
-      initialReply: result.finalAnswer,
-      finalMatchedReply: result.finalAnswer,
-    })
-  ),
-};
-}
-
-  if (!deterministicParsed) {
-    const remainingModels = getAvailableCandidateModels(modelsList);
-    if (remainingModels.length > 0) {
-      try {
-        const plainText = await Promise.any(
-          remainingModels.map(async (modelName) => {
-            const resp = await withStrictTimeout(
-              ai.models.generateContent({
-                model: modelName,
-                contents: multimodalContents,
-                config: {
-                  systemInstruction,
-                  temperature: 0.25,
-                },
-              }),
-              12000,
-              `PlainModel(${modelName})`
-            );
-            const t = resp.text?.trim();
-            if (!t) throw new Error("Empty plain response");
-            return t;
-          })
-        );
-        deterministicParsed = {
-          finalAnswer: plainText,
-          hasAppPreview: shouldGenerateAppPreview,
-          appTitle: shouldGenerateAppPreview
-            ? `Interactive Application Preview (${nextVer})`
-            : "",
-          generatedAppHtml: "",
-          achievedAgreement: actualAgreement,
-iterationsRequired: actualRoundsCompleted,
-          consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
-          convergenceRounds: [],
-          nodeContributions: [],
-        };
-      } catch {
-        // Sequential last-resort live call across the user's selected engine slots only.
-        for (const modelName of healthyModels) {
-          try {
-            const resp = await withStrictTimeout(
-              ai.models.generateContent({
-                model: modelName,
-                contents: prompt,
-                config: {
-                  systemInstruction,
-                  temperature: 0.3,
-                },
-              }),
-              15000,
-              `SequentialLiveModel(${modelName})`
-            );
-            const t = resp.text?.trim();
-            if (t) {
-              deterministicParsed = {
-                finalAnswer: t,
-                hasAppPreview: shouldGenerateAppPreview,
-                appTitle: shouldGenerateAppPreview
-                  ? `Interactive Application Preview (${nextVer})`
-                  : "",
-                generatedAppHtml: "",
-                achievedAgreement: actualAgreement,
-                iterationsRequired: actualRoundsCompleted,
-                consensusSummary: `Live multi-engine consensus converged across ${modelsList.length} AI engines.`,
-                convergenceRounds: [],
-                nodeContributions: [],
-              };
-              break;
-            }
-          } catch (err) {
-            console.error(
-              `[KEY] Sequential live model failed: ${modelName}`,
-              err
-            );
-          }
-        }
-      }
-    }
+          latencyMs: result.latencyMs,
+        })
+      ),
+    };
   }
 
   const groundingSources = await Promise.race([
