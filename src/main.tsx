@@ -1,14 +1,14 @@
 import React, {
   Component,
-  Suspense,
   type ErrorInfo,
   type ReactNode,
-} from "react";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import "./index.css";
+  Suspense,
+} from 'react';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
 
-const App = React.lazy(() => import("./App.tsx"));
+const App = React.lazy(() => import('./App.tsx'));
 
 class KeyBootErrorBoundary extends Component<
   { children: ReactNode },
@@ -23,17 +23,17 @@ class KeyBootErrorBoundary extends Component<
   componentDidCatch(error: Error, info: ErrorInfo) {
     try {
       localStorage.setItem(
-        "key_last_boot_error_v1",
+        'key_last_boot_error_v1',
         JSON.stringify({
           message: error.message,
-          stack: error.stack || "",
-          componentStack: info.componentStack || "",
+          stack: error.stack || '',
+          componentStack: info.componentStack || '',
           capturedAt: new Date().toISOString(),
           href: window.location.href,
         }),
       );
     } catch {
-      // Ignore storage failures.
+      // Ignore storage failures so the diagnostic screen still renders.
     }
   }
 
@@ -44,14 +44,14 @@ class KeyBootErrorBoundary extends Component<
       return (
         <div
           style={{
-            minHeight: "100vh",
-            background: "#020617",
-            color: "#f8fafc",
+            minHeight: '100vh',
+            background: '#020617',
+            color: '#f8fafc',
             padding: 24,
-            fontFamily: "system-ui, sans-serif",
+            fontFamily: 'system-ui, sans-serif',
           }}
         >
-          <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ maxWidth: 960, margin: '0 auto' }}>
             <h1
               style={{
                 fontSize: 24,
@@ -64,28 +64,28 @@ class KeyBootErrorBoundary extends Component<
 
             <p
               style={{
-                color: "#fda4af",
+                color: '#fda4af',
                 marginBottom: 16,
               }}
             >
-              The Key application failed while loading. The actual browser
-              error is shown below instead of displaying a blank page.
+              The Key application failed while rendering. The error is shown
+              below instead of a blank browser.
             </p>
 
             <pre
               style={{
-                whiteSpace: "pre-wrap",
-                overflowWrap: "anywhere",
-                background: "#0f172a",
-                border: "1px solid #334155",
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'anywhere',
+                background: '#0f172a',
+                border: '1px solid #334155',
                 borderRadius: 12,
                 padding: 16,
                 fontSize: 13,
               }}
             >
               {error.message}
-              {"\n\n"}
-              {error.stack || "No stack trace available."}
+              {'\n\n'}
+              {error.stack || 'No stack trace available.'}
             </pre>
 
             <button
@@ -93,13 +93,13 @@ class KeyBootErrorBoundary extends Component<
               onClick={() => window.location.reload()}
               style={{
                 marginTop: 16,
-                padding: "10px 14px",
+                padding: '10px 14px',
                 borderRadius: 10,
-                border: "1px solid #475569",
-                background: "#10b981",
-                color: "#020617",
+                border: '1px solid #475569',
+                background: '#10b981',
+                color: '#020617',
                 fontWeight: 800,
-                cursor: "pointer",
+                cursor: 'pointer',
               }}
             >
               Reload Key
@@ -113,151 +113,30 @@ class KeyBootErrorBoundary extends Component<
   }
 }
 
-function KeyLoadingScreen() {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        background: "#020617",
-        color: "#f8fafc",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          padding: 24,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 28,
-            fontWeight: 900,
-            marginBottom: 8,
-          }}
-        >
-          Key
-        </div>
-
-        <div
-          style={{
-            color: "#94a3b8",
-            fontSize: 14,
-          }}
-        >
-          Loading Key application…
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function KeyFatalBootError({ error }: { error: Error }) {
-  try {
-    localStorage.setItem(
-      "key_last_boot_error_v1",
-      JSON.stringify({
-        message: error.message,
-        stack: error.stack || "",
-        capturedAt: new Date().toISOString(),
-        href: window.location.href,
-      }),
-    );
-  } catch {
-    // Ignore storage failures.
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#020617",
-        color: "#f8fafc",
-        padding: 24,
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div style={{ maxWidth: 960, margin: "0 auto" }}>
-        <h1
-          style={{
-            fontSize: 24,
-            fontWeight: 800,
-            marginBottom: 12,
-          }}
-        >
-          Key boot error
-        </h1>
-
-        <p
-          style={{
-            color: "#fda4af",
-            marginBottom: 16,
-          }}
-        >
-          Key could not load its application module.
-        </p>
-
-        <pre
-          style={{
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-            background: "#0f172a",
-            border: "1px solid #334155",
-            borderRadius: 12,
-            padding: 16,
-            fontSize: 13,
-          }}
-        >
-          {error.message}
-          {"\n\n"}
-          {error.stack || "No stack trace available."}
-        </pre>
-
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          style={{
-            marginTop: 16,
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #475569",
-            background: "#10b981",
-            color: "#020617",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          Reload Key
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const rootElement = document.getElementById("root");
+const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  document.body.innerHTML = `
-    <main
-      style="
-        padding:24px;
-        font-family:system-ui;
-        background:#020617;
-        color:#f8fafc;
-        min-height:100vh
-      "
-    >
-      <h1>Key boot error</h1>
-      <p>Root element #root is missing from index.html.</p>
-    </main>
-  `;
+  document.body.innerHTML =
+    '<main style="padding:24px;font-family:system-ui;background:#020617;color:#f8fafc;min-height:100vh"><h1>Key boot error</h1><p>Root element #root is missing from index.html.</p></main>';
 } else {
   createRoot(rootElement).render(
     <StrictMode>
       <KeyBootErrorBoundary>
-        <Suspense fallback={<KeyLoadingScreen />}>
+        <Suspense
+          fallback={
+            <div
+              style={{
+                minHeight: '100vh',
+                background: '#020617',
+                color: '#f8fafc',
+                padding: 24,
+                fontFamily: 'system-ui, sans-serif',
+              }}
+            >
+              Loading Key…
+            </div>
+          }
+        >
           <App />
         </Suspense>
       </KeyBootErrorBoundary>
