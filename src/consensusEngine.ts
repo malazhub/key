@@ -13,6 +13,103 @@ import {
   run_campaign as runVersion8Campaign,
 } from "./upgrades/version8Harness";
 
+type EngineProvider =
+  | "google"
+  | "openai"
+  | "anthropic"
+  | "deepseek"
+  | "groq"
+  | "xai"
+  | "mistral"
+  | "perplexity"
+  | "cohere";
+
+export interface EngineDispatchRequest {
+  engine: string;
+  prompt: unknown;
+  systemInstruction: string;
+  responseSchema?: unknown;
+}
+
+export interface EngineDispatchResult {
+  engine: string;
+  provider: EngineProvider;
+  modelId: string;
+  answer: string;
+  latencyMs: number;
+}
+
+export const ENGINE_REGISTRY: Record<
+  string,
+  {
+    provider: EngineProvider;
+    modelEnv: string;
+    apiKeyEnv: string;
+    defaultModel: string;
+  }
+> = {
+  "ChatGPT 4o": {
+    provider: "openai",
+    modelEnv: "OPENAI_MODEL",
+    apiKeyEnv: "OPENAI_API_KEY",
+    defaultModel: "gpt-4o",
+  },
+  "Claude 3.5 Sonnet": {
+    provider: "anthropic",
+    modelEnv: "ANTHROPIC_MODEL",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+    defaultModel: "claude-3-5-sonnet-20241022",
+  },
+  "DeepSeek V3": {
+    provider: "deepseek",
+    modelEnv: "DEEPSEEK_MODEL",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    defaultModel: "deepseek-chat",
+  },
+  "Gemini 2.5": {
+    provider: "google",
+    modelEnv: "GEMINI_MODEL",
+    apiKeyEnv: "GEMINI_API_KEY",
+    defaultModel: "gemini-3.5-flash-lite",
+  },
+  "Qwen 2.5": {
+    provider: "groq",
+    modelEnv: "GROQ_QWEN_MODEL",
+    apiKeyEnv: "GROQ_API_KEY",
+    defaultModel: "qwen/qwen-2.5-72b-instruct",
+  },
+  "Llama 3.3 70B": {
+    provider: "groq",
+    modelEnv: "GROQ_LLAMA_MODEL",
+    apiKeyEnv: "GROQ_API_KEY",
+    defaultModel: "llama-3.3-70b-versatile",
+  },
+  "Grok 2": {
+    provider: "xai",
+    modelEnv: "XAI_MODEL",
+    apiKeyEnv: "XAI_API_KEY",
+    defaultModel: "grok-2-latest",
+  },
+  "Mistral Large 2": {
+    provider: "mistral",
+    modelEnv: "MISTRAL_MODEL",
+    apiKeyEnv: "MISTRAL_API_KEY",
+    defaultModel: "mistral-large-latest",
+  },
+  "Perplexity Pro": {
+    provider: "perplexity",
+    modelEnv: "PERPLEXITY_MODEL",
+    apiKeyEnv: "PERPLEXITY_API_KEY",
+    defaultModel: "sonar-pro",
+  },
+  "Command R+": {
+    provider: "cohere",
+    modelEnv: "COHERE_MODEL",
+    apiKeyEnv: "COHERE_API_KEY",
+    defaultModel: "command-r-plus",
+  },
+};
+
 declare const __KEY_ENGINE_SEED__: number[] | undefined;
 
 function getEngineApiKey(): string {
