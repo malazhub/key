@@ -11148,7 +11148,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
   }
 
   promptSections.push(
-    `Selected AI Engines (${modelsList.length}): ${modelsList.join(", ")}\nDesired Agreement Threshold: >= ${safeTarget}%\nGenerate App Preview: ${shouldGenerateAppPreview}`
+    `Selected AI Engines (${modelsList.length}): ${modelsList.join(", ")}\nDesired Agreement Threshold: >= ${targetAgreement}%\nGenerate App Preview: ${shouldGenerateAppPreview}`
   );
 
   const prompt = promptSections.join("\n\n");
