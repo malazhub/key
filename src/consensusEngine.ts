@@ -10895,7 +10895,7 @@ export async function runSmartMemoryConsensusLoop(
   question: string,
   history: HistoryTurn[],
   modelsList: string[],
-  safeTarget: number,
+  targetAgreement: number,
   options?: {
     buildAppMode?: boolean;
     adminUpgradeMode?: boolean;
@@ -11223,29 +11223,6 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         },
         required: ["finalAnswer"],
       };
-
-  const selectedModels = Array.from(
-    new Set(
-      (Array.isArray(modelsList) ? modelsList : [])
-        .map((model) => String(model || "").trim())
-        .filter((model) => model.length > 0)
-    )
-  );
-
-  if (selectedModels.length === 0) {
-    throw new Error(
-      "No AI engine was selected by the user."
-    );
-  }
-
-  const healthyModels =
-    getAvailableCandidateModels(selectedModels);
-
-  if (healthyModels.length === 0) {
-    throw new Error(
-      "The selected AI engines are not available in the configured runtime."
-    );
-  }
 
   async function callModelFast(modelName: string, timeoutMs = 15000) {
     try {
