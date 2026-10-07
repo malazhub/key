@@ -336,8 +336,7 @@ function saveCumulativeBuildState(title: string, html: string): void {
 
 // Primary & Shared Live Backend Endpoints so opening from GitHub Pages or local index.html uses the exact same search & answer logic
 const LIVE_BACKEND_ORIGINS = [
-  "https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app",
-  "https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app",
+  "https://key-izmm.onrender.com",
 ];
 
 function createJsonResponse(payload: unknown, status = 200): Response {
