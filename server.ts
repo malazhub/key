@@ -2002,18 +2002,6 @@ async function fetchGoogleSearchGrounding(
     return [];
   }
 }
-async function runSmartMemoryConsensusLoop(
-  question: string,
-  history: HistoryTurn[],
-  modelsList: string[],
-  safeTarget: number,
-  options?: {
-    buildAppMode?: boolean;
-    adminUpgradeMode?: boolean;
-    nextVersionTag?: string;
-    attachments?: IncomingAttachment[];
-  }
-) {
 
 async function runSmartMemoryConsensusLoop(
   question: string,
