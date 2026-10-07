@@ -2003,18 +2003,7 @@ async function fetchGoogleSearchGrounding(
   }
 }
 
-async function runSmartMemoryConsensusLoop(
-  question: string,
-  history: HistoryTurn[],
-  modelsList: string[],
-  safeTarget: number,
-  options?: {
-    buildAppMode?: boolean;
-    adminUpgradeMode?: boolean;
-    nextVersionTag?: string;
-    attachments?: IncomingAttachment[];
-  }
-) {
+ {
   const {
     allPairsCount,
     windowPairs,
@@ -3571,7 +3560,6 @@ async function startServer() {
         nextVersionTag = "key",
         attachments = [],
         githubToken,
-        strictQueryPriority,
       } = req.body || {};
 
       if (typeof githubToken === "string" && githubToken.trim().length > 0) {
@@ -3680,10 +3668,6 @@ async function startServer() {
           adminUpgradeMode: Boolean(adminUpgradeMode),
           nextVersionTag: String(nextVersionTag || "keyv1"),
           attachments: safeAttachments,
-          strictQueryPriority:
-            typeof strictQueryPriority === "boolean"
-              ? strictQueryPriority
-              : undefined,
           liveStructureContext,
         }
       );
