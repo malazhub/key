@@ -22,7 +22,11 @@ type EngineProvider =
   | "xai"
   | "mistral"
   | "perplexity"
-  | "cohere";
+  | "cohere"
+  | "openrouter"
+  | "github"
+  | "sambanova"
+  | "together";
 
 export interface EngineDispatchRequest {
   engine: string;
@@ -70,7 +74,7 @@ export const ENGINE_REGISTRY: Record<
     provider: "google",
     modelEnv: "GEMINI_MODEL",
     apiKeyEnv: "GEMINI_API_KEY",
-        defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-2.5-flash",
   },
   "Qwen 2.5": {
     provider: "groq",
@@ -107,6 +111,84 @@ export const ENGINE_REGISTRY: Record<
     modelEnv: "COHERE_MODEL",
     apiKeyEnv: "COHERE_API_KEY",
     defaultModel: "command-r-plus",
+  },
+  "Qwen 3 32B": {
+    provider: "groq",
+    modelEnv: "GROQ_QWEN3_MODEL",
+    apiKeyEnv: "GROQ_API_KEY",
+    defaultModel: "qwen/qwen3-32b",
+  },
+  "Kimi K2": {
+    provider: "groq",
+    modelEnv: "GROQ_KIMI_MODEL",
+    apiKeyEnv: "GROQ_API_KEY",
+    defaultModel: "moonshotai/kimi-k2-instruct",
+  },
+  "Llama 3.3 70B (OpenRouter)": {
+    provider: "openrouter",
+    modelEnv: "OPENROUTER_LLAMA_MODEL",
+    apiKeyEnv: "OPENROUTER_API_KEY",
+    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
+  },
+  "DeepSeek R1 (OpenRouter)": {
+    provider: "openrouter",
+    modelEnv: "OPENROUTER_DEEPSEEK_MODEL",
+    apiKeyEnv: "OPENROUTER_API_KEY",
+    defaultModel: "deepseek/deepseek-r1:free",
+  },
+  "GPT-OSS 120B (OpenRouter)": {
+    provider: "openrouter",
+    modelEnv: "OPENROUTER_GPTOSS_MODEL",
+    apiKeyEnv: "OPENROUTER_API_KEY",
+    defaultModel: "openai/gpt-oss-120b:free",
+  },
+  "GPT-4o (GitHub)": {
+    provider: "github",
+    modelEnv: "GITHUB_GPT4O_MODEL",
+    apiKeyEnv: "GITHUB_TOKEN",
+    defaultModel: "openai/gpt-4o",
+  },
+  "DeepSeek R1 (GitHub)": {
+    provider: "github",
+    modelEnv: "GITHUB_DEEPSEEK_MODEL",
+    apiKeyEnv: "GITHUB_TOKEN",
+    defaultModel: "deepseek/DeepSeek-R1",
+  },
+  "Llama 4 Scout (GitHub)": {
+    provider: "github",
+    modelEnv: "GITHUB_LLAMA4_MODEL",
+    apiKeyEnv: "GITHUB_TOKEN",
+    defaultModel: "meta/Llama-4-Scout-17B-16E-Instruct",
+  },
+  "Llama 3.3 70B (SambaNova)": {
+    provider: "sambanova",
+    modelEnv: "SAMBANOVA_LLAMA_MODEL",
+    apiKeyEnv: "SAMBANOVA_API_KEY",
+    defaultModel: "Meta-Llama-3.3-70B-Instruct",
+  },
+  "DeepSeek V3 (SambaNova)": {
+    provider: "sambanova",
+    modelEnv: "SAMBANOVA_DEEPSEEK_MODEL",
+    apiKeyEnv: "SAMBANOVA_API_KEY",
+    defaultModel: "DeepSeek-V3-0324",
+  },
+  "Qwen 3 235B (SambaNova)": {
+    provider: "sambanova",
+    modelEnv: "SAMBANOVA_QWEN3_MODEL",
+    apiKeyEnv: "SAMBANOVA_API_KEY",
+    defaultModel: "Qwen3-235B",
+  },
+  "Llama 3.3 70B (Together)": {
+    provider: "together",
+    modelEnv: "TOGETHER_LLAMA_MODEL",
+    apiKeyEnv: "TOGETHER_API_KEY",
+    defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  },
+  "DeepSeek V3 (Together)": {
+    provider: "together",
+    modelEnv: "TOGETHER_DEEPSEEK_MODEL",
+    apiKeyEnv: "TOGETHER_API_KEY",
+    defaultModel: "deepseek-ai/DeepSeek-V3",
   },
 };
 
@@ -2414,9 +2496,7 @@ export function buildFramework2026SelfUpgradedPortalHtml(): string {
 </html>`;
 }
 
-export const KEY_COMPLETE_FILE_TREE_ASCII = `Live Container Root URL (Dev):   https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-Live Container Root URL (Prod):  https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-Live File-Tree JSON API URL:     https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
+export const KEY_COMPLETE_FILE_TREE_ASCII = `Live Backend Root URL:           https://key-izmm.onrender.com/
 Permanent GitHub Repo Root URL:  https://github.com/malazhub/key (https://github.com/malazhub/key/tree/main)
 Live GitHub Pages Root URL:      https://malazhub.github.io/key/
 
@@ -11097,11 +11177,9 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
    - If the user's query is a greeting or welcome message (e.g., "hi", "hello", "how are you", "how are u doing"): respond naturally, warmly, and concisely as a live AI assistant without dumping unrelated technical boilerplate or past topics.
    - If the user's query asks a strict Yes/No question: begin your response with a direct "Yes" or "No" followed by a clear, accurate live explanation based on the actual state.
    - If the user's query asks for the root URL where Key's structure is saved, or asks to display Key's structure, folders, or files as a tree: ALWAYS state the exact full https:// root URLs first (never replace a URL with vague labels like "Live Container Disk & Mirrored to GitHub"):
-     1. Live Cloud Container Root URL (Dev): https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-     2. Live Cloud Container Root URL (Shared/Prod): https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-     3. Live Container File-Tree JSON API URL: https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
-     4. Permanent GitHub Repository Root URL: https://github.com/malazhub/key (Branch Tree: https://github.com/malazhub/key/tree/main)
-     5. Live GitHub Pages Root URL: https://malazhub.github.io/key/
+     1. Live Backend Root URL: https://key-izmm.onrender.com/
+     2. Permanent GitHub Repository Root URL: https://github.com/malazhub/key (Branch Tree: https://github.com/malazhub/key/tree/main)
+     3. Live GitHub Pages Root URL: https://malazhub.github.io/key/
      Then render the complete hierarchical ASCII folder/file tree (\`├──\`, \`└──\`) inside a fenced code block along with exact file sizes, line counts, and factual comparison from the LIVE INSPECTED KEY STRUCTURE block below.
    - If the user's query asks to read deeply into Key's structure/logic and find gaps, errors, leaks, or weak logic (e.g., marked with [RED MARKED GAP] and permanent solutions): provide the COMPLETE, itemized multi-section technical audit with every [RED MARKED GAP], exact file/function locations, root cause analysis, and permanent architectural solution written out in full detail.
    - If the user's query refers to the previous/last conversation or asks to revise the previous response (e.g., "revise ur previous and respond", "based on the previous last conversation", "give me a short clear answer"): directly reference and revise/answer based on the IMMEDIATELY PRECEDING CONVERSATION TURN and LIVE SESSION CONVERSATION MEMORY TRANSCRIPT provided below.
@@ -13998,6 +14076,126 @@ export async function dispatchEngine(
         )
       );
     }
+
+        if (provider === "openrouter") {
+      const apiKey = getServerEnv(apiKeyEnv);
+      if (!apiKey) {
+        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
+      }
+      const response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://malazhub.github.io/key/",
+            "X-Title": "Key Multi-AI Consensus Engine",
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: promptText },
+            ],
+            temperature: 0,
+          }),
+        }
+      );
+      const data = await readProviderJson(response, engine, provider);
+      return finish(
+        extractChoiceText(data?.choices?.[0]?.message?.content)
+      );
+    }
+
+    if (provider === "github") {
+      const apiKey = getServerEnv(apiKeyEnv);
+      if (!apiKey) {
+        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
+      }
+      const response = await fetch(
+        "https://models.github.ai/inference/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: promptText },
+            ],
+            temperature: 0,
+          }),
+        }
+      );
+      const data = await readProviderJson(response, engine, provider);
+      return finish(
+        extractChoiceText(data?.choices?.[0]?.message?.content)
+      );
+    }
+
+    if (provider === "sambanova") {
+      const apiKey = getServerEnv(apiKeyEnv);
+      if (!apiKey) {
+        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
+      }
+      const response = await fetch(
+        "https://api.sambanova.ai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: promptText },
+            ],
+            temperature: 0,
+          }),
+        }
+      );
+      const data = await readProviderJson(response, engine, provider);
+      return finish(
+        extractChoiceText(data?.choices?.[0]?.message?.content)
+      );
+    }
+
+    if (provider === "together") {
+      const apiKey = getServerEnv(apiKeyEnv);
+      if (!apiKey) {
+        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
+      }
+      const response = await fetch(
+        "https://api.together.xyz/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: promptText },
+            ],
+            temperature: 0,
+          }),
+        }
+      );
+      const data = await readProviderJson(response, engine, provider);
+      return finish(
+        extractChoiceText(data?.choices?.[0]?.message?.content)
+      );
+    }
+
 
     const endpoints: Record<
       string,
