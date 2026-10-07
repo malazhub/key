@@ -12,6 +12,14 @@ import {
   run_self_tests as runVersion8SelfTests,
   run_campaign as runVersion8Campaign,
 } from "./upgrades/version8Harness";
+import {
+  buildQueryExecutionPlan,
+  buildPlannerMemoryCandidates,
+  executeAdaptiveRetrieval,
+  runBoundedCorrectiveRetrieval,
+  compileExecutionContext,
+  type AdaptiveCandidate,
+} from "./queryExecutionPlanner";
 
 type EngineProvider =
   | "google"
@@ -11066,7 +11074,154 @@ export async function runSmartMemoryConsensusLoop(
       ? fetchGoogleSearchGrounding(cleanQuestion)
       : Promise.resolve([] as GroundingSource[]);
 
-  const liveStructureGrounding = await liveStructureGroundingPromise;
+  const [liveStructureGrounding, groundingSources] = await Promise.all([
+    liveStructureGroundingPromise,
+    groundingPromise,
+  ]);
+    
+  const plannerModel =
+    getServerEnv("KEY_QUERY_PLANNER_MODEL") ||
+    getServerEnv("GEMINI_QUERY_PLANNER_MODEL") ||
+    getServerEnv("GEMINI_MODEL") ||
+    getOrderedCandidateModels()[0] ||
+    "gemini-2.5-flash";
+
+    const plannerModelInvoker = async (
+    plannerPrompt: string
+    ): Promise<unknown> => {
+    const plannerResponse = await withStrictTimeout(
+        ai.models.generateContent({
+        model: plannerModel,
+        contents: plannerPrompt,
+        config: {
+            temperature: 0,
+            responseMimeType: "application/json",
+        },
+        }),
+        10_000,
+        "QueryExecutionPlanner"
+    );
+
+    return plannerResponse;
+    };
+
+    const queryExecutionPlan = await buildQueryExecutionPlan(
+    cleanQuestion,
+    plannerModelInvoker
+    );
+
+    const plannerMemoryCandidates = buildPlannerMemoryCandidates(
+  queryExecutionPlan,
+  Array.isArray(history) ? history : []
+);
+
+const plannerCandidates: AdaptiveCandidate[] = [
+  ...plannerMemoryCandidates,
+  ...groundingSources.map((source, index) => ({
+    id: `web-grounding-${index}`,
+    source: "web_grounding" as const,
+    title: source.title,
+    content: `${source.title}\n${source.uri}`,
+    channelScores: {
+      semantic: 0.5,
+      bm25: 0.5,
+      entity: 0,
+      temporal: 0.5,
+      exactReference: 0,
+    },
+    score: 0.5,
+    metadata: {
+      provenance: source.uri,
+    },
+  })),
+];
+
+if (liveStructureGrounding.trim()) {
+  plannerCandidates.push({
+    id: "live-structure-grounding",
+    source: "live_structure",
+    title: "Live inspected Key structure",
+    content: liveStructureGrounding,
+    channelScores: {
+      semantic: 0.7,
+      bm25: 0.7,
+      entity: 0.7,
+      temporal: 0.7,
+      exactReference: 0.7,
+    },
+    score: 0.7,
+    isCurrentState: true,
+    metadata: {
+      provenance: "inspectLiveKeyStructureAndCachedState",
+    },
+  });
+}
+
+for (const attachment of attachments) {
+  if (attachment.textContent?.trim()) {
+    plannerCandidates.push({
+      id: `attachment-${attachment.name}`,
+      source: "attachments",
+      title: attachment.name,
+      content: attachment.textContent,
+      channelScores: {
+        semantic: 0.8,
+        bm25: 0.8,
+        entity: 0.5,
+        temporal: 0.5,
+        exactReference: 0.8,
+      },
+      score: 0.8,
+      metadata: {
+        provenance: attachment.name,
+      },
+    });
+  }
+    }
+    
+    const initialAdaptiveResult = executeAdaptiveRetrieval(
+        queryExecutionPlan,
+        plannerCandidates
+    );
+    
+    const adaptiveRetrievalResult = await runBoundedCorrectiveRetrieval(
+  queryExecutionPlan,
+  initialAdaptiveResult,
+  async (reason, pass) => {
+    const correctiveQuery = [
+      cleanQuestion,
+      `Corrective retrieval reason: ${reason}`,
+      `Corrective retrieval pass: ${pass}`,
+    ].join("\n");
+
+    const correctiveMemoryTrace = runMemoryOperatingSystemPipeline(
+      correctiveQuery,
+      Array.isArray(history) ? history : [],
+      {
+        forceIsolated: isStandaloneQuery,
+        tokenOverlapRatio: tokenOverlapRatioWithSaved,
+      }
+    );
+
+    return buildPlannerMemoryCandidates(
+      queryExecutionPlan,
+      Array.isArray(history) ? history : []
+    ).map((candidate) => ({
+      ...candidate,
+      metadata: {
+        ...(candidate.metadata || {}),
+        correctivePass: pass,
+        correctiveReason: reason,
+        memoryTraceAvailable: Boolean(correctiveMemoryTrace),
+      },
+    }));
+  }
+    );
+    const plannerExecutionContext = compileExecutionContext(
+        cleanQuestion,
+        queryExecutionPlan,
+        adaptiveRetrievalResult.selected
+        );
 
   const activeConversationPairs =
     rawHistoryMemory.windowPairs.length > 0
@@ -11145,7 +11300,17 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
     promptSections.push(
       `=== PROGRESSIVE ENHANCEMENT TARGET (Prior Turn #${lastSavedPair.pairIndex}: "${lastSavedPair.userQuery.slice(0, 160)}") ===\nDeepen technical rigor, accuracy, and completeness over the previous turn.`
     );
-  }
+    }
+    
+    if (plannerExecutionContext.trim()) {
+        promptSections.push(
+            [
+            "=== KEY QUERY EXECUTION PLAN & SELECTED EVIDENCE ===",
+            plannerExecutionContext,
+            "=== END QUERY EXECUTION PLANNER CONTEXT ===",
+            ].join("\n")
+        );
+        }
 
   promptSections.push(
     `Selected AI Engines (${modelsList.length}): ${modelsList.join(", ")}\nDesired Agreement Threshold: >= ${targetAgreement}%\nGenerate App Preview: ${shouldGenerateAppPreview}`
