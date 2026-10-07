@@ -11746,10 +11746,10 @@ iterationsRequired: actualRoundsCompleted,
     };
   }
 
-  const groundingSources = await Promise.race([
-    groundingPromise.catch(() => [] as GroundingSource[]),
-    new Promise<GroundingSource[]>((r) => setTimeout(() => r([]), 800)),
-  ]);
+  const timedGroundingSources = await Promise.race([
+  groundingPromise.catch(() => [] as GroundingSource[]),
+  new Promise<GroundingSource[]>((r) => setTimeout(() => r([]), 800)),
+]);
 
   if (deterministicParsed) {
     const enriched = sanitizeAndEnrichConsensusResult(
@@ -11768,7 +11768,7 @@ iterationsRequired: actualRoundsCompleted,
       ...enriched,
       memoryOS: memoryOSTrace,
       strictQueryPriority,
-      groundingSources,
+      groundingSources: timedGroundingSources,
       workingMemoryFacts: strictQueryPriority
         ? []
         : relation.workingMemoryFacts || [],
