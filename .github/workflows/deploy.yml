@@ -1,4 +1,4 @@
-name: Deploy Key to GitHub Pages & Cloud Run
+name: Deploy Key to GitHub Pages
 
 on:
   push:
@@ -58,41 +58,3 @@ jobs:
 
       - name: Deploy Pages
         uses: actions/deploy-pages@v4
-
-  cloud-run:
-    runs-on: ubuntu-latest
-    needs: pages
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Lint / typecheck
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-      - name: Authenticate Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy backend
-        run: |
-          gcloud run deploy key-backend \
-            --source . \
-            --region europe-west2 \
-            --platform managed \
-            --allow-unauthenticated
