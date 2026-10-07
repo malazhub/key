@@ -1,15 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
 export * from "./upgrades/version8Harness";
-import {
-  buildQueryExecutionPlan,
-  buildPlannerMemoryCandidates,
-  compileExecutionContext,
-  executeAdaptiveRetrieval,
-  runBoundedCorrectiveRetrieval,
-  type AdaptiveCandidate,
-  type CorrectiveRetrievalReason,
-  type EvidenceSource,
-} from "./queryExecutionPlanner";
 
 type ConvergenceRound = { round: number; similarityScore: number; note: string };
 import {
@@ -32,11 +22,7 @@ type EngineProvider =
   | "xai"
   | "mistral"
   | "perplexity"
-  | "cohere"
-  | "openrouter"
-  | "github"
-  | "sambanova"
-  | "together";
+  | "cohere";
 
 export interface EngineDispatchRequest {
   engine: string;
@@ -84,7 +70,7 @@ export const ENGINE_REGISTRY: Record<
     provider: "google",
     modelEnv: "GEMINI_MODEL",
     apiKeyEnv: "GEMINI_API_KEY",
-    defaultModel: "gemini-2.5-flash",
+        defaultModel: "gemini-2.5-flash",
   },
   "Qwen 2.5": {
     provider: "groq",
@@ -121,84 +107,6 @@ export const ENGINE_REGISTRY: Record<
     modelEnv: "COHERE_MODEL",
     apiKeyEnv: "COHERE_API_KEY",
     defaultModel: "command-r-plus",
-  },
-  "Qwen 3 32B": {
-    provider: "groq",
-    modelEnv: "GROQ_QWEN3_MODEL",
-    apiKeyEnv: "GROQ_API_KEY",
-    defaultModel: "qwen/qwen3-32b",
-  },
-  "Kimi K2": {
-    provider: "groq",
-    modelEnv: "GROQ_KIMI_MODEL",
-    apiKeyEnv: "GROQ_API_KEY",
-    defaultModel: "moonshotai/kimi-k2-instruct",
-  },
-  "Llama 3.3 70B (OpenRouter)": {
-    provider: "openrouter",
-    modelEnv: "OPENROUTER_LLAMA_MODEL",
-    apiKeyEnv: "OPENROUTER_API_KEY",
-    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
-  },
-  "DeepSeek R1 (OpenRouter)": {
-    provider: "openrouter",
-    modelEnv: "OPENROUTER_DEEPSEEK_MODEL",
-    apiKeyEnv: "OPENROUTER_API_KEY",
-    defaultModel: "deepseek/deepseek-r1:free",
-  },
-  "GPT-OSS 120B (OpenRouter)": {
-    provider: "openrouter",
-    modelEnv: "OPENROUTER_GPTOSS_MODEL",
-    apiKeyEnv: "OPENROUTER_API_KEY",
-    defaultModel: "openai/gpt-oss-120b:free",
-  },
-  "GPT-4o (GitHub)": {
-    provider: "github",
-    modelEnv: "GITHUB_GPT4O_MODEL",
-    apiKeyEnv: "GITHUB_TOKEN",
-    defaultModel: "openai/gpt-4o",
-  },
-  "DeepSeek R1 (GitHub)": {
-    provider: "github",
-    modelEnv: "GITHUB_DEEPSEEK_MODEL",
-    apiKeyEnv: "GITHUB_TOKEN",
-    defaultModel: "deepseek/DeepSeek-R1",
-  },
-  "Llama 4 Scout (GitHub)": {
-    provider: "github",
-    modelEnv: "GITHUB_LLAMA4_MODEL",
-    apiKeyEnv: "GITHUB_TOKEN",
-    defaultModel: "meta/Llama-4-Scout-17B-16E-Instruct",
-  },
-  "Llama 3.3 70B (SambaNova)": {
-    provider: "sambanova",
-    modelEnv: "SAMBANOVA_LLAMA_MODEL",
-    apiKeyEnv: "SAMBANOVA_API_KEY",
-    defaultModel: "Meta-Llama-3.3-70B-Instruct",
-  },
-  "DeepSeek V3 (SambaNova)": {
-    provider: "sambanova",
-    modelEnv: "SAMBANOVA_DEEPSEEK_MODEL",
-    apiKeyEnv: "SAMBANOVA_API_KEY",
-    defaultModel: "DeepSeek-V3-0324",
-  },
-  "Qwen 3 235B (SambaNova)": {
-    provider: "sambanova",
-    modelEnv: "SAMBANOVA_QWEN3_MODEL",
-    apiKeyEnv: "SAMBANOVA_API_KEY",
-    defaultModel: "Qwen3-235B",
-  },
-  "Llama 3.3 70B (Together)": {
-    provider: "together",
-    modelEnv: "TOGETHER_LLAMA_MODEL",
-    apiKeyEnv: "TOGETHER_API_KEY",
-    defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-  },
-  "DeepSeek V3 (Together)": {
-    provider: "together",
-    modelEnv: "TOGETHER_DEEPSEEK_MODEL",
-    apiKeyEnv: "TOGETHER_API_KEY",
-    defaultModel: "deepseek-ai/DeepSeek-V3",
   },
 };
 
@@ -2506,7 +2414,9 @@ export function buildFramework2026SelfUpgradedPortalHtml(): string {
 </html>`;
 }
 
-export const KEY_COMPLETE_FILE_TREE_ASCII = `Live Backend Root URL:           https://key-izmm.onrender.com/
+export const KEY_COMPLETE_FILE_TREE_ASCII = `Live Container Root URL (Dev):   https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
+Live Container Root URL (Prod):  https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
+Live File-Tree JSON API URL:     https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
 Permanent GitHub Repo Root URL:  https://github.com/malazhub/key (https://github.com/malazhub/key/tree/main)
 Live GitHub Pages Root URL:      https://malazhub.github.io/key/
 
@@ -9667,14 +9577,427 @@ export interface QueryContextResolution {
  *    - Otherwise, if the query is a new, independent topic (or overrides conflicting saved state), forces `contextMode = "NEW_QUERY_ONLY"` and treats it as a high-priority, isolated input.
  * 3. Emits verifiable console logs for every isolation and priority-gate decision.
  */
+export class QueryContextManager {
+  /**
+   * Rigid Query-Priority Evaluator:
+   * Evaluates whether the current query is isolated or standalone (greetings, small talk, topic isolation/complaints,
+   * capability questions, topic resets, or new independent queries with low semantic overlap).
+   */
+  static isIsolatedOrStandalone(
+    rawQuestion: string,
+    savedPairs: SavedQAPair[] = [],
+    rawRelation?: MathematicalRelationResult
+  ): boolean {
+    const cleanQ =
+      extractCleanUserTurnText(rawQuestion) || rawQuestion.trim();
+    if (!cleanQ) return true;
+    if (
+      isStandaloneGreetingOrSmallTalk(cleanQ) ||
+      hasExplicitTopicResetDirective(cleanQ)
+    ) {
+      return true;
+    }
+    if (savedPairs.length === 0) {
+      return true;
+    }
+    const rel =
+      rawRelation ||
+      calculateMathematicalRelationWithPrevious(cleanQ, savedPairs);
+    const gate = QueryContextManager.evaluateSemanticPriorityGate(
+      cleanQ,
+      savedPairs,
+      rel
+    );
+    return !gate.maintainHistory || gate.isNewIndependentTopic;
+  }
 
+  /**
+   * Forcefully purges all previous message history from `payloadSentToEngines`,
+   * returning strictly the clean, immediate user query.
+   */
+  static purgeHistoryFromPayload(
+    rawQuestionOrPayload: string,
+    fallbackCleanQuestion?: string
+  ): string {
+    const target = fallbackCleanQuestion || rawQuestionOrPayload;
+    return forceIsolatedPayloadSentToEngines(target);
+  }
 
+  static evaluateSemanticPriorityGate(
+    userQuery: string,
+    savedPairs: SavedQAPair[],
+    rawRelation: MathematicalRelationResult
+  ): SemanticPriorityGateResult {
+    const cleanQ = extractCleanUserTurnText(userQuery) || userQuery.trim();
+    if (savedPairs.length === 0) {
+      return {
+        maintainHistory: false,
+        isNewIndependentTopic: true,
+        recentTurnOverlapScore: 0,
+        maxSavedOverlapScore: 0,
+        sharedRecentTokenCount: 0,
+        gateReason: "no_saved_history",
+      };
+    }
+
+    const currentTokens = extractSemanticTokens(
+      stripNegatedAndOldDiscussionClauses(cleanQ) || cleanQ
+    );
+    const currentSet = new Set(currentTokens);
+
+    const recentPair = savedPairs[savedPairs.length - 1];
+    const recentTokens = recentPair
+      ? extractSemanticTokens(
+          stripNegatedAndOldDiscussionClauses(recentPair.userQuery) ||
+            recentPair.userQuery
+        )
+      : [];
+    const recentSet = new Set(recentTokens);
+
+    let sharedRecentTokenCount = 0;
+    for (const token of currentSet) {
+      if (recentSet.has(token)) {
+        sharedRecentTokenCount += 1;
+      }
+    }
+
+    const recentCos = computeCosineSimilarity(currentTokens, recentTokens);
+    const recentCoverage =
+      currentSet.size > 0 ? sharedRecentTokenCount / currentSet.size : 0;
+    const recentTurnOverlapScore = Math.round(
+      100 * Math.min(1, 0.55 * recentCos + 0.45 * recentCoverage)
+    );
+
+    const maxSavedOverlapScore = rawRelation.hasRelation
+      ? rawRelation.historyMatchScore
+      : recentTurnOverlapScore;
+
+    if (
+      isExplicitHistoryRetrievalOrRecallRequest(cleanQ) ||
+      isReferentialFollowUpToRecentTurn(cleanQ)
+    ) {
+      return {
+        maintainHistory: true,
+        isNewIndependentTopic: false,
+        recentTurnOverlapScore: Math.max(recentTurnOverlapScore, 95),
+        maxSavedOverlapScore: Math.max(maxSavedOverlapScore, 95),
+        sharedRecentTokenCount,
+        gateReason: isExplicitHistoryRetrievalOrRecallRequest(cleanQ)
+          ? "explicit_previous_conversation_retrieval"
+          : "referential_followup_to_recent_turn",
+      };
+    }
+
+    if (isCodebaseDiagnosticOrLogicGapQuery(cleanQ)) {
+      return {
+        maintainHistory: true,
+        isNewIndependentTopic: false,
+        recentTurnOverlapScore,
+        maxSavedOverlapScore: Math.max(maxSavedOverlapScore, 90),
+        sharedRecentTokenCount,
+        gateReason: "codebase_diagnostic_continuity",
+      };
+    }
+
+    const allMatchedPairsSupersededByCurrent =
+      rawRelation.hasRelation &&
+      rawRelation.matchedPairIndices.length > 0 &&
+      savedPairs
+        .filter((p) => rawRelation.matchedPairIndices.includes(p.pairIndex))
+        .every((p) => doesCurrentQuerySupersedeSavedPair(cleanQ, p.userQuery));
+
+    if (allMatchedPairsSupersededByCurrent) {
+      return {
+        maintainHistory: false,
+        isNewIndependentTopic: true,
+        recentTurnOverlapScore,
+        maxSavedOverlapScore: 0,
+        sharedRecentTokenCount,
+        gateReason: "current_query_supersedes_conflicting_saved_turn",
+      };
+    }
+
+    const hasHighSemanticOverlap =
+      rawRelation.hasRelation &&
+      rawRelation.contextMode === "MERGED_WITH_SAVED" &&
+      rawRelation.historyMatchScore >= 45;
+
+    if (hasHighSemanticOverlap || savedPairs.length > 0) {
+      return {
+        maintainHistory: true,
+        isNewIndependentTopic: false,
+        recentTurnOverlapScore: Math.max(recentTurnOverlapScore, 78),
+        maxSavedOverlapScore: Math.max(rawRelation.historyMatchScore, 78),
+        sharedRecentTokenCount,
+        gateReason: "continuous_multi_turn_conversation_memory_active",
+      };
+    }
+
+    return {
+      maintainHistory: false,
+      isNewIndependentTopic: true,
+      recentTurnOverlapScore,
+      maxSavedOverlapScore: 0,
+      sharedRecentTokenCount,
+      gateReason: "new_independent_topic_low_semantic_overlap",
+    };
+  }
+
+  static resolveQueryContext(
+    rawQuestion: string,
+    history: HistoryTurn[],
+    options?: {
+      strictQueryPriority?: boolean;
+    }
+  ): QueryContextResolution {
+    const cleanQuestion =
+      extractCleanUserTurnText(rawQuestion) || rawQuestion.trim();
+    const isolatedPayloadSentToEngines =
+      forceIsolatedPayloadSentToEngines(cleanQuestion);
+
+    const priorRawHistoryLength = Array.isArray(history) ? history.length : 0;
+    const { allPairsCount: rawAllPairsCount } = buildCumulativeMemoryBank(
+      Array.isArray(history) ? history : []
+    );
+
+    const isGreetingTarget = isStandaloneGreetingOrSmallTalk(cleanQuestion);
+    const isTopicIsolationTarget =
+      isTopicIsolationOrComplaintQuery(cleanQuestion);
+    const isCapabilityQuestionTarget =
+      !isGreetingTarget && isSelfUpgradeCapabilityQuestion(cleanQuestion);
+    const isEnhancementTarget =
+      !isGreetingTarget &&
+      !isTopicIsolationTarget &&
+      !isCapabilityQuestionTarget &&
+      isEnhancementOrRevisionRequest(cleanQuestion);
+
+    const isEarlyTopicIsolationOrGreeting = isGreetingTarget;
+
+    const isMandatoryIsolatedTurn =
+      isGreetingTarget ||
+      hasExplicitTopicResetDirective(cleanQuestion);
+
+    // 1. If `isStandaloneGreetingOrSmallTalk` or `isTopicIsolationOrComplaintQuery` evaluates to true,
+    // force `contextMode = "NEW_QUERY_ONLY"` and purge all previous history from `payloadSentToEngines`.
+    if (isEarlyTopicIsolationOrGreeting || isMandatoryIsolatedTurn) {
+      const isolationReason = isGreetingTarget
+        ? "isStandaloneGreetingOrSmallTalk=true"
+        : isTopicIsolationTarget
+        ? "isTopicIsolationOrComplaintQuery=true"
+        : isCapabilityQuestionTarget
+        ? "isSelfUpgradeCapabilityQuestion=true"
+        : "hasExplicitTopicResetDirective=true";
+
+      const purgedPayload = forceIsolatedPayloadSentToEngines(cleanQuestion);
+
+      const isolatedRelation: MathematicalRelationResult = {
+        hasRelation: false,
+        contextMode: "NEW_QUERY_ONLY",
+        historyMatchScore: 0,
+        matchedPairIndices: [],
+        payloadSentToEngines: purgedPayload,
+        isCorrectionOrRepetition: false,
+        cumulativeUserSpecification: purgedPayload,
+        workingMemoryFacts: [],
+      };
+
+      return {
+        cleanQuestion,
+        isolatedPayloadSentToEngines: purgedPayload,
+        contextMode: "NEW_QUERY_ONLY",
+        strictQueryPriority: true,
+        isGreetingTarget,
+        isTopicIsolationTarget,
+        isCapabilityQuestionTarget,
+        isEnhancementTarget,
+        isEarlyTopicIsolationOrGreeting,
+        isMandatoryIsolatedTurn: true,
+        payloadSentToEngines: purgedPayload,
+        windowPairs: [],
+        effectiveHistory: [],
+        relation: isolatedRelation,
+        allPairsCount: rawAllPairsCount,
+        droppedOldestCount: 0,
+        cumulativeSpec: undefined,
+        priorityGate: {
+          maintainHistory: false,
+          isNewIndependentTopic: true,
+          recentTurnOverlapScore: 0,
+          maxSavedOverlapScore: 0,
+          sharedRecentTokenCount: 0,
+          gateReason: isolationReason,
+        },
+      };
+    }
+
+    // 2. Semantic Comparison & Logical Priority Gate between current `userQuery` and saved conversation pairs
+    const sanitizedInputHistory: HistoryTurn[] = Array.isArray(history)
+      ? history
+      : [];
+    const {
+      allPairsCount: activePairsCount,
+      windowPairs: rawWindowPairs,
+      droppedOldestCount,
+    } = buildCumulativeMemoryBank(sanitizedInputHistory);
+    const allPairsCount = Math.max(rawAllPairsCount, activePairsCount);
+
+    const rawRelation = calculateMathematicalRelationWithPrevious(
+      cleanQuestion,
+      rawWindowPairs
+    );
+
+    const priorityGate = QueryContextManager.evaluateSemanticPriorityGate(
+      cleanQuestion,
+      rawWindowPairs,
+      rawRelation
+    );
+
+    // Logical Priority Gate:
+    // If the current query is a new, independent topic (`!priorityGate.maintainHistory`), ALWAYS force `strictQueryPriority = true`
+    // and `contextMode = "NEW_QUERY_ONLY"`, even if a caller passed `strictQueryPriority: false`.
+    // Conversely, if the query is a referential follow-up ("how did u do that", "no technical reply, i need the logic flow")
+    // or codebase diagnostic continuity, maintain history (`strictQueryPriority = false`).
+    const strictQueryPriority: boolean = !priorityGate.maintainHistory
+      ? true
+      : isGreetingTarget || hasExplicitTopicResetDirective(cleanQuestion)
+      ? true
+      : false;
+
+    const windowPairs: SavedQAPair[] = strictQueryPriority
+      ? []
+      : rawWindowPairs;
+    const effectiveHistory: HistoryTurn[] = strictQueryPriority
+      ? []
+      : sanitizedInputHistory;
+
+    const relation: MathematicalRelationResult = strictQueryPriority
+      ? {
+          hasRelation: false,
+          contextMode: "NEW_QUERY_ONLY",
+          historyMatchScore: 0,
+          matchedPairIndices: [],
+          payloadSentToEngines: isolatedPayloadSentToEngines,
+          isCorrectionOrRepetition: false,
+          cumulativeUserSpecification: isolatedPayloadSentToEngines,
+          workingMemoryFacts: [],
+        }
+      : rawRelation;
+
+    const contextMode: "MERGED_WITH_SAVED" | "NEW_QUERY_ONLY" =
+      strictQueryPriority ? "NEW_QUERY_ONLY" : relation.contextMode;
+    const payloadSentToEngines: string = strictQueryPriority
+      ? QueryContextManager.purgeHistoryFromPayload(
+          relation.payloadSentToEngines,
+          isolatedPayloadSentToEngines
+        )
+      : relation.payloadSentToEngines;
+    const cumulativeSpec =
+      !strictQueryPriority && relation.hasRelation
+        ? relation.cumulativeUserSpecification
+        : undefined;
+
+    return {
+      cleanQuestion,
+      isolatedPayloadSentToEngines,
+      contextMode,
+      strictQueryPriority,
+      isGreetingTarget,
+      isTopicIsolationTarget,
+      isCapabilityQuestionTarget,
+      isEnhancementTarget,
+      isEarlyTopicIsolationOrGreeting,
+      isMandatoryIsolatedTurn,
+      payloadSentToEngines,
+      windowPairs,
+      effectiveHistory,
+      relation,
+      allPairsCount,
+      droppedOldestCount,
+      cumulativeSpec,
+      priorityGate,
+    };
+  }
+}
+
+export const SEMANTIC_OVERLAP_THRESHOLD = 0.2;
 
 /**
  * Calculates the semantic token overlap ratio [0..1] between the current user query
  * and previous chat history turns (`recentWindowSize`, default 3 turns, plus full window).
  */
+export function calculateRecentTurnTokenOverlap(
+  currentQuery: string,
+  allSavedPairs: SavedQAPair[],
+  recentWindowSize = 3
+): {
+  overlapRatio: number;
+  fullHistoryOverlapRatio: number;
+  sharedTokenCount: number;
+  currentTokenCount: number;
+  recentTurnsinspected: number;
+} {
+  const cleanQ = extractCleanUserTurnText(currentQuery) || currentQuery.trim();
+  const currentTokens = extractSemanticTokens(
+    stripNegatedAndOldDiscussionClauses(cleanQ) || cleanQ
+  );
+  if (currentTokens.length === 0 || allSavedPairs.length === 0) {
+    return {
+      overlapRatio: 0,
+      fullHistoryOverlapRatio: 0,
+      sharedTokenCount: 0,
+      currentTokenCount: currentTokens.length,
+      recentTurnsinspected: 0,
+    };
+  }
 
+  const uniqueCurrentTokens = Array.from(new Set(currentTokens));
+  const uniqueCurrentCount = uniqueCurrentTokens.length;
+
+  const recentPairs = allSavedPairs.slice(-Math.max(1, recentWindowSize));
+  const recentTokenSet = new Set(
+    recentPairs.flatMap((pair) =>
+      extractSemanticTokens(
+        `${
+          stripNegatedAndOldDiscussionClauses(pair.userQuery) || pair.userQuery
+        } ${(pair.agreedAnswer || "").slice(0, 600)}`
+      )
+    )
+  );
+
+  const fullHistoryTokenSet = new Set(
+    allSavedPairs.flatMap((pair) =>
+      extractSemanticTokens(
+        `${
+          stripNegatedAndOldDiscussionClauses(pair.userQuery) || pair.userQuery
+        } ${(pair.agreedAnswer || "").slice(0, 600)}`
+      )
+    )
+  );
+
+  let sharedTokenCount = 0;
+  let sharedFullHistoryCount = 0;
+  for (const token of uniqueCurrentTokens) {
+    if (recentTokenSet.has(token)) {
+      sharedTokenCount += 1;
+    }
+    if (fullHistoryTokenSet.has(token)) {
+      sharedFullHistoryCount += 1;
+    }
+  }
+
+  const overlapRatio =
+    uniqueCurrentCount > 0 ? sharedTokenCount / uniqueCurrentCount : 0;
+  const fullHistoryOverlapRatio =
+    uniqueCurrentCount > 0 ? sharedFullHistoryCount / uniqueCurrentCount : 0;
+
+  return {
+    overlapRatio,
+    fullHistoryOverlapRatio,
+    sharedTokenCount,
+    currentTokenCount: uniqueCurrentCount,
+    recentTurnsinspected: recentPairs.length,
+  };
+}
 
 export function computeSingleEngineTelemetry(
   modelName: string,
@@ -9892,7 +10215,8 @@ export function runMemoryOperatingSystemPipeline(
   rawQuery: string,
   history: HistoryTurn[],
   options?: {
-    executionPlan?: import("./queryExecutionPlanner").QueryExecutionPlan;
+    forceIsolated?: boolean;
+    tokenOverlapRatio?: number;
   }
 ): MemoryOSPipelineTrace {
   const qu = analyzeQueryUnderstanding(rawQuery);
@@ -9900,13 +10224,6 @@ export function runMemoryOperatingSystemPipeline(
     Array.isArray(history) ? history : []
   );
   const recentPairs = memBank.windowPairs;
-  const executionPlan = options?.executionPlan;
-  const explicitlyReset = hasExplicitTopicResetDirective(qu.rawQuery);
-
-  const doINeedHistory =
-    !explicitlyReset &&
-    recentPairs.length > 0 &&
-    Boolean(executionPlan?.evidenceNeeds?.recentContext ?? true);
 
   // Stage 2: MEMORY ROUTER ("Do I need history?")
   const hasStrongConvRef =
@@ -9915,7 +10232,18 @@ export function runMemoryOperatingSystemPipeline(
     qu.intent === "conversational_inquiry" ||
     qu.temporalReferences.horizon === "previous_turn";
 
-  
+  const isIsolatedByIntent =
+    Boolean(options?.forceIsolated) ||
+    qu.intent === "small_talk" ||
+    hasExplicitTopicResetDirective(qu.rawQuery);
+
+  const overlapRatio = options?.tokenOverlapRatio ?? 0.35;
+  const doINeedHistory =
+    !isIsolatedByIntent &&
+    recentPairs.length > 0 &&
+    (hasStrongConvRef ||
+      overlapRatio >= SEMANTIC_OVERLAP_THRESHOLD ||
+      qu.intent === "imperative_command");
 
   const activeTiers: Array<
     "RECENT_CONTEXT" | "LONG_TERM_MEMORY" | "KNOWLEDGE"
@@ -9936,6 +10264,8 @@ export function runMemoryOperatingSystemPipeline(
 
   const retrievalBudget = !doINeedHistory
     ? 0
+    : hasStrongConvRef
+    ? Math.min(5, Math.max(2, recentPairs.length))
     : Math.min(10, Math.max(3, recentPairs.length + 2));
 
   const memoryRouter: MemoryRouterDecision = {
@@ -10560,138 +10890,6 @@ export async function inspectLiveKeyStructureAndCachedState(
 
   return sections.join("\n\n");
 }
-function buildQueryPlannerCandidates(args: {
-  memoryTrace: MemoryOSPipelineTrace;
-  windowPairs: SavedQAPair[];
-  groundingSources: GroundingSource[];
-  liveStructureGrounding: string;
-  attachments: IncomingAttachment[];
-}): AdaptiveCandidate[] {
-  const result: AdaptiveCandidate[] = [];
-
-  const topMemories = Array.isArray(args.memoryTrace?.smartReranker?.topMemories)
-    ? args.memoryTrace.smartReranker.topMemories
-    : [];
-
-  for (const memory of topMemories) {
-    const source: EvidenceSource =
-      memory.tier === "RECENT_CONTEXT"
-        ? "recent_context"
-        : memory.tier === "LONG_TERM_MEMORY"
-        ? "long_term_memory"
-        : "knowledge";
-
-    result.push({
-      id: `memory:${memory.id}`,
-      source,
-      title: memory.title,
-      content: memory.title,
-      channelScores: {
-        semantic: Math.max(0, Math.min(1, memory.channelBreakdown.semantic)),
-        bm25: Math.max(0, Math.min(1, memory.channelBreakdown.keywordBM25)),
-        entity: Math.max(0, Math.min(1, memory.channelBreakdown.entity)),
-        temporal: Math.max(0, Math.min(1, memory.channelBreakdown.temporal)),
-        exactReference: Math.max(
-          0,
-          Math.min(1, memory.channelBreakdown.exactReference)
-        ),
-      },
-      score: Math.max(0, Math.min(1, memory.rerankedScore)),
-      metadata: { provenance: memory.id },
-    });
-  }
-
-  for (const pair of args.windowPairs) {
-    result.push({
-      id: `conversation:${pair.pairIndex}`,
-      source: "recent_context",
-      title: `Conversation turn #${pair.pairIndex}`,
-      content: `${pair.userQuery} ${(pair.agreedAnswer || "").slice(0, 600)}`,
-      timestampMs: Date.now() - (1000 - pair.pairIndex) * 1000,
-      channelScores: {
-        semantic: 0.7,
-        bm25: 0.6,
-        entity: 0.5,
-        temporal: 0.6,
-        exactReference: 0.7,
-      },
-      score: 0,
-      metadata: { provenance: `conversation:${pair.pairIndex}` },
-    });
-  }
-
-  for (let i = 0; i < args.groundingSources.length; i++) {
-    const source = args.groundingSources[i];
-
-    if (!source.uri) continue;
-
-    result.push({
-      id: `web_grounding:${i}:${source.uri}`,
-      source: "web_grounding",
-      title: source.title || source.uri,
-      content: `${source.title || "External source"} — ${source.uri}`,
-      channelScores: {
-        semantic: 0.7,
-        bm25: 0.7,
-        entity: 0.6,
-        temporal: 0.8,
-        exactReference: 0.8,
-      },
-      score: 0,
-      metadata: { provenance: source.uri },
-    });
-  }
-
-  if (
-    args.liveStructureGrounding &&
-    args.liveStructureGrounding.trim()
-  ) {
-    result.push({
-      id: "live_structure:key",
-      source: "live_structure",
-      title: "Live Key structure and cached state",
-      content: args.liveStructureGrounding,
-      channelScores: {
-        semantic: 0.9,
-        bm25: 0.9,
-        entity: 0.9,
-        temporal: 0.9,
-        exactReference: 0.9,
-      },
-      score: 0,
-      metadata: {
-        provenance: "inspectLiveKeyStructureAndCachedState",
-      },
-    });
-  }
-
-  for (let i = 0; i < args.attachments.length; i++) {
-    const attachment = args.attachments[i];
-
-    const content =
-      attachment.textContent && attachment.textContent.trim()
-        ? attachment.textContent
-        : `[Binary attachment: ${attachment.name} (${attachment.mimeType})]`;
-
-    result.push({
-      id: `attachment:${i}:${attachment.name}`,
-      source: "attachments",
-      title: attachment.name,
-      content,
-      channelScores: {
-        semantic: 0.8,
-        bm25: 0.7,
-        entity: 0.7,
-        temporal: 0.4,
-        exactReference: 0.9,
-      },
-      score: 0,
-      metadata: { provenance: attachment.name },
-    });
-  }
-
-  return result;
-}
 
 export async function runSmartMemoryConsensusLoop(
   question: string,
@@ -10703,6 +10901,7 @@ export async function runSmartMemoryConsensusLoop(
     adminUpgradeMode?: boolean;
     nextVersionTag?: string;
     attachments?: IncomingAttachment[];
+    strictQueryPriority?: boolean;
     liveStructureContext?: string;
   }
 ) {
@@ -10710,63 +10909,96 @@ export async function runSmartMemoryConsensusLoop(
   const ai = createGenAIClient();
 
   // Resolve query isolation, contextMode, history purging, and current-over-saved priority via explicit QueryContextManager
-  const cleanQuestion = question.trim();
+  const resolvedContext = QueryContextManager.resolveQueryContext(
+    question,
+    history,
+    {
+      strictQueryPriority: options?.strictQueryPriority,
+    }
+  );
 
-const rawHistoryMemory = buildCumulativeMemoryBank(
-  Array.isArray(history) ? history : []
-);
+  const {
+    cleanQuestion,
+    isolatedPayloadSentToEngines,
+    isGreetingTarget,
+    isTopicIsolationTarget,
+    isCapabilityQuestionTarget,
+    isEnhancementTarget,
+    windowPairs,
+    effectiveHistory,
+    relation,
+    allPairsCount,
+    droppedOldestCount,
+    priorityGate,
+  } = resolvedContext;
 
-const windowPairs = rawHistoryMemory.windowPairs;
-const allPairsCount = rawHistoryMemory.allPairsCount;
-const droppedOldestCount = rawHistoryMemory.droppedOldestCount;
+  let strictQueryPriority = resolvedContext.strictQueryPriority;
+  let contextMode = resolvedContext.contextMode;
+  let payloadSentToEngines = resolvedContext.payloadSentToEngines;
+  let cumulativeSpec = resolvedContext.cumulativeSpec;
 
-const effectiveHistory = Array.isArray(history) ? history : [];
+  // Semantic Similarity Gate against previous chat history (threshold < 0.2):
+  const rawHistoryMemory = buildCumulativeMemoryBank(
+    Array.isArray(history) ? history : []
+  );
+  const recentOverlapStats = calculateRecentTurnTokenOverlap(
+    cleanQuestion,
+    rawHistoryMemory.windowPairs,
+    3
+  );
+  const tokenOverlapRatioWithSaved = Math.max(
+    recentOverlapStats.overlapRatio,
+    recentOverlapStats.fullHistoryOverlapRatio
+  );
+  const isExplicitHistoryRecallTarget =
+    !isGreetingTarget && isExplicitHistoryRetrievalOrRecallRequest(cleanQuestion);
 
-const relation = calculateMathematicalRelationWithPrevious(
-  cleanQuestion,
-  windowPairs
-);
+  const isBelowSemanticOverlapThreshold =
+    !isExplicitHistoryRecallTarget &&
+    rawHistoryMemory.windowPairs.length === 0 &&
+    (!priorityGate.maintainHistory ||
+      (tokenOverlapRatioWithSaved < SEMANTIC_OVERLAP_THRESHOLD &&
+        !isCodebaseDiagnosticOrLogicGapQuery(cleanQuestion) &&
+        !isReferentialFollowUpToRecentTurn(cleanQuestion) &&
+        !relation.isCorrectionOrRepetition));
 
-const isGreetingTarget = isStandaloneGreetingOrSmallTalk(cleanQuestion);
-const isTopicIsolationTarget = isTopicIsolationOrComplaintQuery(cleanQuestion);
-const isCapabilityQuestionTarget = isSelfUpgradeCapabilityQuestion(cleanQuestion);
-const isEnhancementTarget = isReferentialFollowUpToRecentTurn(cleanQuestion);
+  // Definitive `isStandaloneQuery` Flag:
+  // Isolates when there are 0 prior turns, or when the user sends a standalone greeting,
+  // or when the user explicitly commands a topic reset.
+  const isStandaloneQuery: boolean =
+    !isExplicitHistoryRecallTarget &&
+    (rawHistoryMemory.windowPairs.length === 0 ||
+      isStandaloneGreetingOrSmallTalk(cleanQuestion) ||
+      isGreetingTarget ||
+      hasExplicitTopicResetDirective(cleanQuestion) ||
+      isBelowSemanticOverlapThreshold);
 
-let cumulativeSpec: string | undefined;
-let payloadSentToEngines: string = cleanQuestion;
-let contextMode: "MERGED_WITH_SAVED" | "NEW_QUERY_ONLY" = "MERGED_WITH_SAVED";
-let strictQueryPriority: boolean = false;
+  if (isStandaloneQuery) {
+    strictQueryPriority = true;
+    contextMode = "NEW_QUERY_ONLY";
+    payloadSentToEngines = QueryContextManager.purgeHistoryFromPayload(
+      payloadSentToEngines,
+      isolatedPayloadSentToEngines
+    );
+    windowPairs.length = 0;
+    effectiveHistory.length = 0;
+    cumulativeSpec = undefined;
+    relation.hasRelation = false;
+    relation.contextMode = "NEW_QUERY_ONLY";
+    relation.historyMatchScore = 0;
+    relation.matchedPairIndices = [];
+    relation.payloadSentToEngines = payloadSentToEngines;
+    relation.workingMemoryFacts = [];
+  }
 
   // Execute the 6-Stage Memory Operating System Pipeline around the model
   const memoryOSTrace = runMemoryOperatingSystemPipeline(
     cleanQuestion,
     Array.isArray(history) ? history : [],
     {
-      executionPlan: queryExecutionPlan,
+      forceIsolated: isStandaloneQuery,
+      tokenOverlapRatio: tokenOverlapRatioWithSaved,
     }
-  );
-
-  const plannerCandidates = buildQueryPlannerCandidates({
-    memoryTrace: memoryOSTrace,
-    windowPairs,
-    groundingSources,
-    liveStructureGrounding,
-    attachments,
-  });
-
-  const plannerMemoryCandidates = buildPlannerMemoryCandidates(
-    queryExecutionPlan,
-    Array.isArray(history) ? history : []
-  );
-
-  const allPlannerCandidates = [
-    ...plannerMemoryCandidates,
-    ...plannerCandidates,
-  ];
-
-  const initialAdaptiveResult = executeAdaptiveRetrieval(
-    queryExecutionPlan,
-    allPlannerCandidates
   );
 
   const attachments = Array.isArray(options?.attachments)
@@ -10835,103 +11067,6 @@ let strictQueryPriority: boolean = false;
       : Promise.resolve([] as GroundingSource[]);
 
   const liveStructureGrounding = await liveStructureGroundingPromise;
-  const plannerCandidates = buildQueryPlannerCandidates({
-    memoryTrace: memoryOSTrace,
-    windowPairs,
-    groundingSources,
-    liveStructureGrounding,
-    attachments,
-  });
-
-  const plannerMemoryCandidates = buildPlannerMemoryCandidates(
-    queryExecutionPlan,
-    Array.isArray(history) ? history : []
-  );
-
-  const allPlannerCandidates = [
-    ...plannerMemoryCandidates,
-    ...plannerCandidates,
-  ];
-
-  const initialAdaptiveResult = executeAdaptiveRetrieval(
-    queryExecutionPlan,
-    allPlannerCandidates
-  );
-
-    const adaptiveRetrievalResult = await runBoundedCorrectiveRetrieval(
-    queryExecutionPlan,
-    initialAdaptiveResult,
-    async (
-      reason: CorrectiveRetrievalReason,
-      pass: number
-    ): Promise<AdaptiveCandidate[]> => {
-      const correctiveQuery = [
-        queryExecutionPlan.originalQuery,
-        "",
-        `CORRECTIVE RETRIEVAL PASS ${pass}`,
-        `REASON: ${reason}`,
-        "",
-        "Retrieve additional evidence specifically addressing this missing requirement.",
-        "Do not replace the original user query.",
-      ].join("\n");
-
-      const correctiveMemoryResult = runMemoryOperatingSystemPipeline(
-        correctiveQuery,
-        Array.isArray(history) ? history : [],
-        {
-          executionPlan: queryExecutionPlan,
-        }
-      );
-
-      return buildQueryPlannerCandidates({
-        memoryTrace: correctiveMemoryResult,
-        windowPairs,
-        groundingSources,
-        liveStructureGrounding,
-        attachments,
-      });
-      }
-      const plannerExecutionContext = compileExecutionContext(
-        cleanQuestion,
-        queryExecutionPlan,
-        adaptiveRetrievalResult.selected
-      );
-  
-      // === QUERY EXECUTION PLANNER ===
-      // Orchestration layer only.
-      // Preserves Memory OS, grounding, live structure inspection,
-      // attachment processing, consensus, engine dispatch, and Version 8.
-
-      const plannerModel =
-        getServerEnv("KEY_QUERY_PLANNER_MODEL") ||
-        getServerEnv("GEMINI_QUERY_PLANNER_MODEL") ||
-        getServerEnv("GEMINI_MODEL") ||
-        getOrderedCandidateModels()[0] ||
-        "gemini-2.5-flash";
-
-      const plannerModelInvoker = async (
-        plannerPrompt: string
-      ): Promise<unknown> => {
-        const plannerResponse = await withStrictTimeout(
-          ai.models.generateContent({
-            model: plannerModel,
-            contents: plannerPrompt,
-            config: {
-              temperature: 0,
-              responseMimeType: "application/json",
-            },
-          }),
-          10_000,
-          "QueryExecutionPlanner"
-        );
-
-        return plannerResponse;
-      };
-
-      const queryExecutionPlan = await buildQueryExecutionPlan(
-        cleanQuestion,
-        plannerModelInvoker
-      );
 
   const activeConversationPairs =
     rawHistoryMemory.windowPairs.length > 0
@@ -10962,9 +11097,11 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
    - If the user's query is a greeting or welcome message (e.g., "hi", "hello", "how are you", "how are u doing"): respond naturally, warmly, and concisely as a live AI assistant without dumping unrelated technical boilerplate or past topics.
    - If the user's query asks a strict Yes/No question: begin your response with a direct "Yes" or "No" followed by a clear, accurate live explanation based on the actual state.
    - If the user's query asks for the root URL where Key's structure is saved, or asks to display Key's structure, folders, or files as a tree: ALWAYS state the exact full https:// root URLs first (never replace a URL with vague labels like "Live Container Disk & Mirrored to GitHub"):
-     1. Live Backend Root URL: https://key-izmm.onrender.com/
-     2. Permanent GitHub Repository Root URL: https://github.com/malazhub/key (Branch Tree: https://github.com/malazhub/key/tree/main)
-     3. Live GitHub Pages Root URL: https://malazhub.github.io/key/
+     1. Live Cloud Container Root URL (Dev): https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
+     2. Live Cloud Container Root URL (Shared/Prod): https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
+     3. Live Container File-Tree JSON API URL: https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
+     4. Permanent GitHub Repository Root URL: https://github.com/malazhub/key (Branch Tree: https://github.com/malazhub/key/tree/main)
+     5. Live GitHub Pages Root URL: https://malazhub.github.io/key/
      Then render the complete hierarchical ASCII folder/file tree (\`├──\`, \`└──\`) inside a fenced code block along with exact file sizes, line counts, and factual comparison from the LIVE INSPECTED KEY STRUCTURE block below.
    - If the user's query asks to read deeply into Key's structure/logic and find gaps, errors, leaks, or weak logic (e.g., marked with [RED MARKED GAP] and permanent solutions): provide the COMPLETE, itemized multi-section technical audit with every [RED MARKED GAP], exact file/function locations, root cause analysis, and permanent architectural solution written out in full detail.
    - If the user's query refers to the previous/last conversation or asks to revise the previous response (e.g., "revise ur previous and respond", "based on the previous last conversation", "give me a short clear answer"): directly reference and revise/answer based on the IMMEDIATELY PRECEDING CONVERSATION TURN and LIVE SESSION CONVERSATION MEMORY TRANSCRIPT provided below.
@@ -11007,15 +11144,6 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
   if (isEnhancementTarget && lastSavedPair) {
     promptSections.push(
       `=== PROGRESSIVE ENHANCEMENT TARGET (Prior Turn #${lastSavedPair.pairIndex}: "${lastSavedPair.userQuery.slice(0, 160)}") ===\nDeepen technical rigor, accuracy, and completeness over the previous turn.`
-    );
-  }
-    if (plannerExecutionContext.trim()) {
-    promptSections.push(
-      [
-        "=== KEY QUERY EXECUTION PLAN & SELECTED EVIDENCE ===",
-        plannerExecutionContext,
-        "=== END QUERY EXECUTION PLANNER CONTEXT ===",
-      ].join("\n")
     );
   }
 
@@ -11458,50 +11586,22 @@ iterationsRequired: actualRoundsCompleted,
     new Promise<GroundingSource[]>((r) => setTimeout(() => r([]), 800)),
   ]);
 
-  const plannerCandidates = buildQueryPlannerCandidates({
-  memoryTrace: memoryOSTrace,
-  windowPairs,
-  groundingSources,
-  liveStructureGrounding,
-  attachments,
-});
-
-const plannerMemoryCandidates = buildPlannerMemoryCandidates(
-  queryExecutionPlan,
-  Array.isArray(history) ? history : []
-);
-
-const allPlannerCandidates = [
-  ...plannerMemoryCandidates,
-  ...plannerCandidates,
-];
-
-const initialAdaptiveResult = executeAdaptiveRetrieval(
-  queryExecutionPlan,
-  allPlannerCandidates
-);
-
+  if (deterministicParsed) {
+    const enriched = sanitizeAndEnrichConsensusResult(
+      {
+        ...deterministicParsed,
+        _wallClockElapsedMs: Date.now() - loopStartTimeMs,
+        _memoryOSTrace: memoryOSTrace,
+      },
+      modelsList,
+      safeTarget,
+      cleanQuestion,
+      shouldGenerateAppPreview,
+      cumulativeSpec
+    );
     return {
       ...enriched,
       memoryOS: memoryOSTrace,
-      queryExecutionPlan,
-      adaptiveRetrieval: adaptiveRetrievalResult,
-      plannerTelemetry: {
-        plannerEnabled: true,
-        plannerConfidence: queryExecutionPlan.confidence,
-        plannerPolarity: queryExecutionPlan.polarity,
-        plannerFallbackReason: queryExecutionPlan.fallbackReason || null,
-        plannerEvidenceNeeds: queryExecutionPlan.evidenceNeeds,
-        plannerSources: queryExecutionPlan.retrieval.sources,
-        plannerSelectedEvidenceCount: adaptiveRetrievalResult.selected.length,
-        plannerCandidateCount: adaptiveRetrievalResult.candidates.length,
-        plannerCorrectivePasses: adaptiveRetrievalResult.correctivePasses,
-        plannerCorrectiveReasons: adaptiveRetrievalResult.correctiveReasons,
-        plannerContradictionRatio: adaptiveRetrievalResult.contradictionRatio,
-        plannerOriginalQueryPreserved:
-          queryExecutionPlan.originalQuery === cleanQuestion,
-        plannerTrustBoundaryApplied: true,
-      },
       strictQueryPriority,
       groundingSources,
       workingMemoryFacts: strictQueryPriority
@@ -11521,6 +11621,7 @@ const initialAdaptiveResult = executeAdaptiveRetrieval(
       droppedOldestCount,
       cacheHit: false,
     };
+  }
 
   // All live recovery paths failed. Surface the actual provider diagnostics
   // instead of a generic zero-millisecond failure.
@@ -11700,9 +11801,6 @@ export function executeConsensusApiPayload(
     confidence: result.confidence,
     engineResponses: mappedNodes,
     memoryOS: result.metadata?.memoryOS || result.memoryOS,
-    queryExecutionPlan: result.queryExecutionPlan,
-    adaptiveRetrieval: result.adaptiveRetrieval,
-    plannerTelemetry: result.plannerTelemetry,
     activeModels: modelsList,
   };
 }
@@ -13901,126 +13999,6 @@ export async function dispatchEngine(
       );
     }
 
-        if (provider === "openrouter") {
-      const apiKey = getServerEnv(apiKeyEnv);
-      if (!apiKey) {
-        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
-      }
-      const response = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": "https://malazhub.github.io/key/",
-            "X-Title": "Key Multi-AI Consensus Engine",
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: promptText },
-            ],
-            temperature: 0,
-          }),
-        }
-      );
-      const data = await readProviderJson(response, engine, provider);
-      return finish(
-        extractChoiceText(data?.choices?.[0]?.message?.content)
-      );
-    }
-
-    if (provider === "github") {
-      const apiKey = getServerEnv(apiKeyEnv);
-      if (!apiKey) {
-        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
-      }
-      const response = await fetch(
-        "https://models.github.ai/inference/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: promptText },
-            ],
-            temperature: 0,
-          }),
-        }
-      );
-      const data = await readProviderJson(response, engine, provider);
-      return finish(
-        extractChoiceText(data?.choices?.[0]?.message?.content)
-      );
-    }
-
-    if (provider === "sambanova") {
-      const apiKey = getServerEnv(apiKeyEnv);
-      if (!apiKey) {
-        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
-      }
-      const response = await fetch(
-        "https://api.sambanova.ai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: promptText },
-            ],
-            temperature: 0,
-          }),
-        }
-      );
-      const data = await readProviderJson(response, engine, provider);
-      return finish(
-        extractChoiceText(data?.choices?.[0]?.message?.content)
-      );
-    }
-
-    if (provider === "together") {
-      const apiKey = getServerEnv(apiKeyEnv);
-      if (!apiKey) {
-        throw new Error(`${engine}: ${apiKeyEnv} is not configured.`);
-      }
-      const response = await fetch(
-        "https://api.together.xyz/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: promptText },
-            ],
-            temperature: 0,
-          }),
-        }
-      );
-      const data = await readProviderJson(response, engine, provider);
-      return finish(
-        extractChoiceText(data?.choices?.[0]?.message?.content)
-      );
-    }
-
-
     const endpoints: Record<
       string,
       string
@@ -14225,6 +14203,25 @@ export function executeConsensus(
 }
 
 // 2. Strict Query-Priority Isolation (Zero-History Logic)
+export function purgeAndIsolateContext(
+  strictQueryPriority: boolean,
+  currentQueryOnly: string
+) {
+  if (strictQueryPriority === true) {
+    return {
+      activeContext: null,
+      payloadSentToEngines: forceIsolatedPayloadSentToEngines(currentQueryOnly),
+      historyMatchScore: 0,
+      status: "Context Isolated: High-Priority Mode Active",
+    };
+  }
+  return {
+    activeContext: currentQueryOnly,
+    payloadSentToEngines: currentQueryOnly,
+    historyMatchScore: 100,
+    status: "Merged Context Mode",
+  };
+}
 
 // 3. Autonomous Self-Upgrade Authority Kernel
 export const upgradeAuthority = {
