@@ -5068,9 +5068,44 @@ const data = await res.json();
           ? error.message
           : String(error);
 
-      setErrorBanner(
+      const failureMessage =
         diagnostic ||
-          "Live engine dispatch failed."
+        "Live engine dispatch failed.";
+
+      setErrorBanner(failureMessage);
+
+      // NEVER leave a user turn visually unanswered.
+      // The original request is already stored as a user message above.
+      // Add an explicit transport/backend failure message so the next
+      // turn can see that the previous request had no usable answer.
+      const failureAssistantMessage: ChatMessage = {
+        id: `assistant-error-${Date.now()}`,
+        role: "assistant",
+        content:
+          `⚠️ **The previous request did not receive a usable engine response.**\n\n` +
+          `The request remains in this conversation and can be recovered automatically. ` +
+          `If you send a follow-up such as **"you got silent"**, Key will retry the immediately previous unanswered request instead of treating that follow-up as a new unrelated topic.\n\n` +
+          `**Technical status:** ${failureMessage}`,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        contextMode: "MERGED_WITH_SAVED",
+        historyMatchScore: 100,
+        matchedPairIndices: [],
+        stopReason: "TRANSPORT_OR_BACKEND_FAILURE",
+      };
+
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === activeThreadId
+            ? {
+                ...t,
+                updatedAt: failureAssistantMessage.timestamp,
+                messages: [...t.messages, failureAssistantMessage],
+              }
+            : t
+        )
       );
 
       if (runOptions?.forceAppPreview) {
