@@ -708,59 +708,87 @@ async function fetchFromKeyBackend(
   const isDeployRoute =
     apiPath.startsWith("/api/admin/deploy") ||
     apiPath.startsWith("/api/github-push-folder");
+
   const localTimeoutMs = isDeployRoute ? 55000 : 35000;
-  const remoteTimeoutMs = isDeployRoute ? 55000 : 25000;
+  const remoteTimeoutMs = isDeployRoute ? 55000 : 30000;
 
   const isStaticHost =
     typeof window !== "undefined" &&
     (window.location.protocol === "file:" ||
       window.location.hostname.endsWith("github.io"));
 
+  const candidates: string[] = [];
+
+  // When running from the real backend, try the same-origin server first.
   if (!isStaticHost) {
-    try {
-      const localRes = await fetchWithStrictAbort(
-        apiPath,
-        init,
-        localTimeoutMs
-      );
-      const contentType = localRes.headers.get("content-type") || "";
-      if (
-        contentType
-          .toLowerCase()
-          .includes("application/json")
-      ) {
-        return localRes;
-      }
-    } catch {
-      // Fall through to live backend origins
-    }
+    candidates.push("");
   }
 
-  // Always try LIVE_BACKEND_ORIGINS before browser fallback so GitHub Pages (https://malazhub.github.io/key/)
-  // executes against the exact same live server, Gemini API key, and mirrored state as the left workspace!
-  let lastErr: unknown = null;
+  // Then try the configured production backend(s).
   for (const origin of LIVE_BACKEND_ORIGINS) {
+    if (origin && !candidates.includes(origin)) {
+      candidates.push(origin);
+    }
+  }
+
+  let lastError: unknown = null;
+
+  for (const origin of candidates) {
+    const url = origin
+      ? `${origin.replace(/\/+$/, "")}${apiPath}`
+      : apiPath;
+
+    const timeoutMs = origin
+      ? remoteTimeoutMs
+      : localTimeoutMs;
+
     try {
-      const res = await fetchWithStrictAbort(
-        `${origin}${apiPath}`,
-        init,
-        remoteTimeoutMs
+      const response = await fetchWithStrictAbort(
+        url,
+        {
+          ...(init || {}),
+          cache: "no-store",
+          headers: {
+            ...(init?.headers || {}),
+            "Cache-Control": "no-cache",
+            "X-Key-Client-Request": "key-browser-v1",
+          },
+        },
+        timeoutMs
       );
-      const contentType = res.headers.get("content-type") || "";
+
+      const contentType =
+        response.headers.get("content-type") || "";
+
+      // A backend API response must be JSON.
+      // Do not accidentally accept the SPA index.html as an API response.
       if (
         contentType
           .toLowerCase()
           .includes("application/json")
       ) {
-        return res;
+        return response;
       }
-    } catch (e) {
-      lastErr = e;
+
+      lastError = new Error(
+        `Key backend returned a non-JSON response ` +
+          `(${response.status}) from ${url}`
+      );
+    } catch (error) {
+      lastError = error;
     }
   }
 
-  // Fallback to browser-native execution if offline
-  throw lastErr || new Error("Unable to reach Key live backend.");
+  const message =
+    lastError instanceof Error
+      ? lastError.message
+      : String(lastError || "Unknown network failure");
+
+  throw new Error(
+    `Key backend is temporarily unreachable. ` +
+      `The conversation was kept locally and was not deleted. ` +
+      `Backend request failed: ${message}`
+  );
 }
 
 interface ConvergenceRound {
@@ -2225,26 +2253,34 @@ function hydrateMirroredSnapshotToLocalStorage(snapshot: any): void {
       if (typeof ui.customCssPatch === "string") {
         localStorage.setItem("malaz_key_custom_css_v7", ui.customCssPatch);
       }
-      if (typeof ui.isAdminAuthenticated === "boolean") {
-        localStorage.setItem("malaz_key_admin_auth_v1", String(ui.isAdminAuthenticated));
-      }
       if (Array.isArray(snapshot.models) && snapshot.models.length === 10) {
-        localStorage.setItem(ENGINE_SLOTS_STORAGE_KEY, JSON.stringify(snapshot.models));
-      }
-      if (typeof snapshot.target === "number") {
-        localStorage.setItem(TARGET_MATCH_STORAGE_KEY, String(snapshot.target));
-      }
-      if (Array.isArray(snapshot.threads) && snapshot.threads.length > 0) {
-        const cleanThreads = sanitizeSavedThreadsList(snapshot.threads);
-        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(cleanThreads));
-      }
+  localStorage.setItem(
+    ENGINE_SLOTS_STORAGE_KEY,
+    JSON.stringify(snapshot.models)
+  );
+}
+
+if (
+  typeof snapshot.target === "number" &&
+  Number.isFinite(snapshot.target)
+) {
+  localStorage.setItem(
+    TARGET_MATCH_STORAGE_KEY,
+    String(snapshot.target)
+  );
+}
+
+// IMPORTANT:
+// Mirrored deployment state is NOT authoritative for conversation history
+// or browser admin authentication. Chat history has its own persistence
+// channels (localStorage / cloud / Firebase), and admin authentication must
+// never be restored from a deploy snapshot.
     }
   } catch {
     // ignore storage errors
   }
 }
 
-hydrateMirroredSnapshotToLocalStorage(mirroredKeyStateJson);
 
 export default function App() {
   // 10 AI Engine Slots (Left Sidebar) — Zero-Divergence Cloning + Isolated Session Persistence
@@ -2659,6 +2695,7 @@ export default function App() {
     }
     return null;
   });
+  const historyHydrationReadyRef = useRef(false);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSpaceModal, setShowSpaceModal] = useState<boolean>(false);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
@@ -2841,10 +2878,31 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (userProfile?.email) {
-      loadCloudHistoryForUser(userProfile);
+  let cancelled = false;
+
+  const hydrateHistory = async () => {
+    historyHydrationReadyRef.current = false;
+
+    if (!userProfile?.email) {
+      historyHydrationReadyRef.current = true;
+      return;
     }
-  }, [userProfile?.email, loadCloudHistoryForUser]);
+
+    try {
+      await loadCloudHistoryForUser(userProfile);
+    } finally {
+      if (!cancelled) {
+        historyHydrationReadyRef.current = true;
+      }
+    }
+  };
+
+  void hydrateHistory();
+
+  return () => {
+    cancelled = true;
+  };
+}, [userProfile, loadCloudHistoryForUser]);
 
   const syncThreadsToStorage = useCallback(
     async (updatedThreads: ChatThread[], overrideQuota?: number) => {
@@ -2942,7 +3000,11 @@ export default function App() {
   );
 
   useEffect(() => {
-    syncThreadsToStorage(threads);
+  if (!historyHydrationReadyRef.current) {
+    return;
+  }
+
+  void syncThreadsToStorage(threads);
     // Synchronize all chat logs and vector-indexed turns to the Local-First JSON Working Memory Ledger Database
     try {
       const ledgerDb = {
@@ -3376,35 +3438,16 @@ export default function App() {
             }. The original GitHub copy was not restored.`
           );
 
-          // If the user refreshed the normal GitHub/local app,
-          // immediately return them to the persistent tested staged build.
-          const alreadyOnPreview =
-            typeof window !==
-              "undefined" &&
-            window.location.pathname.includes(
-              "/api/self-upgrade/preview/"
-            );
-
-          if (
-            !alreadyOnPreview &&
-            typeof window !==
-              "undefined"
-          ) {
-            const backendOrigin =
-              window.location.protocol !==
-                "file:" &&
-              !window.location.hostname.endsWith(
-                "github.io"
-              )
-                ? window.location.origin
-                : LIVE_BACKEND_ORIGINS[0];
-
-            window.location.assign(
-              `${backendOrigin}/api/self-upgrade/preview/${encodeURIComponent(
-                staged.sessionId
-              )}/`
-            );
-          }
+          // IMPORTANT:
+// Never navigate/reload the browser merely because a staged upgrade exists.
+// A staged upgrade is review state, not a routing instruction.
+// Keep the user inside the current conversation and expose the staged
+// preview through the existing UI modal/preview controls.
+setSelfUpgradeStatus(
+  `✓ Final staged upgrade restored after refresh. Final successful round: ${
+    staged.finalRound ?? "recorded"
+  }. The current conversation was preserved. GitHub was not changed.`
+);
         }
       } catch {
         localStorage.removeItem(
@@ -3720,19 +3763,14 @@ export default function App() {
     if (typeof ui.customCssPatch === "string") {
       setCustomCssPatch(ui.customCssPatch);
     }
-    if (typeof ui.isAdminAuthenticated === "boolean") {
-      setIsAdminAuthenticated(ui.isAdminAuthenticated);
-    }
+    
     if (Array.isArray(snap.models) && snap.models.length === 10) {
       setModels(snap.models);
     }
     if (typeof snap.target === "number" && snap.target >= 1 && snap.target <= 100) {
       setTarget(snap.target);
     }
-    if (Array.isArray(snap.threads) && snap.threads.length > 0) {
-      setThreads(snap.threads);
-      setActiveThreadId(snap.threads[0].id);
-    }
+    
     if (snap.adminDeployResult && typeof snap.adminDeployResult === "object") {
       setAdminDeployResult(snap.adminDeployResult);
     }
