@@ -11791,7 +11791,7 @@ iterationsRequired: actualRoundsCompleted,
       ...enriched,
       memoryOS: memoryOSTrace,
       strictQueryPriority,
-      groundingSources: timedgroundingSources: timedGroundingSources,
+      groundingSources: timedGroundingSources,
       workingMemoryFacts: strictQueryPriority
         ? []
         : relation.workingMemoryFacts || [],
