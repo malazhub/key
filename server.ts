@@ -2704,22 +2704,35 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Enable CORS so apps opened directly from GitHub Pages (https://malazhub.github.io/key or key1) or local index.html
-  // can call https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/* with the exact same search & answer logic
+    // Single CORS policy for GitHub Pages and local development.
   app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    const origin = String(req.headers.origin || "");
+
+    const allowed =
+      origin === "https://malazhub.github.io" ||
+      origin.startsWith("http://localhost:") ||
+      origin.startsWith("http://127.0.0.1:");
+
+    if (allowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
+
     res.setHeader(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, DELETE, OPTIONS"
     );
+
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization"
     );
+
     if (req.method === "OPTIONS") {
       res.status(204).end();
       return;
     }
+
     next();
   });
   app.use((req, res, next) => {
