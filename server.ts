@@ -25,7 +25,8 @@ import {
   isVersion8HarnessQuery,
   KEY_COMPLETE_FILE_TREE_ASCII,
   KEY_CODEBASE_STRUCTURE_REGISTRY,
- } from "./src/consensusEngine";
+  warmProviderRecoveryCatalog,
+} from "./src/consensusEngine";
 import {
   HARNESS_VERSION as V8_HARNESS_VERSION,
   FIXTURE_REGISTRY as V8_FIXTURE_REGISTRY,
@@ -6573,6 +6574,15 @@ if (
   }
 
   hydrateVolatileKeyRuntimeState();
+
+  warmProviderRecoveryCatalog().catch(() => {});
+
+  setInterval(
+    () => {
+      warmProviderRecoveryCatalog().catch(() => {});
+    },
+    6 * 60 * 60 * 1000
+  ).unref?.();
 
   // Runtime Gemini diagnostics. This endpoint is intentionally opt-in so normal
   // requests do not spend quota merely to report backend health.
