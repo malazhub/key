@@ -11086,24 +11086,24 @@ export async function runSmartMemoryConsensusLoop(
     getOrderedCandidateModels()[0] ||
     "gemini-2.5-flash";
 
-    const plannerModelInvoker = async (
+  const plannerModelInvoker = async (
     plannerPrompt: string
-    ): Promise<unknown> => {
+  ): Promise<unknown> => {
     const plannerResponse = await withStrictTimeout(
-        ai.models.generateContent({
+      ai.models.generateContent({
         model: plannerModel,
         contents: plannerPrompt,
         config: {
-            temperature: 0,
-            responseMimeType: "application/json",
+          temperature: 0,
+          responseMimeType: "application/json",
         },
-        }),
-        10_000,
-        "QueryExecutionPlanner"
+      }),
+      10_000,
+      "QueryExecutionPlanner"
     );
 
     return plannerResponse;
-    };
+  };
 
     const queryExecutionPlan = await buildQueryExecutionPlan(
     cleanQuestion,
@@ -11195,26 +11195,49 @@ for (const attachment of attachments) {
     ].join("\n");
 
     const correctiveMemoryTrace = runMemoryOperatingSystemPipeline(
-      correctiveQuery,
-      Array.isArray(history) ? history : [],
-      {
-        forceIsolated: isStandaloneQuery,
-        tokenOverlapRatio: tokenOverlapRatioWithSaved,
-      }
-    );
+  correctiveQuery,
+  Array.isArray(history) ? history : [],
+  {
+    forceIsolated: isStandaloneQuery,
+    tokenOverlapRatio: tokenOverlapRatioWithSaved,
+  }
+);
 
-    return buildPlannerMemoryCandidates(
-      queryExecutionPlan,
-      Array.isArray(history) ? history : []
-    ).map((candidate) => ({
-      ...candidate,
-      metadata: {
-        ...(candidate.metadata || {}),
-        correctivePass: pass,
-        correctiveReason: reason,
-        memoryTraceAvailable: Boolean(correctiveMemoryTrace),
-      },
-    }));
+const correctiveFacts =
+  correctiveMemoryTrace.contextCompiler.relevantFacts.filter(
+    (fact) =>
+      fact.trim() &&
+      !fact.startsWith("[ISOLATED] Zero prior history injected")
+  );
+
+const correctiveCandidates: AdaptiveCandidate[] = correctiveFacts.map(
+  (fact, index) => ({
+    id: `corrective-memory-${pass}-${index}`,
+    source:
+      reason === "MISSING_KNOWLEDGE"
+        ? "knowledge"
+        : reason === "MISSING_LONG_TERM_MEMORY"
+        ? "long_term_memory"
+        : "recent_context",
+    title: `Corrective memory retrieval pass ${pass}`,
+    content: fact,
+    channelScores: {
+      semantic: 0.75,
+      bm25: 0.75,
+      entity: 0.5,
+      temporal: 0.75,
+      exactReference: 0.5,
+    },
+    score: 0.75,
+    metadata: {
+      correctivePass: pass,
+      correctiveReason: reason,
+      provenance: "runMemoryOperatingSystemPipeline",
+    },
+  })
+);
+
+return correctiveCandidates;
   }
     );
     const plannerExecutionContext = compileExecutionContext(
@@ -11768,7 +11791,7 @@ iterationsRequired: actualRoundsCompleted,
       ...enriched,
       memoryOS: memoryOSTrace,
       strictQueryPriority,
-      groundingSources: timedGroundingSources,
+      groundingSources: timedgroundingSources: timedGroundingSources,
       workingMemoryFacts: strictQueryPriority
         ? []
         : relation.workingMemoryFacts || [],
