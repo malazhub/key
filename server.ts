@@ -8,7 +8,7 @@ import crypto from "crypto";
 import { exec, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@googhle/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import {
   dispatchEngine,
   ENGINE_REGISTRY,
