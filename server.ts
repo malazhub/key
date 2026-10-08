@@ -4702,7 +4702,7 @@ jobs:
     return isValidGitHubTokenFormat(envTok) ? envTok : "";
   }
 
-  function writeSavedGitHubToken(token: string) {
+    function writeSavedGitHubToken(token: string) {
     const clean = String(token || "").trim();
     if (!isValidGitHubTokenFormat(clean)) return;
     const payload = JSON.stringify(
@@ -4720,6 +4720,194 @@ jobs:
         // ignore
       }
     }
+  }
+
+  async function triggerAndVerifyRenderDeploy(commitSha: string): Promise<{
+    success: boolean;
+    serviceId: string;
+    deployId?: string;
+    status?: string;
+    error?: string;
+  }> {
+    const apiKey = String(process.env.RENDER_API_KEY || "").trim();
+    const serviceId =
+      String(
+        process.env.RENDER_SERVICE_ID ||
+          "srv-db2f72942hec73ab1lsg"
+      ).trim();
+
+    if (!apiKey) {
+      return {
+        success: false,
+        serviceId,
+        error:
+          "RENDER_API_KEY is not configured on the running Render service.",
+      };
+    }
+
+    const headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    };
+
+    let deployId = "";
+
+    try {
+      const triggerResponse = await fetch(
+        `https://api.render.com/v1/services/${encodeURIComponent(
+          serviceId
+        )}/deploys`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            commitId: commitSha,
+            clearCache: "do_not_clear",
+            deployMode: "build_and_deploy",
+          }),
+        }
+      );
+
+      if (!triggerResponse.ok) {
+        const body = await triggerResponse.text();
+        return {
+          success: false,
+          serviceId,
+          error: `Render deploy trigger failed: HTTP ${triggerResponse.status} ${body.slice(
+            0,
+            500
+          )}`,
+        };
+      }
+
+      const triggerData = (await triggerResponse.json()) as {
+        id?: string;
+        deploy?: { id?: string; status?: string };
+      };
+
+      deployId =
+        String(
+          triggerData.id ||
+            triggerData.deploy?.id ||
+            ""
+        ).trim();
+
+      if (!deployId) {
+        return {
+          success: false,
+          serviceId,
+          error: "Render accepted the deploy request but returned no deploy ID.",
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        serviceId,
+        error:
+          error instanceof Error
+            ? `Render deploy request failed: ${error.message}`
+            : `Render deploy request failed: ${String(error)}`,
+      };
+    }
+
+    const terminalFailureStatuses = new Set([
+      "build_failed",
+      "update_failed",
+      "canceled",
+      "deactivated",
+      "pre_deploy_failed",
+    ]);
+
+    const startedAt = Date.now();
+    const maxWaitMs = 10 * 60 * 1000;
+
+    while (Date.now() - startedAt < maxWaitMs) {
+      try {
+        const statusResponse = await fetch(
+          `https://api.render.com/v1/services/${encodeURIComponent(
+            serviceId
+          )}/deploys/${encodeURIComponent(deployId)}`,
+          {
+            method: "GET",
+            headers,
+          }
+        );
+
+        if (!statusResponse.ok) {
+          const body = await statusResponse.text();
+
+          if (statusResponse.status === 404) {
+            return {
+              success: false,
+              serviceId,
+              deployId,
+              error: "Render deploy disappeared before verification completed.",
+            };
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          continue;
+        }
+
+        const deploy = (await statusResponse.json()) as {
+          id?: string;
+          status?: string;
+          commit?: { id?: string };
+        };
+
+        const status = String(deploy.status || "").trim();
+
+        if (status === "live") {
+          const deployedCommit = String(
+            deploy.commit?.id || ""
+          ).trim();
+
+          if (
+            deployedCommit &&
+            deployedCommit !== commitSha
+          ) {
+            return {
+              success: false,
+              serviceId,
+              deployId,
+              status,
+              error:
+                "Render reported LIVE, but the live deploy commit does not match the GitHub commit that was just deployed.",
+            };
+          }
+
+          return {
+            success: true,
+            serviceId,
+            deployId,
+            status,
+          };
+        }
+
+        if (terminalFailureStatuses.has(status)) {
+          return {
+            success: false,
+            serviceId,
+            deployId,
+            status,
+            error: `Render deployment ended with status: ${status}`,
+          };
+        }
+      } catch {
+        // Temporary network/API failure: continue polling.
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    return {
+      success: false,
+      serviceId,
+      deployId,
+      error:
+        "Render deployment did not reach LIVE status within 10 minutes.",
+    };
   }
 
   async function collectProjectFiles(options?: {
@@ -5567,6 +5755,32 @@ jobs:
     const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
     const liveDeployUrl = `https://${owner}.github.io/${repo}/`;
 
+    const renderDeployment =
+      await triggerAndVerifyRenderDeploy(
+        liveGitHubCommitSha
+      );
+
+    if (!renderDeployment.success) {
+      return {
+        success: false,
+        verified: false,
+        needsGitHubAuth: false,
+        repoUrl,
+        actionsUrl,
+        liveDeployUrl,
+        branch: targetBranch,
+        commitSha: liveGitHubCommitSha,
+        deployedAt,
+        pushedCount: pushedFiles.length,
+        pushedFiles,
+        failedFiles,
+        render: renderDeployment,
+        error:
+          renderDeployment.error ||
+          "GitHub deployment succeeded but Render deployment verification failed.",
+      };
+    }
+
     return {
       success: true,
       needsGitHubAuth: false,
@@ -5580,6 +5794,12 @@ jobs:
       pushedCount: pushedFiles.length,
       pushedFiles,
       failedFiles,
+      render: {
+        success: true,
+        serviceId: renderDeployment.serviceId,
+        deployId: renderDeployment.deployId,
+        status: renderDeployment.status,
+      },
     };
 }
   function readFinalStagedCandidate(sessionId: string): {
