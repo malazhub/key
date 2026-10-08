@@ -1064,50 +1064,7 @@ export async function warmProviderRecoveryCatalog(): Promise<void> {
     )
   );
 }
-  const configured =
-    getModelCandidates(
-      registryEntry
-    );
-
-  const discovered =
-    await discoverProviderModels(
-      provider,
-      apiKey
-    );
-
-  const ranked =
-    discovered
-      .map((modelId) => ({
-        modelId,
-        score:
-          modelDiscoveryScore(
-            engine,
-            modelId
-          ),
-      }))
-      .filter(
-        (entry) =>
-          entry.score > 0
-      )
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          a.modelId.localeCompare(
-            b.modelId
-          )
-      )
-      .map(
-        (entry) =>
-          entry.modelId
-      );
-
-  return Array.from(
-    new Set([
-      ...configured,
-      ...ranked,
-    ])
-  );
-}
+  
 
 export function withStrictTimeout<T>(
   promise: Promise<T>,
