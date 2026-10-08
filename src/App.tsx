@@ -746,12 +746,12 @@ async function fetchFromKeyBackend(
       const response = await fetchWithStrictAbort(
         url,
         {
-            ...(init || {}),
-            cache: "no-store",
-            headers: {
-                ...(init?.headers || {}),
-            },
-            }
+          ...(init || {}),
+          cache: "no-store",
+          headers: {
+            ...(init?.headers || {}),
+          },
+        },
         timeoutMs
       );
 
