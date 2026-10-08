@@ -8,7 +8,7 @@ import crypto from "crypto";
 import { exec, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@googhle/genai";
 import {
   dispatchEngine,
   ENGINE_REGISTRY,
@@ -525,39 +525,9 @@ function calculateMathematicalRelationWithPrevious(
 
   // Pragmatic Dialogue-Act Correction / Repetition / Dissatisfaction Signal about the immediately preceding turn
   const hasCorrectionMarkers =
-    /\b(
-      u did not|
-      you did not|
-      did not open|
-      didn't open|
-      still need preview|
-      means nothing to me|
-      i got this from u|
-      i got again|
-      i expect on clicking|
-      plz revise as i said|
-      revise as i said|
-      sandbox mode|
-      initialized successfully|
-      isolated state|
-      repeating the same|
-      got same answer|
-      got silent|
-      went silent|
-      you went silent|
-      u went silent|
-      no response|
-      no reply|
-      no answer|
-      did not respond|
-      didn't respond|
-      did not reply|
-      didn't reply|
-      did not answer|
-      didn't answer|
-      still waiting|
-      nothing happened
-    )\b/ix.test(cleanQ);
+  /\b(u did not|you did not|did not open|didn't open|still need preview|means nothing to me|i got this from u|i got again|i expect on clicking|plz revise as i said|revise as i said|sandbox mode|initialized successfully|isolated state|repeating the same|got same answer|got silent|went silent|you went silent|u went silent|no response|no reply|no answer|did not respond|didn't respond|did not reply|didn't reply|did not answer|didn't answer|still waiting|nothing happened)\b/i.test(
+    cleanQ
+  );
 
   // CRITICAL TOPIC-SHIFT GUARD (Frontier AI Standard):
   // If the current query introduces brand-new subject tokens (e.g., "weather", "forecast", "chess", "bitcoin")
