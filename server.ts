@@ -3535,6 +3535,7 @@ async function startServer() {
     try {
       const {
         question,
+        pendingQuestion = "",
         history = [],
         activeModels = [],
         targetAgreement = 95,
@@ -3565,9 +3566,44 @@ async function startServer() {
             }))
         : [];
 
-      const effectiveQuestion =
-        typeof question === "string" && question.trim().length > 0
+      const requestedQuestion =
+        typeof question === "string"
           ? question.trim()
+          : "";
+
+      const cleanPendingQuestion =
+        typeof pendingQuestion === "string"
+          ? pendingQuestion.trim()
+          : "";
+
+      // A short silence/no-response follow-up is not a new subject.
+      // It means the immediately previous user request did not receive
+      // a usable assistant answer and must be recovered.
+      const isSilenceRecoveryFollowUp =
+        cleanPendingQuestion.length > 0 &&
+        /^(?:u|you)\s+(?:got\s+)?(?:silent|silence)|^(?:u|you)\s+(?:did\s+)?(?:not|didn't)\s+(?:answer|respond|reply)|^(?:no|there\s+was\s+no)\s+(?:response|reply|answer)|^(?:why|how)\s+(?:did\s+)?(?:you\s+)?(?:go\s+)?silent|^(?:are\s+you\s+)?(?:there|silent)\b|^(?:you\s+)?(?:went\s+)?silent\b/i.test(
+          requestedQuestion
+        );
+
+      const effectiveQuestion =
+        isSilenceRecoveryFollowUp
+          ? `=== UNANSWERED USER REQUEST RECOVERY ===
+
+The immediately previous user request did not receive a usable assistant answer.
+
+Previous unanswered user request:
+"${cleanPendingQuestion}"
+
+Current user follow-up:
+"${requestedQuestion}"
+
+PRIMARY TASK:
+Answer the PREVIOUS UNANSWERED USER REQUEST now.
+Do not answer the current follow-up as a standalone topic.
+Do not merely discuss the silence.
+Treat the current follow-up as a recovery signal and produce the complete answer that the previous request was waiting for.`
+          : requestedQuestion.length > 0
+          ? requestedQuestion
           : safeAttachments.length > 0
           ? `Please analyze the attached ${safeAttachments
               .map((a) => `${a.kind} (${a.name})`)
@@ -3577,7 +3613,10 @@ async function startServer() {
       if (!effectiveQuestion) {
         res
           .status(400)
-          .json({ error: "Please provide a question or attach a photo, video, or file." });
+          .json({
+            error:
+              "Please provide a question or attach a photo, video, or file.",
+          });
         return;
       }
 
