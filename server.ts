@@ -500,6 +500,11 @@ function calculateMathematicalRelationWithPrevious(
     "upgrad", "implement", "confirm", "agrem", "agreed", "repeat", "miss",
     "hide", "gup", "gap", "header", "readabl", "technical", "person", "select",
     "useful", "fast", "faster", "fasten", "limit", "enhanc", "advanc",
+
+    // Transport / unanswered-turn recovery language.
+    "silent", "silence", "respond", "response", "responded",
+    "reply", "replied", "answer", "answered", "unanswered",
+    "waiting", "wait", "quiet", "nothing",
   ]);
 
   let sharedWithAnyAskCount = 0;
@@ -520,9 +525,39 @@ function calculateMathematicalRelationWithPrevious(
 
   // Pragmatic Dialogue-Act Correction / Repetition / Dissatisfaction Signal about the immediately preceding turn
   const hasCorrectionMarkers =
-    /\b(u did not|you did not|did not open|didn't open|still need preview|means nothing to me|i got this from u|i got again|i expect on clicking|plz revise as i said|revise as i said|sandbox mode|initialized successfully|isolated state|repeating the same|got same answer)\b/i.test(
-      cleanQ
-    );
+    /\b(
+      u did not|
+      you did not|
+      did not open|
+      didn't open|
+      still need preview|
+      means nothing to me|
+      i got this from u|
+      i got again|
+      i expect on clicking|
+      plz revise as i said|
+      revise as i said|
+      sandbox mode|
+      initialized successfully|
+      isolated state|
+      repeating the same|
+      got same answer|
+      got silent|
+      went silent|
+      you went silent|
+      u went silent|
+      no response|
+      no reply|
+      no answer|
+      did not respond|
+      didn't respond|
+      did not reply|
+      didn't reply|
+      did not answer|
+      didn't answer|
+      still waiting|
+      nothing happened
+    )\b/ix.test(cleanQ);
 
   // CRITICAL TOPIC-SHIFT GUARD (Frontier AI Standard):
   // If the current query introduces brand-new subject tokens (e.g., "weather", "forecast", "chess", "bitcoin")
