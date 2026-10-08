@@ -4499,6 +4499,21 @@ const data = await res.json();
     };
 
     const previousMessages = currentThread.messages;
+
+    // If the immediately previous user turn has no assistant reply,
+    // preserve it explicitly so a later "you got silent / no response"
+    // follow-up can recover and retry the unanswered question instead
+    // of being routed as a brand-new unrelated topic.
+    const lastPreviousMessage =
+      previousMessages.length > 0
+        ? previousMessages[previousMessages.length - 1]
+        : null;
+
+    const pendingUnansweredQuestion =
+      lastPreviousMessage?.role === "user"
+        ? lastPreviousMessage.content.trim()
+        : "";
+
     const updatedMessages = [...previousMessages, userMessage];
 
     setThreads((prev) =>
@@ -4737,6 +4752,12 @@ const data = await res.json();
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question: queryText,
+
+            // Explicitly preserve the immediately previous unanswered
+            // user turn. The backend uses this only for silence/no-response
+            // recovery and never treats it as ordinary history.
+            pendingQuestion: pendingUnansweredQuestion || undefined,
+
             history: previousMessages.map((m) => ({
               role: m.role,
               content: m.content,
