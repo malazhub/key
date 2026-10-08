@@ -60,61 +60,70 @@ export const ENGINE_REGISTRY: Record<
     provider: "openai",
     modelEnv: "OPENAI_MODEL",
     apiKeyEnv: "OPENAI_API_KEY",
-    defaultModel: "gpt-4o",
+    defaultModel: "gpt-6-luna",
   },
+
   "Claude 3.5 Sonnet": {
     provider: "anthropic",
     modelEnv: "ANTHROPIC_MODEL",
     apiKeyEnv: "ANTHROPIC_API_KEY",
-    defaultModel: "claude-3-5-sonnet-20241022",
+    defaultModel: "claude-sonnet-5-5",
   },
+
   "DeepSeek V3": {
     provider: "deepseek",
     modelEnv: "DEEPSEEK_MODEL",
     apiKeyEnv: "DEEPSEEK_API_KEY",
-    defaultModel: "deepseek-chat",
+    defaultModel: "deepseek-flash",
   },
+
   "Gemini 2.5": {
     provider: "google",
     modelEnv: "GEMINI_MODEL",
     apiKeyEnv: "GEMINI_API_KEY",
-        defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.8-flash",
   },
+
   "Qwen 2.5": {
     provider: "groq",
     modelEnv: "GROQ_QWEN_MODEL",
     apiKeyEnv: "GROQ_API_KEY",
-    defaultModel: "qwen/qwen-2.5-72b-instruct",
+    defaultModel: "qwen/qwen3.8-27b",
   },
+
   "Llama 3.3 70B": {
     provider: "groq",
     modelEnv: "GROQ_LLAMA_MODEL",
     apiKeyEnv: "GROQ_API_KEY",
-    defaultModel: "llama-3.3-70b-versatile",
+    defaultModel: "openai/gpt-oss-120b",
   },
+
   "Grok 2": {
     provider: "xai",
     modelEnv: "XAI_MODEL",
     apiKeyEnv: "XAI_API_KEY",
-    defaultModel: "grok-2-latest",
+    defaultModel: "grok-4.3",
   },
+
   "Mistral Large 2": {
     provider: "mistral",
     modelEnv: "MISTRAL_MODEL",
     apiKeyEnv: "MISTRAL_API_KEY",
-    defaultModel: "mistral-large-latest",
+    defaultModel: "mistral-large-4",
   },
+
   "Perplexity Pro": {
     provider: "perplexity",
     modelEnv: "PERPLEXITY_MODEL",
     apiKeyEnv: "PERPLEXITY_API_KEY",
     defaultModel: "sonar-pro",
   },
+
   "Command R+": {
     provider: "cohere",
     modelEnv: "COHERE_MODEL",
     apiKeyEnv: "COHERE_API_KEY",
-    defaultModel: "command-r-plus",
+    defaultModel: "command-a-plus-05-2026",
   },
 };
 
@@ -321,11 +330,782 @@ function schemaInstruction(responseSchema: unknown): string {
   ].join("\n");
 }
 
-function shouldRetryProviderError(error: unknown): boolean {
+type ProviderFailureClass =
+  | "AUTH"
+  | "MODEL_NOT_FOUND"
+  | "RATE_LIMIT"
+  | "TIMEOUT"
+  | "NETWORK"
+  | "SERVER"
+  | "PERMISSION"
+  | "QUOTA"
+  | "INVALID_REQUEST"
+  | "UNKNOWN";
+
+interface ProviderRecoveryDecision {
+  failureClass: ProviderFailureClass;
+  retryable: boolean;
+  rotateCredential: boolean;
+  switchModel: boolean;
+}
+
+function classifyProviderFailure(
+  error: unknown
+): ProviderRecoveryDecision {
   const message = redactProviderError(error);
 
-  return /(?:HTTP\s+)?(?:401|403|408|409|425|429|500|502|503|504)\b|quota|rate.?limit|resource.?exhausted|overloaded|temporarily unavailable|timeout/i.test(
-    message
+  const statusMatch = message.match(
+    /(?:HTTP\s+)?(\d{3})\b/i
+  );
+
+  const status = statusMatch
+    ? Number(statusMatch[1])
+    : 0;
+
+  if (
+    status === 401 ||
+    /(?:invalid|missing|expired|incorrect).*?(?:api.?key|credential|token)|api.?key.*?(?:invalid|missing|expired)|not configured/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "AUTH",
+      retryable: false,
+      rotateCredential: true,
+      switchModel: false,
+    };
+  }
+
+  if (
+    status === 403 ||
+    /permission|forbidden|access denied|not authorized/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "PERMISSION",
+      retryable: false,
+      rotateCredential: true,
+      switchModel: false,
+    };
+  }
+
+  if (
+    status === 404 ||
+    /model.*(?:not found|does not exist|removed|deprecated|retired|no longer available)|(?:not found|does not exist|removed|deprecated|retired).*model|unknown model/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "MODEL_NOT_FOUND",
+      retryable: false,
+      rotateCredential: false,
+      switchModel: true,
+    };
+  }
+
+  if (
+    status === 429 ||
+    /quota|rate.?limit|resource.?exhausted|too many requests|high demand/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: /quota|resource.?exhausted/i.test(
+        message
+      )
+        ? "QUOTA"
+        : "RATE_LIMIT",
+      retryable: true,
+      rotateCredential: true,
+      switchModel: false,
+    };
+  }
+
+  if (
+    status === 408 ||
+    /timeout|timed out|deadline exceeded/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "TIMEOUT",
+      retryable: true,
+      rotateCredential: true,
+      switchModel: false,
+    };
+  }
+
+  if (
+    /network|fetch failed|connection reset|socket|econn|enotfound|dns/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "NETWORK",
+      retryable: true,
+      rotateCredential: false,
+      switchModel: false,
+    };
+  }
+
+  if (
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    /temporarily unavailable|overloaded|internal server error|service unavailable/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "SERVER",
+      retryable: true,
+      rotateCredential: false,
+      switchModel: false,
+    };
+  }
+
+  if (
+    status === 400 ||
+    status === 422 ||
+    /invalid request|bad request|validation error|unsupported parameter/i.test(
+      message
+    )
+  ) {
+    return {
+      failureClass: "INVALID_REQUEST",
+      retryable: false,
+      rotateCredential: false,
+      switchModel: false,
+    };
+  }
+
+  return {
+    failureClass: "UNKNOWN",
+    retryable: false,
+    rotateCredential: false,
+    switchModel: false,
+  };
+}
+
+function shouldRetryProviderError(
+  error: unknown
+): boolean {
+  return classifyProviderFailure(error).retryable;
+}
+
+function providerRetryDelayMs(
+  attempt: number
+): number {
+  const boundedAttempt = Math.max(
+    0,
+    Math.min(attempt, 4)
+  );
+
+  const base =
+    750 * Math.pow(2, boundedAttempt);
+
+  const jitter =
+    Math.floor(Math.random() * 500);
+
+  return Math.min(
+    base + jitter,
+    8000
+  );
+}
+
+async function sleepMs(
+  milliseconds: number
+): Promise<void> {
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, milliseconds)
+  );
+}
+
+async function withProviderRecovery<T>(
+  operation: (
+    attempt: number
+  ) => Promise<T>,
+  options?: {
+    maxAttempts?: number;
+  }
+): Promise<T> {
+  const maxAttempts = Math.max(
+    1,
+    Math.min(
+      options?.maxAttempts ?? 3,
+      4
+    )
+  );
+
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 0;
+    attempt < maxAttempts;
+    attempt += 1
+  ) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+
+      const decision =
+        classifyProviderFailure(error);
+
+      if (
+        !decision.retryable ||
+        attempt >= maxAttempts - 1
+      ) {
+        throw error;
+      }
+
+      await sleepMs(
+        providerRetryDelayMs(attempt)
+      );
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(
+        "Provider recovery exhausted."
+      );
+}
+
+function getConfiguredModelFallbacks(
+  registryEntry: {
+    modelEnv: string;
+  }
+): string[] {
+  const configured =
+    getServerEnv(
+      `${registryEntry.modelEnv}_FALLBACKS`
+    );
+
+  return Array.from(
+    new Set(
+      configured
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getModelCandidates(
+  registryEntry: {
+    modelEnv: string;
+    defaultModel: string;
+  }
+): string[] {
+  const configured =
+    getServerEnv(
+      registryEntry.modelEnv
+    );
+
+  const fallbacks =
+    getConfiguredModelFallbacks(
+      registryEntry
+    );
+
+  return Array.from(
+    new Set(
+      [
+        configured,
+        registryEntry.defaultModel,
+        ...fallbacks,
+      ].filter(Boolean)
+    )
+  );
+}
+
+function getCredentialCandidates(
+  apiKeyEnv: string
+): string[] {
+  const values = [
+    getServerEnv(apiKeyEnv),
+    getServerEnv(`${apiKeyEnv}_2`),
+    getServerEnv(`${apiKeyEnv}_3`),
+    getServerEnv(`${apiKeyEnv}_4`),
+    getServerEnv(`${apiKeyEnv}_5`),
+  ];
+
+  return Array.from(
+    new Set(
+      values.filter(Boolean)
+    )
+  );
+}
+
+function modelDiscoveryScore(
+  engine: string,
+  modelId: string
+): number {
+  const id = modelId.toLowerCase();
+  const name = engine.toLowerCase();
+
+  if (name.includes("gemini")) {
+    if (
+      id.includes("gemini") &&
+      id.includes("flash") &&
+      !id.includes("tts") &&
+      !id.includes("live")
+    ) {
+      return 120;
+    }
+
+    if (
+      id.includes("gemini") &&
+      !id.includes("tts") &&
+      !id.includes("live")
+    ) {
+      return 100;
+    }
+  }
+
+  if (name.includes("qwen")) {
+    if (id.includes("qwen3.8-27b")) {
+      return 120;
+    }
+
+    if (id.includes("qwen")) {
+      return 100;
+    }
+  }
+
+  if (name.includes("llama")) {
+    if (id.includes("llama")) {
+      return 120;
+    }
+
+    if (id.includes("gpt-oss-120b")) {
+      return 110;
+    }
+  }
+
+  if (name.includes("command")) {
+    if (
+      id.includes("command-a-plus")
+    ) {
+      return 120;
+    }
+
+    if (
+      id.includes("command-a-")
+    ) {
+      return 110;
+    }
+
+    if (
+      id.includes("command-r-plus")
+    ) {
+      return 100;
+    }
+
+    if (id.includes("command")) {
+      return 80;
+    }
+  }
+
+  if (name.includes("grok")) {
+    if (
+      id.includes("grok-4.3")
+    ) {
+      return 120;
+    }
+
+    if (id.includes("grok")) {
+      return 100;
+    }
+  }
+
+  if (name.includes("mistral")) {
+    if (
+      id.includes("mistral-large-4")
+    ) {
+      return 120;
+    }
+
+    if (
+      id.includes("mistral-large")
+    ) {
+      return 110;
+    }
+
+    if (id.includes("mistral")) {
+      return 80;
+    }
+  }
+
+  if (name.includes("deepseek")) {
+    if (
+      id === "deepseek-flash"
+    ) {
+      return 120;
+    }
+
+    if (
+      id.includes("deepseek-v4")
+    ) {
+      return 110;
+    }
+
+    if (id.includes("deepseek")) {
+      return 100;
+    }
+  }
+
+  if (name.includes("perplexity")) {
+    if (
+      id.includes("sonar-pro")
+    ) {
+      return 120;
+    }
+
+    if (id.includes("sonar")) {
+      return 100;
+    }
+  }
+
+  if (name.includes("chatgpt")) {
+    if (
+      id === "gpt-6-astra"
+    ) {
+      return 120;
+    }
+
+    if (
+      id === "gpt-6.1-sol"
+    ) {
+      return 115;
+    }
+
+    if (
+      id === "gpt-6-luna"
+    ) {
+      return 110;
+    }
+
+    if (id.startsWith("gpt-")) {
+      return 80;
+    }
+  }
+
+  return 0;
+}
+
+async function discoverProviderModels(
+  provider: EngineProvider,
+  apiKey: string
+): Promise<string[]> {
+  const requests: Record<
+    string,
+    string
+  > = {
+    openai:
+      "https://api.openai.com/v1/models",
+
+    deepseek:
+      "https://api.deepseek.com/models",
+
+    groq:
+      "https://api.groq.com/openai/v1/models",
+
+    xai:
+      "https://api.x.ai/v1/models",
+
+    mistral:
+      "https://api.mistral.ai/v1/models",
+
+    perplexity:
+      "https://api.perplexity.ai/models",
+
+    cohere:
+      "https://api.cohere.com/v1/models?endpoint=chat&page_size=100",
+
+    google:
+      "https://generativelanguage.googleapis.com/v1beta/models?key=" +
+      encodeURIComponent(apiKey),
+  };
+
+  const endpoint =
+    requests[provider];
+
+  if (!endpoint) {
+    return [];
+  }
+
+  try {
+    const response =
+      await fetch(endpoint, {
+        method: "GET",
+        headers:
+          provider === "google"
+            ? {
+                "Content-Type":
+                  "application/json",
+              }
+            : {
+                Authorization:
+                  `Bearer ${apiKey}`,
+                "Content-Type":
+                  "application/json",
+              },
+      });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data =
+      await response.json();
+
+    if (provider === "google") {
+      return Array.isArray(
+        data?.models
+      )
+        ? data.models
+            .filter(
+              (model: any) =>
+                Array.isArray(
+                  model?.supportedGenerationMethods
+                ) &&
+                model.supportedGenerationMethods.includes(
+                  "generateContent"
+                )
+            )
+            .map(
+              (model: any) =>
+                String(
+                  model?.name || ""
+                ).replace(
+                  /^models\//,
+                  ""
+                )
+            )
+            .filter(Boolean)
+        : [];
+    }
+
+    if (provider === "cohere") {
+      return Array.isArray(
+        data?.models
+      )
+        ? data.models
+            .filter(
+              (model: any) =>
+                !model?.is_deprecated &&
+                Array.isArray(
+                  model?.endpoints
+                ) &&
+                model.endpoints.includes(
+                  "chat"
+                )
+            )
+            .map(
+              (model: any) =>
+                String(
+                  model?.name || ""
+                )
+            )
+            .filter(Boolean)
+        : [];
+    }
+
+    return Array.isArray(
+      data?.data
+    )
+      ? data.data
+          .filter(
+            (model: any) =>
+              model?.archived !== true
+          )
+          .map(
+            (model: any) =>
+              String(
+                model?.id || ""
+              )
+          )
+          .filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+const providerModelDiscoveryCache =
+  new Map<
+    string,
+    {
+      expiresAt: number;
+      models: string[];
+    }
+  >();
+
+const PROVIDER_MODEL_CACHE_TTL_MS =
+  6 * 60 * 60 * 1000;
+
+async function getRecoveryModelCandidates(
+  engine: string,
+  provider: EngineProvider,
+  registryEntry: {
+    modelEnv: string;
+    defaultModel: string;
+  },
+  apiKey: string
+): Promise<string[]> {
+  const configured =
+    getModelCandidates(
+      registryEntry
+    );
+
+  const cacheKey =
+    `${provider}:${engine}`;
+
+  const cached =
+    providerModelDiscoveryCache.get(
+      cacheKey
+    );
+
+  let discovered: string[] = [];
+
+  if (
+    cached &&
+    cached.expiresAt > Date.now()
+  ) {
+    discovered =
+      cached.models;
+  } else {
+    discovered =
+      await discoverProviderModels(
+        provider,
+        apiKey
+      );
+
+    providerModelDiscoveryCache.set(
+      cacheKey,
+      {
+        expiresAt:
+          Date.now() +
+          PROVIDER_MODEL_CACHE_TTL_MS,
+        models: discovered,
+      }
+    );
+  }
+
+  const ranked =
+    discovered
+      .map((modelId) => ({
+        modelId,
+        score:
+          modelDiscoveryScore(
+            engine,
+            modelId
+          ),
+      }))
+      .filter(
+        (entry) =>
+          entry.score > 0
+      )
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.modelId.localeCompare(
+            b.modelId
+          )
+      )
+      .map(
+        (entry) =>
+          entry.modelId
+      );
+
+  return Array.from(
+    new Set([
+      ...configured,
+      ...ranked,
+    ])
+  );
+}
+
+export async function warmProviderRecoveryCatalog(): Promise<void> {
+  const entries =
+    Object.entries(
+      ENGINE_REGISTRY
+    );
+
+  await Promise.all(
+    entries.map(
+      async ([engine, registryEntry]) => {
+        const credentials =
+          getCredentialCandidates(
+            registryEntry.apiKeyEnv
+          );
+
+        const credential =
+          credentials[0];
+
+        if (!credential) {
+          return;
+        }
+
+        try {
+          await getRecoveryModelCandidates(
+            engine,
+            registryEntry.provider,
+            registryEntry,
+            credential
+          );
+        } catch {
+          // Startup warming is best-effort.
+        }
+      }
+    )
+  );
+}
+  const configured =
+    getModelCandidates(
+      registryEntry
+    );
+
+  const discovered =
+    await discoverProviderModels(
+      provider,
+      apiKey
+    );
+
+  const ranked =
+    discovered
+      .map((modelId) => ({
+        modelId,
+        score:
+          modelDiscoveryScore(
+            engine,
+            modelId
+          ),
+      }))
+      .filter(
+        (entry) =>
+          entry.score > 0
+      )
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.modelId.localeCompare(
+            b.modelId
+          )
+      )
+      .map(
+        (entry) =>
+          entry.modelId
+      );
+
+  return Array.from(
+    new Set([
+      ...configured,
+      ...ranked,
+    ])
   );
 }
 
@@ -13896,11 +14676,16 @@ export async function dispatchEngine(
 ): Promise<EngineDispatchResult> {
   const startedAt = Date.now();
 
-  const engine = String(request.engine || "").trim();
-  const registryEntry = ENGINE_REGISTRY[engine];
+  const engine =
+    String(request.engine || "").trim();
+
+  const registryEntry =
+    ENGINE_REGISTRY[engine];
 
   if (!registryEntry) {
-    throw new Error(`No provider mapping exists for "${engine}".`);
+    throw new Error(
+      `No provider mapping exists for "${engine}".`
+    );
   }
 
   const {
@@ -13910,24 +14695,17 @@ export async function dispatchEngine(
     defaultModel,
   } = registryEntry;
 
-  const modelId =
-    getServerEnv(modelEnv) || defaultModel;
-
-  if (!modelId) {
-    throw new Error(
-      `${engine}: provider model ID is missing.`
-    );
-  }
-
   const systemInstruction =
     `${request.systemInstruction || ""}${schemaInstruction(
       request.responseSchema
     )}`.trim();
 
-  const promptText = promptToText(request.prompt);
+  const promptText =
+    promptToText(request.prompt);
 
   const finish = (
-    answer: string
+    answer: string,
+    modelId: string
   ): EngineDispatchResult => {
     const cleanAnswer =
       String(answer || "").trim();
@@ -13948,143 +14726,116 @@ export async function dispatchEngine(
     };
   };
 
-  try {
+  const credentials =
+    getCredentialCandidates(
+      apiKeyEnv
+    );
+
+  if (credentials.length === 0) {
+    throw new Error(
+      `${engine}: ${apiKeyEnv} is not configured.`
+    );
+  }
+
+  const models =
+    getModelCandidates({
+      modelEnv,
+      defaultModel,
+    });
+
+  if (models.length === 0) {
+    throw new Error(
+      `${engine}: provider model ID is missing.`
+    );
+  }
+
+  const attemptModel = async (
+    modelId: string,
+    credential: string
+  ): Promise<EngineDispatchResult> => {
     if (provider === "google") {
-      const primaryKey =
-        getServerEnv("GEMINI_API_KEY");
-
-      const secondaryKey =
-        getServerEnv("GEMINI_API_KEY_2");
-
-      const keys = Array.from(
-        new Set(
-          [primaryKey, secondaryKey]
-            .filter(Boolean)
+      const parts =
+        request.prompt &&
+        typeof request.prompt === "object" &&
+        Array.isArray(
+          (request.prompt as any).parts
         )
-      );
+          ? (request.prompt as any).parts
+          : [{ text: promptText }];
 
-      if (keys.length === 0) {
-        throw new Error(
-          `${engine}: GEMINI_API_KEY and GEMINI_API_KEY_2 are not configured.`
-        );
+      const generationConfig:
+        Record<string, unknown> = {};
+
+      if (request.responseSchema) {
+        generationConfig.responseMimeType =
+          "application/json";
+
+        generationConfig.responseSchema =
+          request.responseSchema;
       }
 
-      let lastError: unknown = null;
-
-      for (
-        let index = 0;
-        index < keys.length;
-        index += 1
-      ) {
-        const key = keys[index];
-
-        try {
-          const parts =
-            request.prompt &&
-            typeof request.prompt ===
-              "object" &&
-            Array.isArray(
-              (request.prompt as any).parts
-            )
-              ? (request.prompt as any).parts
-              : [{ text: promptText }];
-
-          const generationConfig:
-            Record<string, unknown> = {};
-
-          if (request.responseSchema) {
-            generationConfig.responseMimeType =
-              "application/json";
-
-            generationConfig.responseSchema =
-              request.responseSchema;
-          }
-
-          const response =
-            await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-                modelId
-              )}:generateContent?key=${encodeURIComponent(
-                key
-              )}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-                body: JSON.stringify({
-                  systemInstruction: {
-                    parts: [
-                      {
-                        text:
-                          systemInstruction,
-                      },
-                    ],
+      const response =
+        await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            modelId
+          )}:generateContent?key=${encodeURIComponent(
+            credential
+          )}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [
+                  {
+                    text:
+                      systemInstruction,
                   },
-                  contents: [
-                    {
-                      role: "user",
-                      parts,
-                    },
-                  ],
-                  ...(Object.keys(
-                    generationConfig
-                  ).length > 0
-                    ? { generationConfig }
-                    : {}),
-                }),
-              }
-            );
-
-          const data =
-            await readProviderJson(
-              response,
-              engine,
-              provider
-            );
-
-          const answer =
-            data?.candidates?.[0]?.content?.parts
-              ?.map(
-                (part: any) =>
-                  part?.text || ""
-              )
-              .join("")
-              .trim() || "";
-
-          return finish(answer);
-        } catch (error) {
-          lastError = error;
-
-          if (
-            index < keys.length - 1 &&
-            shouldRetryProviderError(error)
-          ) {
-            continue;
+                ],
+              },
+              contents: [
+                {
+                  role: "user",
+                  parts,
+                },
+              ],
+              ...(Object.keys(
+                generationConfig
+              ).length > 0
+                ? {
+                    generationConfig,
+                  }
+                : {}),
+            }),
           }
+        );
 
-          throw error;
-        }
-      }
+      const data =
+        await readProviderJson(
+          response,
+          engine,
+          provider
+        );
 
-      throw lastError instanceof Error
-        ? lastError
-        : new Error(
-            `${engine}: Google provider failed.`
-          );
+      const answer =
+        data?.candidates?.[0]?.content?.parts
+          ?.map(
+            (part: any) =>
+              part?.text || ""
+          )
+          .join("")
+          .trim() || "";
+
+      return finish(
+        answer,
+        modelId
+      );
     }
 
     if (provider === "anthropic") {
-      const apiKey =
-        getServerEnv(apiKeyEnv);
-
-      if (!apiKey) {
-        throw new Error(
-          `${engine}: ${apiKeyEnv} is not configured.`
-        );
-      }
-
       const response =
         await fetch(
           "https://api.anthropic.com/v1/messages",
@@ -14093,7 +14844,8 @@ export async function dispatchEngine(
             headers: {
               "Content-Type":
                 "application/json",
-              "x-api-key": apiKey,
+              "x-api-key":
+                credential,
               "anthropic-version":
                 "2023-06-01",
             },
@@ -14101,11 +14853,13 @@ export async function dispatchEngine(
               model: modelId,
               max_tokens: 4096,
               temperature: 0,
-              system: systemInstruction,
+              system:
+                systemInstruction,
               messages: [
                 {
                   role: "user",
-                  content: promptText,
+                  content:
+                    promptText,
                 },
               ],
             }),
@@ -14119,9 +14873,11 @@ export async function dispatchEngine(
           provider
         );
 
-      const answer =
+      return finish(
         extractChoiceText(
-          Array.isArray(data?.content)
+          Array.isArray(
+            data?.content
+          )
             ? data.content
                 .map(
                   (part: any) =>
@@ -14129,21 +14885,12 @@ export async function dispatchEngine(
                 )
                 .join("")
             : data?.content
-        );
-
-      return finish(answer);
+        ),
+        modelId
+      );
     }
 
     if (provider === "cohere") {
-      const apiKey =
-        getServerEnv(apiKeyEnv);
-
-      if (!apiKey) {
-        throw new Error(
-          `${engine}: ${apiKeyEnv} is not configured.`
-        );
-      }
-
       const response =
         await fetch(
           "https://api.cohere.com/v2/chat",
@@ -14153,7 +14900,7 @@ export async function dispatchEngine(
               "Content-Type":
                 "application/json",
               Authorization:
-                `Bearer ${apiKey}`,
+                `Bearer ${credential}`,
             },
             body: JSON.stringify({
               model: modelId,
@@ -14166,7 +14913,8 @@ export async function dispatchEngine(
                 },
                 {
                   role: "user",
-                  content: promptText,
+                  content:
+                    promptText,
                 },
               ],
             }),
@@ -14183,14 +14931,13 @@ export async function dispatchEngine(
       return finish(
         extractChoiceText(
           data?.message?.content
-        )
+        ),
+        modelId
       );
     }
 
-    const endpoints: Record<
-      string,
-      string
-    > = {
+    const endpoints:
+      Record<string, string> = {
       openai:
         "https://api.openai.com/v1/chat/completions",
 
@@ -14219,28 +14966,19 @@ export async function dispatchEngine(
       );
     }
 
-    const apiKey =
-      getServerEnv(apiKeyEnv);
-
-    if (!apiKey) {
-      throw new Error(
-        `${engine}: ${apiKeyEnv} is not configured.`
-      );
-    }
-
-    const body: Record<
-      string,
-      unknown
-    > = {
+    const body:
+      Record<string, unknown> = {
       model: modelId,
       messages: [
         {
           role: "system",
-          content: systemInstruction,
+          content:
+            systemInstruction,
         },
         {
           role: "user",
-          content: promptText,
+          content:
+            promptText,
         },
       ],
       temperature: 0,
@@ -14253,16 +14991,20 @@ export async function dispatchEngine(
     }
 
     const response =
-      await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-          Authorization:
-            `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-      });
+      await fetch(
+        endpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${credential}`,
+          },
+          body:
+            JSON.stringify(body),
+        }
+      );
 
     const data =
       await readProviderJson(
@@ -14277,15 +15019,154 @@ export async function dispatchEngine(
           ?.content ??
           data?.choices?.[0]?.text ??
           data?.output_text
-      )
+      ),
+      modelId
     );
-  } catch (error) {
-    throw new Error(
-      redactProviderError(error)
-    );
-  }
-}
+  };
 
+  let lastError: unknown =
+    null;
+
+  let discoveryAttempted =
+    false;
+
+  for (
+    let modelIndex = 0;
+    modelIndex < models.length;
+    modelIndex += 1
+  ) {
+    const modelId =
+      models[modelIndex];
+
+    for (
+      let credentialIndex = 0;
+      credentialIndex <
+      credentials.length;
+      credentialIndex += 1
+    ) {
+      const credential =
+        credentials[
+          credentialIndex
+        ];
+
+      try {
+        return await withProviderRecovery(
+          () =>
+            withStrictTimeout(
+              attemptModel(
+                modelId,
+                credential
+              ),
+              provider === "google"
+                ? 30000
+                : 45000,
+              `${engine}(${modelId})`
+            ),
+          {
+            maxAttempts: 3,
+          }
+        );
+      } catch (error) {
+        lastError = error;
+
+        const decision =
+          classifyProviderFailure(
+            error
+          );
+
+        if (
+          decision.failureClass ===
+            "MODEL_NOT_FOUND" &&
+          !discoveryAttempted
+        ) {
+          discoveryAttempted =
+            true;
+
+          const discoveredModels =
+            await getRecoveryModelCandidates(
+              engine,
+              provider,
+              {
+                modelEnv,
+                defaultModel,
+              },
+              credential
+            );
+
+          for (
+            const recoveryModel of
+              discoveredModels
+          ) {
+            if (
+              recoveryModel ===
+                modelId ||
+              models.includes(
+                recoveryModel
+              )
+            ) {
+              continue;
+            }
+
+            try {
+              return await withProviderRecovery(
+                () =>
+                  withStrictTimeout(
+                    attemptModel(
+                      recoveryModel,
+                      credential
+                    ),
+                    provider === "google"
+                      ? 30000
+                      : 45000,
+                    `${engine}(${recoveryModel})`
+                  ),
+                {
+                  maxAttempts: 3,
+                }
+              );
+            } catch (
+              recoveryError
+            ) {
+              lastError =
+                recoveryError;
+            }
+          }
+        }
+
+        if (
+          decision.rotateCredential &&
+          credentialIndex <
+            credentials.length - 1
+        ) {
+          continue;
+        }
+
+        if (
+          decision.failureClass ===
+            "MODEL_NOT_FOUND" ||
+          decision.failureClass ===
+            "INVALID_REQUEST" ||
+          decision.failureClass ===
+            "AUTH" ||
+          decision.failureClass ===
+            "PERMISSION"
+        ) {
+          break;
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    redactProviderError(
+      lastError instanceof Error
+        ? lastError
+        : new Error(
+            `${engine}: all provider recovery paths failed.`
+          )
+    )
+  );
+}
 export function calculateSimilarity(
   responses: string[]
 ): number {
