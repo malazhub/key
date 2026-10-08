@@ -2702,7 +2702,7 @@ Mode: ${
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Enable CORS so apps opened directly from GitHub Pages (https://malazhub.github.io/key or key1) or local index.html
   // can call https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/* with the exact same search & answer logic
@@ -3876,6 +3876,17 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       res.status(500).json({ error: message });
     }
   });
+    
+    app.get("/api/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+
+  res.status(200).json({
+    ok: true,
+    service: "key",
+    status: "ready",
+    timestamp: new Date().toISOString(),
+  });
+});
 
   app.get("/api/engine-health", async (_req, res) => {
     const startedAt = Date.now();
