@@ -751,7 +751,6 @@ async function fetchFromKeyBackend(
           headers: {
             ...(init?.headers || {}),
             "Cache-Control": "no-cache",
-            "X-Key-Client-Request": "key-browser-v1",
           },
         },
         timeoutMs
