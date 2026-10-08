@@ -142,6 +142,8 @@ const GUEST_STORAGE_KEY = "malaz_key_chat_history_v5";
 const AUTH_EMAIL_STORAGE_KEY = "malaz_key_signed_in_user_v1";
 const ENGINE_SLOTS_STORAGE_KEY = "malaz_key_engines_v5";
 const TARGET_MATCH_STORAGE_KEY = "malaz_key_target_v5";
+const QUERY_TIMEOUT_MINUTES_STORAGE_KEY =
+  "malaz_key_query_timeout_minutes_v1";
 const CUMULATIVE_BUILD_STORAGE_KEY =
   "malaz_key_cumulative_build_v5";
 const STAGED_UPGRADE_STORAGE_KEY =
@@ -703,14 +705,26 @@ async function fetchWithStrictAbort(
 
 async function fetchFromKeyBackend(
   apiPath: string,
-  init?: RequestInit
+  init?: RequestInit,
+  timeoutOverrideMs?: number
 ): Promise<Response> {
   const isDeployRoute =
     apiPath.startsWith("/api/admin/deploy") ||
     apiPath.startsWith("/api/github-push-folder");
 
-  const localTimeoutMs = isDeployRoute ? 55000 : 35000;
-  const remoteTimeoutMs = isDeployRoute ? 55000 : 30000;
+  const localTimeoutMs =
+    typeof timeoutOverrideMs === "number" && timeoutOverrideMs > 0
+      ? timeoutOverrideMs
+      : isDeployRoute
+        ? 55000
+        : 35000;
+
+  const remoteTimeoutMs =
+    typeof timeoutOverrideMs === "number" && timeoutOverrideMs > 0
+      ? timeoutOverrideMs
+      : isDeployRoute
+        ? 55000
+        : 30000;
 
   const isStaticHost =
     typeof window !== "undefined" &&
@@ -2302,6 +2316,26 @@ export default function App() {
   const [pendingAttachments, setPendingAttachments] = useState<
     ChatAttachment[]
   >([]);
+
+  // User-controlled automatic query-abort timeout.
+  // Default: 3 minutes. Maximum: Render's 100-minute HTTP window.
+  const [queryTimeoutMinutes, setQueryTimeoutMinutes] = useState<number>(() => {
+    try {
+      const savedTimeout = localStorage.getItem(
+        QUERY_TIMEOUT_MINUTES_STORAGE_KEY
+      );
+      if (savedTimeout) {
+        const n = Number(savedTimeout);
+        if (Number.isFinite(n) && n >= 1 && n <= 100) {
+          return n;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 3;
+  });
+
   const [target, setTarget] = useState<number>(() => {
     try {
       const savedTarget = localStorage.getItem(TARGET_MATCH_STORAGE_KEY);
@@ -3054,6 +3088,17 @@ export default function App() {
       // ignore
     }
   }, [target]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        QUERY_TIMEOUT_MINUTES_STORAGE_KEY,
+        String(queryTimeoutMinutes)
+      );
+    } catch {
+      // ignore
+    }
+  }, [queryTimeoutMinutes]);
 
   // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
   const launchLiveAiKeyEntry = useCallback(() => {
@@ -4685,9 +4730,11 @@ const data = await res.json();
     try {
       const discoveredToken =
         manualGithubTokenInput.trim() || discoverSavedGitHubTokenInBrowser();
-      const response = await fetchFromKeyBackend("/api/consensus-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetchFromKeyBackend(
+        "/api/consensus-chat",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: queryText,
           history: previousMessages.map((m) => ({
@@ -4711,8 +4758,9 @@ const data = await res.json();
             sizeBytes: a.sizeBytes,
             kind: a.kind,
           })),
-        }),
-      });
+        },
+        queryTimeoutMinutes * 60 * 1000
+      );
 
       const data = await response.json();
       if (!response.ok) {
@@ -5910,6 +5958,39 @@ const data = await res.json();
                         {val}%
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* User-controlled automatic query-abort timeout */}
+                <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+                  <div className="font-semibold text-slate-200">
+                    Query Abort Time
+                  </div>
+                  <div className="text-[10px] leading-relaxed text-slate-500">
+                    Automatically abort the AI query after this many minutes.
+                    Default is 3 minutes. Maximum is 100 minutes.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="keyQueryTimeoutMinutes"
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={queryTimeoutMinutes}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value);
+                        if (!Number.isFinite(raw)) return;
+
+                        setQueryTimeoutMinutes(
+                          Math.max(1, Math.min(100, Math.floor(raw)))
+                        );
+                      }}
+                      className="w-20 text-center font-mono tabular-nums font-semibold text-xs bg-slate-950 text-sky-300 border border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-sky-500"
+                    />
+                    <span className="text-[11px] text-sky-400 font-mono">
+                      minutes
+                    </span>
                   </div>
                 </div>
               </div>
