@@ -2705,6 +2705,7 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
     // Single CORS policy for GitHub Pages and local development.
+    // Single CORS policy for GitHub Pages and local development.
   app.use((req, res, next) => {
     const origin = String(req.headers.origin || "");
 
@@ -2735,50 +2736,7 @@ async function startServer() {
 
     next();
   });
-  app.use((req, res, next) => {
-  const origin =
-    String(req.headers.origin || "");
 
-  const allowed =
-    origin ===
-      "https://malazhub.github.io" ||
-    origin.startsWith(
-      "http://localhost:"
-    ) ||
-    origin.startsWith(
-      "http://127.0.0.1:"
-    );
-
-  if (allowed) {
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      origin
-    );
-    res.setHeader(
-      "Vary",
-      "Origin"
-    );
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS"
-  );
-
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-
-  if (
-    req.method === "OPTIONS"
-  ) {
-    res.status(204).end();
-    return;
-  }
-
-  next();
-});
   app.use(express.json({ limit: "50mb" }));
 
   // Admin Authentication & Direct Repository Endpoints (exclusively targeting https://github.com/malazhub/key)
