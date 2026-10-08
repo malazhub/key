@@ -4730,34 +4730,37 @@ const data = await res.json();
     try {
       const discoveredToken =
         manualGithubTokenInput.trim() || discoverSavedGitHubTokenInBrowser();
-      const response = await fetchFromKeyBackend(
+            const response = await fetchFromKeyBackend(
         "/api/consensus-chat",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: queryText,
-          history: previousMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          activeModels,
-          targetAgreement: target,
-          buildAppMode: Boolean(
-            runOptions?.forceAppPreview || isActualAdminUpgradeTask || isDeployCommandQuery
-          ),
-          adminUpgradeMode: isActualAdminUpgradeTask,
-          nextVersionTag: "key",
-          githubToken: discoveredToken || undefined,
-          strictQueryPriority: hasExplicitTopicResetDirective(queryText),
-          attachments: attachmentsToSend.map((a) => ({
-            name: a.name,
-            mimeType: a.mimeType,
-            base64Data: a.base64Data,
-            textContent: a.textContent,
-            sizeBytes: a.sizeBytes,
-            kind: a.kind,
-          })),
+          body: JSON.stringify({
+            question: queryText,
+            history: previousMessages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            activeModels,
+            targetAgreement: target,
+            buildAppMode: Boolean(
+              runOptions?.forceAppPreview ||
+                isActualAdminUpgradeTask ||
+                isDeployCommandQuery
+            ),
+            adminUpgradeMode: isActualAdminUpgradeTask,
+            nextVersionTag: "key",
+            githubToken: discoveredToken || undefined,
+            strictQueryPriority: hasExplicitTopicResetDirective(queryText),
+            attachments: attachmentsToSend.map((a) => ({
+              name: a.name,
+              mimeType: a.mimeType,
+              base64Data: a.base64Data,
+              textContent: a.textContent,
+              sizeBytes: a.sizeBytes,
+              kind: a.kind,
+            })),
+          }),
         },
         queryTimeoutMinutes * 60 * 1000
       );
