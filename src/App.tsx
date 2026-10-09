@@ -692,7 +692,24 @@ async function fetchWithStrictAbort(
   timeoutMs: number
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const deadline = Date.now() + timeoutMs;
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+const scheduleAbortCheck = () => {
+  const remaining = deadline - Date.now();
+
+  if (remaining <= 0) {
+    controller.abort();
+    return;
+  }
+
+  timer = setTimeout(
+    scheduleAbortCheck,
+    Math.min(remaining, 2_000_000_000)
+  );
+};
+
+scheduleAbortCheck();
   try {
     return await fetch(url, {
       ...(init || {}),
@@ -2325,9 +2342,8 @@ export default function App() {
         QUERY_TIMEOUT_MINUTES_STORAGE_KEY
       );
       if (savedTimeout) {
-        const n = Number(savedTimeout);
-        if (Number.isFinite(n) && n >= 1 && n <= 100) {
-          return n;
+        if (Number.isSafeInteger(n) && n >= 1) {
+        return n;
         }
       }
     } catch {
@@ -6079,25 +6095,20 @@ const data = await res.json();
                   <div className="font-semibold text-slate-200">
                     Query Abort Time
                   </div>
-                  <div className="text-[10px] leading-relaxed text-slate-500">
-                    Automatically abort the AI query after this many minutes.
-                    Default is 3 minutes. Maximum is 100 minutes.
-                  </div>
+                  Automatically abort the AI query after the selected duration. Default is 3 minutes. Set any duration you need.
                   <div className="flex items-center gap-2">
                     <input
                       id="keyQueryTimeoutMinutes"
                       type="number"
                       min={1}
-                      max={100}
                       step={1}
                       value={queryTimeoutMinutes}
                       onChange={(e) => {
                         const raw = Number(e.target.value);
                         if (!Number.isFinite(raw)) return;
 
-                        setQueryTimeoutMinutes(
-                          Math.max(1, Math.min(100, Math.floor(raw)))
-                        );
+                        if (!Number.isSafeInteger(raw) || raw < 1) return;
+setQueryTimeoutMinutes(raw);
                       }}
                       className="w-20 text-center font-mono tabular-nums font-semibold text-xs bg-slate-950 text-sky-300 border border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-sky-500"
                     />
