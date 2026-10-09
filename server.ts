@@ -2800,19 +2800,14 @@ async function startServer() {
       githubToken,
     } = req.body || {};
 
-    if (email !== undefined || password !== undefined) {
-      const cleanEmail = String(email || "")
-        .trim()
-        .toLowerCase();
-      const cleanPass = String(password || "").trim();
-      const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
-      if (!validEmails.includes(cleanEmail) || cleanPass !== "mjkey1971") {
-        res.status(401).json({
-          error:
-            'Upgrade denied: Username "malazjanbeih@gmail.com" and password "mjkey1971" are required.',
-        });
-        return;
-      }
+    const adminEmail = validateAdminCredentials(email, password);
+
+    if (!adminEmail) {
+      res.status(401).json({
+        success: false,
+        error: "Admin authentication required.",
+      });
+      return;
     }
 
     const versions = readAdminVersions();
