@@ -279,11 +279,11 @@ function buildCumulativeMemoryBank(history: HistoryTurn[]): {
   }
 
   const allPairsCount = pairs.length;
-  const droppedOldestCount = Math.max(
-    0,
-    allPairsCount - MAX_CONTEXT_WINDOW_PAIRS
-  );
-  const windowPairs = pairs.slice(-MAX_CONTEXT_WINDOW_PAIRS);
+
+  // Canonical in-memory view: retain every valid conversation pair.
+  // Do NOT truncate the archive to fit a model prompt.
+  const droppedOldestCount = 0;
+  const windowPairs = pairs;
 
   const formattedMemoryBundle = windowPairs
     .map(
