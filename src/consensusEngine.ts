@@ -11710,13 +11710,17 @@ export async function runSmartMemoryConsensusLoop(
   // Definitive `isStandaloneQuery` Flag:
   // Isolates when there are 0 prior turns, or when the user sends a standalone greeting,
   // or when the user explicitly commands a topic reset.
+  // Low lexical overlap does NOT mean that conversation history is irrelevant.
+  // Keep history unless this is genuinely a greeting, there is no history,
+  // or the user explicitly requests a topic reset.
   const isStandaloneQuery: boolean =
     !isExplicitHistoryRecallTarget &&
-    (rawHistoryMemory.windowPairs.length === 0 ||
+    (
+      rawHistoryMemory.windowPairs.length === 0 ||
       isStandaloneGreetingOrSmallTalk(cleanQuestion) ||
       isGreetingTarget ||
-      hasExplicitTopicResetDirective(cleanQuestion) ||
-      isBelowSemanticOverlapThreshold);
+      hasExplicitTopicResetDirective(cleanQuestion)
+    );
 
   if (isStandaloneQuery) {
     strictQueryPriority = true;
@@ -11725,6 +11729,9 @@ export async function runSmartMemoryConsensusLoop(
       payloadSentToEngines,
       isolatedPayloadSentToEngines
     );
+
+    // Do not mutate the canonical history or archive.
+    // These arrays represent this execution's context only.
     windowPairs.length = 0;
     effectiveHistory.length = 0;
     cumulativeSpec = undefined;
@@ -12311,8 +12318,18 @@ iterationsRequired: actualRoundsCompleted,
 
     const roundNumber = actualRoundsCompleted;
 
+    const eligibleModels = selectedModels.filter(
+      (modelName) => !timedOutModels.has(modelName)
+    );
+
+    if (eligibleModels.length === 0) {
+      throw new Error(
+        "No eligible engines remain: all selected engines timed out or were excluded."
+      );
+    }
+
     const settledResults = await Promise.all(
-      selectedModels.map(async (modelName) => {
+      eligibleModels.map(async (modelName) => {
         try {
           const dispatched = await withStrictTimeout(
             dispatchEngine({
@@ -12340,6 +12357,18 @@ iterationsRequired: actualRoundsCompleted,
             answer,
           };
         } catch (error) {
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : String(error);
+
+          const timedOut =
+            /timed out after \d+ms/i.test(errorMessage);
+
+          if (timedOut) {
+            timedOutModels.add(modelName);
+          }
+
           const reason = redactProviderError(error);
 
           liveDispatchFailures.push({
