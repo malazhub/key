@@ -4095,6 +4095,7 @@ Return ONLY JSON in this exact shape:
       });
 
       // Keep a successful candidate staged and inactive. // Do not restart or activate it before admin approval. if (result.status === "PENDING_ADMIN_DECISION") { console.info( `[SELF-UPGRADE] Candidate ${result.sessionId} is staged for admin review.` ); }
+
     } catch (err: unknown) {
       res.status(500).json({
         success: false,
