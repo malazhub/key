@@ -15227,36 +15227,102 @@ export function refinePayload(
   ].filter(Boolean).join("\n\n").trim();
 }
 
+
 export function finalize(responses: string[]): {
   finalAnswer: string;
   agreement: number;
   synchronizedEngines: number;
 } {
+  const validResponses = responses
+    .filter(
+      (response): response is string =>
+        typeof response === "string" && response.trim().length > 0
+    )
+    .map((response) => response.trim());
+
+  if (validResponses.length === 0) {
+    return {
+      finalAnswer: "",
+      agreement: 0,
+      synchronizedEngines: 0,
+    };
+  }
+
+  // Select the response with the highest total semantic similarity
+  // to the other successful engine responses (the consensus medoid).
+  let bestIndex = 0;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < validResponses.length; i += 1) {
+    let score = 0;
+
+    for (let j = 0; j < validResponses.length; j += 1) {
+      if (i === j) continue;
+      score += calculateSimilarity([
+        validResponses[i],
+        validResponses[j],
+      ]);
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
   return {
-    finalAnswer: responses.filter((response) => typeof response === "string" && response.trim()).join("\n\n--- ENGINE ANSWER ---\n\n"),
-    agreement: calculateSimilarity(responses),
-    synchronizedEngines: responses.length,
+    finalAnswer: validResponses[bestIndex],
+    agreement: calculateSimilarity(validResponses),
+    synchronizedEngines: validResponses.length,
   };
 }
 
 // 1. The Consensus Controller (Multi-AI Loop)
+
 export function executeConsensus(
   payload: string,
-  engines: Array<{ query: (p: string) => string }>
+  engines: Array<{ query: (p: string) => string }>,
+  targetAgreement = 95
 ) {
+  const safeTarget = Math.max(
+    0,
+    Math.min(
+      100,
+      Number.isFinite(targetAgreement) ? targetAgreement : 95
+    )
+  );
+
   let agreement = 0;
   let iterations = 0;
   let currentPayload = payload;
   let responses: string[] = [];
-  while (
-  agreement < 0.95 &&
-  iterations < MAX_REVISIONS
-) {
-    responses = engines.map((engine) => engine.query(currentPayload));
+
+  while (iterations < MAX_REVISIONS) {
+    responses = engines
+      .map((engine) => engine.query(currentPayload))
+      .filter(
+        (response): response is string =>
+          typeof response === "string" && response.trim().length > 0
+      );
+
+    if (responses.length === 0) {
+      throw new Error("No engine returned a usable response.");
+    }
+
     agreement = calculateSimilarity(responses);
-    if (agreement < 0.95) currentPayload = refinePayload(responses, currentPayload);
-    iterations++;
+    iterations += 1;
+
+    if (agreement >= safeTarget) {
+      break;
+    }
+
+    if (iterations < MAX_REVISIONS) {
+      currentPayload = refinePayload(responses, currentPayload);
+    }
   }
+
+  // Return one selected response, even if the round ceiling is reached.
+  // finalize() reports the measured agreement separately.
   return finalize(responses);
 }
 
