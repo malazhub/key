@@ -4528,23 +4528,10 @@ Return ONLY JSON in this exact shape:
       ? cleanEmail
       : null;
     }
-    const requireAdmin: express.RequestHandler = (req, res, next) => {
-    const adminEmail = validateAdminCredentials(
-    req.get("x-admin-email"),
-    req.get("x-admin-password")
-    );
+}
 
-    if (!adminEmail) {
-    res.status(401).json({
-        success: false,
-        error: "Admin authentication required.",
-    });
-    return;
-    }
 
-    next();
-
-    };
+  let volatileKeyRuntimeState: Record<string, unknown> = {};
 
   let volatileKeyRuntimeState: Record<string, unknown> = {};
 
