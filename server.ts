@@ -4057,7 +4057,24 @@ Return ONLY JSON in this exact shape:
       }
     }
     throw new Error(`All self-upgrade candidate generation attempts failed: ${lastError}`);
-  }
+    }
+    
+      const requireAdmin: express.RequestHandler = (req, res, next) => {
+    const adminEmail = validateAdminCredentials(
+      req.get("x-admin-email"),
+      req.get("x-admin-password")
+    );
+
+    if (!adminEmail) {
+      res.status(401).json({
+        success: false,
+        error: "Admin authentication required.",
+      });
+      return;
+    }
+
+    next();
+  };
 
   app.post("/api/self-upgrade/execute", requireAdmin, async (req, res) => {
     try {
@@ -4509,7 +4526,7 @@ Return ONLY JSON in this exact shape:
     return `wc_${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}`;
   }
 
-    function validateAdminCredentials(email: unknown, password: unknown): string | null {
+  function validateAdminCredentials(email: unknown, password: unknown): string | null {
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanPass = String(password || "").trim();
 
@@ -4527,11 +4544,7 @@ Return ONLY JSON in this exact shape:
     return validEmails.includes(cleanEmail) && cleanPass === adminPassword
       ? cleanEmail
       : null;
-    }
-}
-
-
-  let volatileKeyRuntimeState: Record<string, unknown> = {};
+  }
 
   let volatileKeyRuntimeState: Record<string, unknown> = {};
 
