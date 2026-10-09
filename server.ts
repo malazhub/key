@@ -4059,7 +4059,7 @@ Return ONLY JSON in this exact shape:
     throw new Error(`All self-upgrade candidate generation attempts failed: ${lastError}`);
   }
 
-  app.post("/api/self-upgrade/execute", async (req, res) => {
+  app.post("/api/self-upgrade/execute", requireAdmin, async (req, res) => {
     try {
       const requestedRounds = Number(
         req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1
@@ -4527,7 +4527,24 @@ Return ONLY JSON in this exact shape:
     return validEmails.includes(cleanEmail) && cleanPass === adminPassword
       ? cleanEmail
       : null;
-  }
+    }
+    const requireAdmin: express.RequestHandler = (req, res, next) => {
+    const adminEmail = validateAdminCredentials(
+    req.get("x-admin-email"),
+    req.get("x-admin-password")
+    );
+
+    if (!adminEmail) {
+    res.status(401).json({
+        success: false,
+        error: "Admin authentication required.",
+    });
+    return;
+    }
+
+    next();
+
+    };
 
   let volatileKeyRuntimeState: Record<string, unknown> = {};
 
@@ -4553,7 +4570,7 @@ Return ONLY JSON in this exact shape:
     return volatileKeyRuntimeState;
   }
 
-  app.get("/api/mirrored-state", (_req, res) => {
+  app.get("/api/mirrored-state", requireAdmin, (_req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.json({
       ...readMirroredKeyState(),
@@ -4561,7 +4578,7 @@ Return ONLY JSON in this exact shape:
     });
   });
 
-  app.get("/api/runtime-state", (_req, res) => {
+  app.get("/api/runtime-state", requireAdmin, (_req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.json({
       success: true,
@@ -4569,7 +4586,7 @@ Return ONLY JSON in this exact shape:
     });
   });
 
-  app.get("/api/working-copy", (_req, res) => {
+  app.get("/api/working-copy", requireAdmin, (_req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const workingCopy = readWorkingCopy();
     res.json({
@@ -4579,7 +4596,7 @@ Return ONLY JSON in this exact shape:
     });
   });
 
-  app.post("/api/working-copy", (req, res) => {
+  app.post("/api/working-copy", requireAdmin, (req, res) => {
     try {
       const incoming = req.body && typeof req.body === "object" ? req.body : {};
       const previous = readWorkingCopy();
@@ -6240,7 +6257,7 @@ jobs:
     return data;
   }
 
-  app.post("/api/admin/github-device-start", async (req, res) => {
+  app.post("/api/admin/github-device-start", requireAdmin, async (req, res) => {
     try {
             const forceNew = Boolean(
         req.body?.forceNew
@@ -6271,7 +6288,7 @@ jobs:
     }
   });
 
-  app.post("/api/admin/github-device-poll", async (req, res) => {
+  app.post("/api/admin/github-device-poll", requireAdmin, async (req, res) => {
     try {
       const incomingDeviceCode = String(
         req.body?.deviceCode || req.body?.device_code || ""
@@ -6383,7 +6400,7 @@ if (existingToken) {
     }
   });
 
-  app.post("/api/admin/deploy", async (req, res) => {
+  app.post("/api/admin/deploy", requireAdmin, async (req, res) => {
     try {
       const {
         githubToken,
