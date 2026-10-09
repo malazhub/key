@@ -4094,30 +4094,7 @@ Return ONLY JSON in this exact shape:
         ...result,
       });
 
-      // After the final successful requested round has been persisted,
-      // restart through runtimeLauncher.ts so the exact persisted
-      // active-runtime copy is loaded instead of the original checkout.
-      if (result.status === "PENDING_ADMIN_DECISION") {
-        setTimeout(() => {
-          const child = spawn(
-            process.execPath,
-            [
-              "--import",
-              "tsx",
-              path.join(__dirname, "runtimeLauncher.ts"),
-            ],
-            {
-              cwd: __dirname,
-              env: process.env,
-              detached: true,
-              stdio: "inherit",
-            }
-          );
-
-          child.unref();
-          process.exit(0);
-        }, 250);
-      }
+      // Keep a successful candidate staged and inactive. // Do not restart or activate it before admin approval. if (result.status === "PENDING_ADMIN_DECISION") { console.info( `[SELF-UPGRADE] Candidate ${result.sessionId} is staged for admin review.` ); }
     } catch (err: unknown) {
       res.status(500).json({
         success: false,
