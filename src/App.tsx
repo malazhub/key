@@ -3633,6 +3633,40 @@ setSelfUpgradeStatus(
 
       if (!res.ok) return;
         const data = await res.json();
+
+        // GitHub authorization is not deployment approval.
+        if (
+          data.authorized &&
+          data.stagedAwaitingExplicitDeploy &&
+          githubDeviceAuth.stagedSessionId
+        ) {
+          if (
+            data.accessToken &&
+            isValidBrowserGitHubToken(String(data.accessToken))
+          ) {
+            try {
+              localStorage.setItem(
+                "malaz_github_oauth_token_v1",
+                String(data.accessToken)
+              );
+              localStorage.setItem(
+                "malaz_github_pat",
+                String(data.accessToken)
+              );
+              setManualGithubTokenInput(String(data.accessToken));
+            } catch {
+              // Ignore browser storage errors.
+            }
+          }
+
+          setGithubDeviceAuth(null);
+          setAdminDeploying(false);
+          setSelfUpgradeStatus(
+            "GitHub authorization is ready. Your candidate remains staged and has not been deployed. Review it, then click Deploy to publish this candidate."
+          );
+          return;
+        }
+
         if (data.authorized && data.success) {
           if (
             data.accessToken &&
