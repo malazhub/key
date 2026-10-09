@@ -2336,24 +2336,44 @@ export default function App() {
     ChatAttachment[]
   >([]);
 
-  // User-controlled automatic query-abort timeout.
-// Default: 3 minutes. No fixed 100-minute application limit.
+    // User-controlled automatic query-abort timeout.
+  // Default: 3 minutes. No fixed 100-minute application limit.
   const [queryTimeoutMinutes, setQueryTimeoutMinutes] = useState<number>(() => {
     try {
       const savedTimeout = localStorage.getItem(
         QUERY_TIMEOUT_MINUTES_STORAGE_KEY
       );
+
       if (savedTimeout) {
         const n = Number(savedTimeout);
         if (Number.isSafeInteger(n) && n >= 1) {
-            return n;
+          return n;
         }
-        }
+      }
     } catch {
       // ignore
     }
+
     return 3;
   });
+
+  // User-controlled maximum consensus refinement rounds.
+  // Default: 10 rounds; accepted range: 3–50.
+  const [maxRevisionRounds, setMaxRevisionRounds] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("key_max_revision_rounds_v1");
+      const parsed = saved === null ? 10 : Number(saved);
+
+      return Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
+        ? parsed
+        : 10;
+    } catch {
+      return 10;
+    }
+  });
+
+  const [maxRevisionRoundsInput, setMaxRevisionRoundsInput] =
+    useState<string>(() => String(maxRevisionRounds));
 
   const [target, setTarget] = useState<number>(() => {
     try {
@@ -3118,6 +3138,19 @@ export default function App() {
       // ignore
     }
   }, [queryTimeoutMinutes]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "key_max_revision_rounds_v1",
+        String(maxRevisionRounds)
+      );
+    } catch {
+      // Ignore unavailable local storage.
+    }
+  }, [maxRevisionRounds]);
+
+  // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
 
   // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
   const launchLiveAiKeyEntry = useCallback(() => {
@@ -6129,18 +6162,13 @@ const data = await res.json();
               </div>
             </section>
 
-            {/* Admin Login / Logout + Single Deploy Button & Code Box */}
-            <section className="pt-2 border-t border-slate-800/80">
-              <div className="bg-slate-950/95 rounded-xl border border-slate-800 p-3 space-y-2.5">
-                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-extrabold text-sky-300">
-                      Self-Upgrade
-                    </span>
-                    <span className="text-[10px] font-mono text-slate-400">
-                      staged / tested / local
-                    </span>
-                  </div>
+                {!isAdminAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminLoginError(null);
+                      setShowAdminLoginModal(true);
+                    }}
 
                   <textarea
                     value={selfUpgradeInstruction}
@@ -8083,19 +8111,61 @@ const data = await res.json();
                 </div>
               )}
 
-              {/* Upgraded Large Input Box: Fits Full Available Width + Auto-Expands up to 5 Rows in Height */}
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    processSelectedFiles(e.dataTransfer.files);
-                  }
-                }}
-                className="w-full rounded-2xl bg-slate-900 border border-slate-700/90 focus-within:border-emerald-500/80 p-3.5 flex items-end gap-3 transition-colors shadow-lg"
-              >
-                <textarea
-                  ref={textareaRef}
+              {/* Multi-Round Refinement Depth */}
+              <div className="mb-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
+                <label
+                  htmlFor="maxRevisionRounds"
+                  className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-300"
+                >
+                  Multi-Round Refinement Depth
+                </label>
+                <p className="mb-2 text-[11px] text-slate-400">
+                  Maximum revision rounds for the consensus workflow. Default: 10; range: 3–50.
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="maxRevisionRounds"
+                    type="number"
+                    min={3}
+                    max={50}
+                    step={1}
+                    value={maxRevisionRounds}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        setMaxRevisionRoundsInput("");
+                        return;
+                      }
+
+                      const parsed = Number(raw);
+                      if (Number.isInteger(parsed)) {
+                        setMaxRevisionRoundsInput(
+                          String(Math.max(3, Math.min(50, parsed)))
+                        );
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = Number(maxRevisionRoundsInput);
+                      const validated =
+                        Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
+                          ? parsed
+                          : 10;
+
+                      setMaxRevisionRounds(validated);
+                      setMaxRevisionRoundsInput(String(validated));
+                    }}
+                    className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-white focus:border-blue-500 focus:outline-none"
+                  />
+                  <span className="text-xs text-slate-400">
+                    Maximum rounds:{" "}
+                    <strong className="text-blue-400">
+                      {maxRevisionRounds}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Existing composer continues below */}
                   rows={2}
                   value={question}
                   onChange={(e) => {
