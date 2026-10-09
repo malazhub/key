@@ -12259,13 +12259,16 @@ iterationsRequired: actualRoundsCompleted,
 
   const MAX_ROUNDS = 50;
 
-  const selectedModels = Array.from(
+    const selectedModels = Array.from(
     new Set(
       (Array.isArray(modelsList) ? modelsList : [])
         .map((model) => String(model || "").trim())
         .filter(Boolean)
     )
-  );
+    );
+      // Track timed-out engines for this consensus run only.
+    // A timed-out engine is excluded from all subsequent rounds in this run.
+    const timedOutModels = new Set<string>();
 
   if (selectedModels.length === 0) {
     throw new Error(
