@@ -6093,81 +6093,38 @@ jobs:
             interval?: number;
           };
 
-          if (pollData.access_token && isValidGitHubTokenFormat(pollData.access_token)) {
+          if (
+            pollData.access_token &&
+            isValidGitHubTokenFormat(pollData.access_token)
+          ) {
             writeSavedGitHubToken(pollData.access_token);
             sess.accessToken = pollData.access_token;
-                      let deployResult: Record<
-            string,
-            unknown
-          >;
 
-          if (sess.stagedSessionId) {
-            const staged =
-              readFinalStagedCandidate(
-                sess.stagedSessionId
-              );
+            let deployResult: Record<string, unknown>;
 
-            deployResult =
-              await executeFullGitHubStructureDeploy(
-                {
-                  githubToken:
-                    pollData.access_token,
-                  repoOwner:
-                    "malazhub",
+            if (sess.stagedSessionId) {
+              // Authorization alone must not deploy a staged candidate.
+              readFinalStagedCandidate(sess.stagedSessionId);
+
+              deployResult = {
+                success: true,
+                verified: false,
+                authorized: true,
+                stagedAwaitingExplicitDeploy: true,
+                message:
+                  "GitHub authorization is ready. The candidate remains staged until you click Deploy.",
+              };
+            } else {
+              // Keep the existing non-staged deployment behavior.
+              deployResult =
+                await executeFullGitHubStructureDeploy({
+                  githubToken: pollData.access_token,
+                  repoOwner: "malazhub",
                   repoName: "key",
                   branch: "main",
-                  sourceWorkspace:
-                    staged.candidateWorkspace,
-                  forceRebuild: false,
-                }
-              );
-
-            if (
-              deployResult.success ===
-                true &&
-              deployResult.verified ===
-                true
-            ) {
-              staged.session.status =
-                "COMPLETED";
-              staged.session.updatedAt =
-                new Date().toISOString();
-
-              const workspaceRoot =
-                path.resolve(
-                  resolveKeyWorkspaceRoot(
-                    __dirname
-                  ).root
-                );
-
-              fs.writeFileSync(
-                path.join(
-                  workspaceRoot,
-                  "sessions",
-                  `${sess.stagedSessionId}.json`
-                ),
-                JSON.stringify(
-                  staged.session,
-                  null,
-                  2
-                ),
-                "utf8"
-              );
+                });
             }
-          } else {
-            // Preserve the normal deployment path.
-            deployResult =
-              await executeFullGitHubStructureDeploy(
-                {
-                  githubToken:
-                    pollData.access_token,
-                  repoOwner:
-                    "malazhub",
-                  repoName: "key",
-                  branch: "main",
-                }
-              );
-          }
+
             sess.deployResult = deployResult;
             sess.status = "authorized";
             activeServerDeviceSession = sess;
@@ -6337,55 +6294,47 @@ jobs:
         return;
       }
 
-      // Or if a valid token is already saved on disk
-      const existingToken =
-  readSavedGitHubToken();
+      // Or if a valid token is already saved on disk.
+      // A staged candidate may only deploy through the explicit deploy endpoint.
+      const existingToken = readSavedGitHubToken();
 
-if (existingToken) {
-  let deployResult:
-    Record<string, unknown>;
+      if (existingToken) {
+        const stagedSessionId =
+          activeServerDeviceSession?.stagedSessionId ||
+          incomingStagedSessionId;
 
-  const stagedSessionId =
-    activeServerDeviceSession?.stagedSessionId;
+        if (stagedSessionId) {
+          readFinalStagedCandidate(stagedSessionId);
 
-  if (
-    typeof stagedSessionId === "string" &&
-    stagedSessionId.trim()
-  ) {
-    const staged =
-      readFinalStagedCandidate(
-        stagedSessionId
-      );
+          res.json({
+            authorized: true,
+            success: true,
+            accessToken: existingToken,
+            stagedAwaitingExplicitDeploy: true,
+            message:
+              "GitHub authorization is ready. The staged candidate has not been deployed. Click Deploy to publish it.",
+          });
+          return;
+        }
 
-    deployResult =
-      await executeFullGitHubStructureDeploy({
-        githubToken: existingToken,
-        repoOwner: "malazhub",
-        repoName: "key",
-        branch: "main",
-        sourceWorkspace:
-          staged.candidateWorkspace,
-        forceRebuild: false,
-      });
-  } else {
-    deployResult =
-      await executeFullGitHubStructureDeploy({
-        githubToken: existingToken,
-        repoOwner: "malazhub",
-        repoName: "key",
-        branch: "main",
-      });
-  }
+        // Preserve the existing non-staged deployment behavior.
+        const deployResult =
+          await executeFullGitHubStructureDeploy({
+            githubToken: existingToken,
+            repoOwner: "malazhub",
+            repoName: "key",
+            branch: "main",
+          });
 
-  if (deployResult.success) {
-    res.json({
-      authorized: true,
-      accessToken: existingToken,
-      ...deployResult,
-    });
-    return;
-  }
-}
+        if (deployResult.success) {
+          res.json({
+            authorized: true,
+            accessToken: existingToken,
+            ...deployResult,
+          });
+          return;
+        }
+      }
 
       res.json({
         authorized: false,
