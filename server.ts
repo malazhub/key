@@ -2774,7 +2774,20 @@ async function startServer() {
     });
   });
 
-  app.get("/api/admin/versions", (_req, res) => {
+  app.get("/api/admin/versions", (req, res) => {
+    const adminEmail = validateAdminCredentials(
+      req.get("x-admin-email"),
+      req.get("x-admin-password")
+    );
+
+    if (!adminEmail) {
+      res.status(401).json({
+        success: false,
+        error: "Admin authentication required.",
+      });
+      return;
+    }
+
     const versions = readAdminVersions();
     res.json({
       currentVersionTag: "key",
