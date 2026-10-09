@@ -3246,7 +3246,11 @@ export default function App() {
         "/api/admin/github-device-start",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-email": adminEmailInput.trim().toLowerCase(),
+            "x-admin-password": adminPassInput,
+          },
           body: JSON.stringify({ forceNew: false }),
         }
       );
@@ -3269,11 +3273,18 @@ export default function App() {
     } catch {
       // ignore prewarm error
     }
-  }, []);
+    }, [adminEmailInput, adminPassInput]);
 
     // Generate, test, stage, and visually preview a Key self-upgrade.
   // This NEVER deploys to GitHub.
     const handleGenerateSelfUpgrade = async () => {
+        if (!isAdminAuthenticated || !adminPassInput.trim()) {
+      setSelfUpgradeStatus(
+        "Please log in as admin again before generating a candidate."
+      );
+      setShowAdminLoginModal(true);
+      return;
+    }
     if (selfUpgradeBusy) return;
 
     setSelfUpgradeBusy(true);
@@ -3289,8 +3300,9 @@ export default function App() {
           {
             method: "POST",
             headers: {
-              "Content-Type":
-                "application/json",
+              "Content-Type": "application/json",
+              "x-admin-email": adminEmailInput.trim().toLowerCase(),
+              "x-admin-password": adminPassInput,
             },
             body: JSON.stringify({
               instruction:
@@ -3405,28 +3417,14 @@ export default function App() {
         )} requested rounds. Final successful candidate: round ${finalRoundNumber}. It is staged and visible; GitHub has NOT been changed.`
       );
 
-      // Make the tested staged build the browser-visible working copy.
-      // This is a preview only; it does not activate/deploy the server workspace.
-      if (
-        typeof window !==
-          "undefined" &&
-        data.sessionId
-      ) {
-        const backendOrigin =
-          window.location.protocol !==
-            "file:" &&
-          !window.location.hostname.endsWith(
-            "github.io"
-          )
-            ? window.location.origin
-            : LIVE_BACKEND_ORIGINS[0];
-
-        window.location.assign(
-          `${backendOrigin}/api/self-upgrade/preview/${encodeURIComponent(
-            String(data.sessionId)
-          )}/`
-        );
-      }
+      // Keep the user inside Key. The tested candidate is shown in the
+      // staged-preview iframe; navigating away would hide the Deploy controls.
+      setSelfUpgradePreviewOpen(true);
+      setSelfUpgradeStatus(
+        `Candidate ready for testing. Session: ${String(
+          data.sessionId
+        )}. GitHub has not been changed. Test the preview, then approve it to enable Deploy.`
+      );
     } catch (error) {
       setSelfUpgradeStatus(
         `Self-upgrade error: ${
@@ -3622,14 +3620,13 @@ setSelfUpgradeStatus(
           {
             method: "POST",
             headers: {
-              "Content-Type":
-                "application/json",
+              "Content-Type": "application/json",
+              "x-admin-email": adminEmailInput.trim().toLowerCase(),
+              "x-admin-password": adminPassInput,
             },
             body: JSON.stringify({
-              deviceCode:
-                githubDeviceAuth.deviceCode,
-              stagedSessionId:
-                githubDeviceAuth.stagedSessionId,
+              deviceCode: githubDeviceAuth.deviceCode,
+              stagedSessionId: githubDeviceAuth.stagedSessionId,
             }),
           }
         );
@@ -3683,7 +3680,7 @@ setSelfUpgradeStatus(
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [githubDeviceAuth]);
+  }, [githubDeviceAuth, adminEmailInput, adminPassInput]);
 
   // Build exact live snapshot of the current Key workspace for 1:1 mirroring to GitHub (https://github.com/malazhub/key & https://malazhub.github.io/key/)
   const buildLiveMirroredStateSnapshot = useCallback(() => {
@@ -3886,6 +3883,24 @@ setSelfUpgradeStatus(
   const handleOneClickAdminDeploy = useCallback(
     async (overrideToken?: string) => {
       if (adminDeploying) return;
+
+      // A staged candidate must be explicitly reviewed and approved first.
+      if (stagedSelfUpgrade && !selfUpgradeApproved) {
+        setSelfUpgradeStatus(
+          "Deployment blocked: test the staged preview and click Approve Staged Upgrade before deploying."
+        );
+        setSelfUpgradePreviewOpen(true);
+        return;
+      }
+
+      if (stagedSelfUpgrade && !adminPassInput.trim()) {
+        setSelfUpgradeStatus(
+          "Admin credentials are required for deployment. Log in again before deploying this candidate."
+        );
+        setShowAdminLoginModal(true);
+        return;
+      }
+
       setAdminDeploying(true);
       setCopiedDeviceCode(false);
 
@@ -3914,25 +3929,21 @@ setSelfUpgradeStatus(
 let res: Response;
 
 if (stagedSessionId) {
-  res =
-    await fetchFromKeyBackend(
-      "/api/admin/deploy",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          stagedSessionId,
-          githubToken:
-            savedToken || undefined,
-          repoOwner: "malazhub",
-          repoName: "key",
-          branch: "main",
-        }),
-      }
-    );
+  res = await fetchFromKeyBackend("/api/admin/deploy", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-email": adminEmailInput.trim().toLowerCase(),
+      "x-admin-password": adminPassInput,
+    },
+    body: JSON.stringify({
+      stagedSessionId,
+      githubToken: savedToken || undefined,
+      repoOwner: "malazhub",
+      repoName: "key",
+      branch: "main",
+    }),
+  });
 } else {
   const currentMirroredSnapshot =
     buildLiveMirroredStateSnapshot();
@@ -3992,10 +4003,11 @@ const data = await res.json();
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
+                  "x-admin-email": adminEmailInput.trim().toLowerCase(),
+                  "x-admin-password": adminPassInput,
                 },
                 body: JSON.stringify({
-                  stagedSessionId:
-                    stagedSessionId || undefined,
+                  stagedSessionId: stagedSessionId || undefined,
                 }),
               }
             );
@@ -4073,7 +4085,15 @@ const data = await res.json();
         setAdminDeploying(false);
       }
     },
-    [adminDeploying, manualGithubTokenInput, buildLiveMirroredStateSnapshot]
+        [
+      adminDeploying,
+      manualGithubTokenInput,
+      buildLiveMirroredStateSnapshot,
+      stagedSelfUpgrade,
+      selfUpgradeApproved,
+      adminEmailInput,
+      adminPassInput,
+    ]
   );
 
   // Forward PC Keyboard Arrow Keys (↑ ↓ ← →) and Q (Horn) to any active Car Simulation iframe when not typing in an input/textarea
@@ -6143,7 +6163,8 @@ const data = await res.json();
                       </div>
 
                       {stagedSelfUpgrade.previewReady &&
-                        selfUpgradePreviewUrl && (
+                        selfUpgradePreviewUrl &&
+                        selfUpgradePreviewOpen && (
                           <div className="rounded-lg border border-slate-700 overflow-hidden bg-white">
                             <iframe
                               key={stagedSelfUpgrade.sessionId}
