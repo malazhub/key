@@ -6093,16 +6093,19 @@ const data = await res.json();
                   </div>
                 </div>
 
+
                 {/* User-controlled automatic query-abort timeout */}
                 <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
                   <div className="font-semibold text-slate-200">
                     Query Abort Time
-                    </div>
-                    <div className="text-[10px] leading-relaxed text-slate-500">
+                  </div>
+
+                  <div className="text-[10px] leading-relaxed text-slate-500">
                     Automatically abort the AI query after the selected duration.
                     Default is 3 minutes. Choose any duration you need.
-                    </div>
-                    <div className="flex items-center gap-2">
+                  </div>
+
+                  <div className="flex items-center gap-2">
                     <input
                       id="keyQueryTimeoutMinutes"
                       type="number"
@@ -6110,13 +6113,12 @@ const data = await res.json();
                       step={1}
                       value={queryTimeoutMinutes}
                       onChange={(e) => {
-                        onChange={(e) => {
-                            const raw = Number(e.target.value);
+                        const raw = Number(e.target.value);
 
-                            if (!Number.isSafeInteger(raw) || raw < 1) return;
+                        if (!Number.isSafeInteger(raw) || raw < 1) return;
 
-                            setQueryTimeoutMinutes(raw);
-                            }}
+                        setQueryTimeoutMinutes(raw);
+                      }}
                       className="w-20 text-center font-mono tabular-nums font-semibold text-xs bg-slate-950 text-sky-300 border border-slate-700 rounded px-2 py-1.5 focus:outline-none focus:border-sky-500"
                     />
                     <span className="text-[11px] text-sky-400 font-mono">
