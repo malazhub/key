@@ -2747,21 +2747,18 @@ async function startServer() {
 
   // Admin Authentication & Direct Repository Endpoints (exclusively targeting https://github.com/malazhub/key)
   app.post("/api/admin/login", (req, res) => {
-    const { email, password } = req.body || {};
-    const cleanEmail = String(email || "")
-      .trim()
-      .toLowerCase();
-    const cleanPass = String(password || "").trim();
+        const { email, password } = req.body || {};
+    const adminEmail = validateAdminCredentials(email, password);
 
-    const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
-    if (!validEmails.includes(cleanEmail) || cleanPass !== "mjkey1971") {
+    if (!adminEmail) {
       res.status(401).json({
         authenticated: false,
-        error:
-          "Invalid Admin credentials. Only malazjanbeih@gmail.com with password mjkey1971 is authorized.",
+        error: "Invalid admin credentials.",
       });
       return;
     }
+
+    const cleanEmail = adminEmail;
 
     const versions = readAdminVersions();
     res.json({
@@ -4108,6 +4105,19 @@ Return ONLY JSON in this exact shape:
 
   // Persistent staged self-upgrade retrieval.
   app.get("/api/self-upgrade/staged/:sessionId", async (req, res) => {
+    const adminEmail = validateAdminCredentials(
+      req.get("x-admin-email"),
+      req.get("x-admin-password")
+    );
+
+    if (!adminEmail) {
+      res.status(401).json({
+        success: false,
+        error: "Admin authentication required.",
+      });
+      return;
+    }
+
     try {
       const sessionId = String(req.params.sessionId || "").trim();
 
@@ -4486,11 +4496,22 @@ Return ONLY JSON in this exact shape:
     return `wc_${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}`;
   }
 
-  function validateAdminCredentials(email: unknown, password: unknown): string | null {
+    function validateAdminCredentials(email: unknown, password: unknown): string | null {
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanPass = String(password || "").trim();
-    const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
-    return validEmails.includes(cleanEmail) && cleanPass === "mjkey1971"
+
+    const validEmails = String(process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+      return null;
+    }
+
+    return validEmails.includes(cleanEmail) && cleanPass === adminPassword
       ? cleanEmail
       : null;
   }
