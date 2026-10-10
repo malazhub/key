@@ -6,6 +6,7 @@ import { promisify } from "util";
 import crypto from "crypto";
 import { detectCapabilityLoss, type CapabilityTestResult } from "./upgradeTransaction";
 import { resolveKeyWorkspaceRoot } from "./workspace";
+import { verifyFileWrite } from "./evidenceGuard";
 
 const execAsync = promisify(exec);
 
@@ -57,6 +58,9 @@ export interface SelfUpgradeRoundResult {
   previewHtml?: string;
   previewReady?: boolean;
   successfulCandidate?: boolean;
+  readBackVerified?: boolean;
+  intendedFileChanged?: boolean;
+  failureReason?: string;
 }
 
 export interface SelfUpgradeSession {
@@ -445,13 +449,54 @@ export async function runBoundedSelfUpgradeSession(
 
       const candidateFile = path.join(candidateWorkspace, rel);
 
+      const expectedStagingContent = String(candidate.fileContent);
+
       fs.mkdirSync(path.dirname(candidateFile), { recursive: true });
 
       fs.writeFileSync(
         candidateFile,
-        String(candidate.fileContent),
+        expectedStagingContent,
         "utf8"
       );
+
+      const stagingCheck = await verifyFileWrite(
+        candidateFile,
+        expectedStagingContent
+      );
+
+      if (!stagingCheck.verified) {
+        session.rounds.push({
+          round,
+          candidatePath: rel,
+          candidateWorkspace,
+          checks: {
+            lint: false,
+            build: false,
+            selfTest: false,
+            selfDiagnosis: false,
+          },
+          conformityScore: 0,
+          generated,
+          deployed: false,
+          successfulCandidate: false,
+          readBackVerified: false,
+          intendedFileChanged: false,
+          failureReason:
+            `READBACK_MISMATCH_STAGING: ${rel}; ` +
+            `expected ${stagingCheck.expectedLength} characters, ` +
+            `read ${stagingCheck.actualLength} characters.`,
+          error: `READBACK_MISMATCH_STAGING: ${rel}`,
+        });
+
+        previousFailure = `READBACK_MISMATCH_STAGING: ${rel}`;
+        previousCandidate = candidate;
+
+        session.completedRounds = round;
+        session.updatedAt = new Date().toISOString();
+
+        persistSession(session);
+        continue;
+      }
 
       const lint = await runCheck(
         candidateWorkspace,
@@ -701,6 +746,9 @@ export async function runBoundedSelfUpgradeSession(
         // Persist built preview information.
         previewHtml,
         previewReady: Boolean(previewHtml),
+
+        readBackVerified: true,
+        intendedFileChanged: true,
       });
 
       session.updatedAt = new Date().toISOString();
@@ -739,6 +787,81 @@ export async function runBoundedSelfUpgradeSession(
       });
 
       fs.copyFileSync(candidateFile, target);
+
+      const liveCheck = await verifyFileWrite(
+        target,
+        expectedStagingContent
+      );
+
+      if (!liveCheck.verified) {
+        await restoreFiles(activeRoot, backups);
+
+        session.rounds[
+          session.rounds.length - 1
+        ] = {
+          ...session.rounds[
+            session.rounds.length - 1
+          ],
+          readBackVerified: false,
+          intendedFileChanged: false,
+          deployed: false,
+          failureReason:
+            `READBACK_MISMATCH_LIVE: ${rel}; ` +
+            `expected ${liveCheck.expectedLength} characters, ` +
+            `read ${liveCheck.actualLength} characters.`,
+          error: `READBACK_MISMATCH_LIVE: ${rel}`,
+        };
+
+        previousFailure = `READBACK_MISMATCH_LIVE: ${rel}`;
+        previousCandidate = candidate;
+
+        session.updatedAt = new Date().toISOString();
+
+        persistSession(session);
+        continue;
+      }
+
+      const originalLiveContent = backups.get(rel) ?? null;
+
+      const liveChanged =
+        liveCheck.verified &&
+        (originalLiveContent === null ||
+          originalLiveContent !== expectedStagingContent);
+
+      if (!liveChanged) {
+        await restoreFiles(activeRoot, backups);
+
+        session.rounds[
+          session.rounds.length - 1
+        ] = {
+          ...session.rounds[
+            session.rounds.length - 1
+          ],
+          readBackVerified: true,
+          intendedFileChanged: false,
+          deployed: false,
+          failureReason: `LIVE_FILE_UNCHANGED: ${rel}`,
+          error: `LIVE_FILE_UNCHANGED: ${rel}`,
+        };
+
+        previousFailure = `LIVE_FILE_UNCHANGED: ${rel}`;
+        previousCandidate = candidate;
+
+        session.updatedAt = new Date().toISOString();
+
+        persistSession(session);
+        continue;
+      }
+
+      session.rounds[
+        session.rounds.length - 1
+      ] = {
+        ...session.rounds[
+          session.rounds.length - 1
+        ],
+        readBackVerified: true,
+        intendedFileChanged: true,
+      };
 
       const deployment = await deps.deploy({
         githubToken: deps.githubToken,
