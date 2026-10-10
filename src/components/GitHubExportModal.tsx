@@ -903,8 +903,7 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
   const [githubToken, setGithubToken] = useState<string>("");
   const [repoOwner, setRepoOwner] = useState<string>("malazhub");
   const [repoName, setRepoName] = useState<string>("key");
-  const [adminUser, setAdminUser] = useState<string>("malazjanbeih@gmail.com");
-  const [adminPass, setAdminPass] = useState<string>("mjkey1971");
+
   const [pushing, setPushing] = useState<boolean>(false);
   const [pushStatus, setPushStatus] = useState<{
     type: "success" | "error";
