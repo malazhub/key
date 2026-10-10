@@ -968,6 +968,25 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
 
       let lastError = "Could not reach the Key deployment backend.";
 
+      const adminUser =
+        window.prompt("Enter administrator email:")?.trim() || "";
+      if (!adminUser) {
+        setPushStatus({
+          type: "error",
+          message: "Deployment cancelled: administrator email was not provided.",
+        });
+        return;
+      }
+
+      const adminPass = window.prompt("Enter administrator password:") || "";
+      if (!adminPass) {
+        setPushStatus({
+          type: "error",
+          message: "Deployment cancelled: administrator password was not provided.",
+        });
+        return;
+      }
+
       await persistWorkingCopy();
       let savedWorkingCopy: any = null;
       try {
