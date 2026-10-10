@@ -1022,55 +1022,81 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
             body: JSON.stringify(mirroredState),
           });
 
-          const deployRes = await fetch(`${backend}/api/admin/deploy`, {
+          const deployRes = await fetch("/api/admin/deploy", {
             method: "POST",
+            credentials: "include",
             headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": "no-cache",
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
             },
             body: JSON.stringify({
-              githubToken: githubToken || undefined,
-              repoOwner: "malazhub",
-              repoName: "key",
-              branch: "main",
-              workingCopyId: approvedWorkingCopy.workingCopyId,
+                repoOwner: "malazhub",
+                repoName: "key",
+                branch: "main",
+                workingCopyId: approvedWorkingCopy.workingCopyId,
+                ...(githubToken ? { githubToken } : {}),
             }),
-          });
+            });
 
-          let data: any = null;
-          try {
-            data = await deployRes.json();
-          } catch {
-            data = null;
-          }
+            const data = await deployRes.json().catch(() => null);
 
-          if (data?.needsGitHubAuth) {
-            const verificationUri =
-              data.verification_uri || "https://github.com/login/device";
+            if (deployRes.status === 401 || deployRes.status === 403) {
             setPushStatus({
-              type: "error",
-              message:
-                data.user_code
-                  ? `GitHub authorization required. Open ${verificationUri}, enter code ${data.user_code}, then click Deploy again.`
-                  : data.error || "GitHub authorization required before deployment.",
-              repoUrl: verificationUri,
+                type: "error",
+                message: "Not authorized.",
             });
             return;
-          }
+            }
 
-          if (data?.success === true && data?.verified === true) {
+            if (deployRes.status === 202) {
             setPushStatus({
-              type: "success",
-              message:
-                `Verified deployment completed. Remote commit ${data.commitSha || data.remoteCommitSha || "verified"} is confirmed on main.`,
-              repoUrl: data.repoUrl || "https://github.com/malazhub/key",
+                type: "success",
+                message: "Commit accepted. Deployment pending.",
+                repoUrl:
+                data?.workflowUrl ||
+                "https://github.com/malazhub/key/actions",
             });
             return;
-          }
+            }
 
-          lastError =
-            data?.error ||
-            `Deployment backend returned HTTP ${deployRes.status}.`;
+            if (deployRes.status === 502) {
+            setPushStatus({
+                type: "error",
+                message: `Deployment failed: ${
+                data?.conclusion ||
+                data?.workflowConclusion ||
+                data?.error ||
+                "unknown"
+                }`,
+                repoUrl:
+                data?.workflowUrl ||
+                "https://github.com/malazhub/key/actions",
+            });
+            return;
+            }
+
+            if (
+            deployRes.ok &&
+            data?.success === true &&
+            data?.verified === true
+            ) {
+            setPushStatus({
+                type: "success",
+                message: "Published. View workflow.",
+                repoUrl:
+                data?.workflowUrl ||
+                "https://github.com/malazhub/key/actions",
+            });
+            return;
+            }
+
+            setPushStatus({
+            type: "error",
+            message:
+                data?.error ||
+                `Deployment request failed (HTTP ${deployRes.status}).`,
+            });
+            return;
         } catch (err: unknown) {
           lastError =
             err instanceof Error ? err.message : "Deployment backend request failed.";
