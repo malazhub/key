@@ -2706,8 +2706,7 @@ export default function App() {
       "Improve Key's self-upgrade reliability while preserving all existing capabilities."
     );
 
-  const [selfUpgradeRounds, setSelfUpgradeRounds] =
-    useState<number>(30);
+  const [selfUpgradeRounds, setSelfUpgradeRounds] = useState<number>(50);
 
   const [selfUpgradeConformityTarget, setSelfUpgradeConformityTarget] =
     useState<number>(100);
