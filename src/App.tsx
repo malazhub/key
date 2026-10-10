@@ -2376,23 +2376,7 @@ export default function App() {
   const [maxRevisionRoundsInput, setMaxRevisionRoundsInput] =
     useState<string>(() => String(maxRevisionRounds));
 
-  // User-controlled maximum consensus refinement rounds.
-  // Default: 10 rounds; accepted range: 3–50.
-  const [maxRevisionRounds, setMaxRevisionRounds] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("key_max_revision_rounds_v1");
-      const parsed = saved === null ? 10 : Number(saved);
 
-      return Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
-        ? parsed
-        : 10;
-    } catch {
-      return 10;
-    }
-  });
-
-  const [maxRevisionRoundsInput, setMaxRevisionRoundsInput] =
-    useState<string>(() => String(maxRevisionRounds));
 
   const [target, setTarget] = useState<number>(() => {
     try {
@@ -3169,16 +3153,7 @@ export default function App() {
     }
   }, [maxRevisionRounds]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "key_max_revision_rounds_v1",
-        String(maxRevisionRounds)
-      );
-    } catch {
-      // Ignore unavailable local storage.
-    }
-  }, [maxRevisionRounds]);
+
 
   // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
 
@@ -6199,8 +6174,24 @@ const data = await res.json();
                       setAdminLoginError(null);
                       setShowAdminLoginModal(true);
                     }}
-
-                  <textarea
+                    className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-400" />
+                    <span>Admin Login</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={adminDeploying}
+                      onClick={() => handleOneClickAdminDeploy()}
+                      className="w-full py-2.5 px-3 rounded-lg bg-emerald-400 hover:bg-emerald-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-colors"
+                    >
+                      <FolderGit2 className="w-4 h-4" />
+                      <span>
+                        {adminDeploying ? "Deploying..." : "Deploy"}
+                      </span>
+                    </button>
                     value={selfUpgradeInstruction}
                     onChange={(e) =>
                       setSelfUpgradeInstruction(e.target.value)
