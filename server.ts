@@ -6350,173 +6350,312 @@ jobs:
   });
 
   app.post("/api/admin/deploy", requireAdmin, async (req, res) => {
-    try {
-      const {
-        githubToken,
-        repoOwner = "malazhub",
-        repoName = "key",
-        branch = "main",
-        mirroredState,
-        workingCopyId,
-        stagedSessionId,
-      } = req.body || {};
+  try {
+    const {
+      githubToken,
+      repoOwner = "malazhub",
+      repoName = "key",
+      branch = "main",
+      mirroredState,
+      workingCopyId,
+      stagedSessionId,
+    } = req.body || {};
 
-      let deploymentState =
-        mirroredState && typeof mirroredState === "object"
-          ? mirroredState
-          : undefined;
+    let deploymentState =
+      mirroredState && typeof mirroredState === "object"
+        ? mirroredState
+        : undefined;
 
-      if (workingCopyId) {
-        const workingCopy = readWorkingCopy();
-        if (
-          !workingCopy ||
-          workingCopy.workingCopyId !== String(workingCopyId) ||
-          workingCopy.status !== "APPROVED"
-        ) {
-          res.status(409).json({
-            success: false,
-            verified: false,
-            error: "Deployment requires the exact current working copy to be ADMIN APPROVED first.",
-          });
-          return;
-        }
-        deploymentState = {
-          deploymentRequestedAt: new Date().toISOString(),
-          deploymentSource: "Key Browser Approved Working Copy",
-          deploymentTarget: "malazhub/key",
-          deploymentBranch: "main",
-          administrativeDeploy: true,
-          defenderBypass: true,
-          workingCopyId: workingCopy.workingCopyId,
-          workingCopyStatus: workingCopy.status,
-          workingCopy,
-        };
-        writeMirroredKeyState(deploymentState);
+    if (workingCopyId) {
+      const workingCopy = readWorkingCopy();
+
+      if (
+        !workingCopy ||
+        workingCopy.workingCopyId !== String(workingCopyId) ||
+        workingCopy.status !== "APPROVED"
+      ) {
+        res.status(409).json({
+          success: false,
+          verified: false,
+          error:
+            "Deployment requires the exact current working copy to be ADMIN APPROVED first.",
+        });
+        return;
       }
 
-      let result: Record<string, unknown>;
+      deploymentState = {
+        deploymentRequestedAt: new Date().toISOString(),
+        deploymentSource: "Key Browser Approved Working Copy",
+        deploymentTarget: "malazhub/key",
+        deploymentBranch: "main",
+        administrativeDeploy: true,
+        defenderBypass: true,
+        workingCopyId: workingCopy.workingCopyId,
+        workingCopyStatus: workingCopy.status,
+        workingCopy,
+      };
 
-if (
-  typeof stagedSessionId === "string" &&
-  stagedSessionId.trim()
-) {
-  const staged =
-    readFinalStagedCandidate(
+      writeMirroredKeyState(deploymentState);
+    }
+
+    let result: Record<string, unknown>;
+    let staged:
+      | ReturnType<typeof readFinalStagedCandidate>
+      | undefined;
+
+    if (
+      typeof stagedSessionId === "string" &&
       stagedSessionId.trim()
-    );
+    ) {
+      staged = readFinalStagedCandidate(stagedSessionId.trim());
 
-  result =
-    await executeFullGitHubStructureDeploy({
-      githubToken,
-      repoOwner,
-      repoName,
-      branch,
-      sourceWorkspace:
-        staged.candidateWorkspace,
-      forceRebuild: false,
-    });
-
-  if (
-    result.success === true &&
-    result.verified === true
-  ) {
-    staged.session.status =
-      "COMPLETED";
-
-    staged.session.updatedAt =
-      new Date().toISOString();
-
-    const workspaceRoot =
-      path.resolve(
-        resolveKeyWorkspaceRoot(
-          __dirname
-        ).root
-      );
-
-    fs.writeFileSync(
-      path.join(
-        workspaceRoot,
-        "sessions",
-        `${staged.session.sessionId}.json`
-      ),
-      JSON.stringify(
-        staged.session,
-        null,
-        2
-      ),
-      "utf8"
-    );
-  }
-} else {
-  result =
-    await executeFullGitHubStructureDeploy({
-      githubToken,
-      repoOwner,
-      repoName,
-      branch,
-      mirroredState: deploymentState,
-      forceRebuild: true,
-    });
-}
-
-      if (result.needsGitHubAuth) {
-        try {
-          const dev =
-  await startOrReuseServerDeviceSession(
-    false,
-    typeof stagedSessionId === "string"
-      ? stagedSessionId.trim()
-      : undefined
-  );
-          res.json({
-            ...result,
-            user_code: dev.user_code,
-            device_code: dev.device_code,
-            verification_uri:
-              dev.verification_uri || "https://github.com/login/device",
-          });
-          return;
-        } catch {
-          // fallback
-        }
-      }
-
-      if (result?.success === true && result?.verified === true && workingCopyId) {
-        const current = readWorkingCopy();
-        if (current && current.workingCopyId === String(workingCopyId)) {
-          const deployed: KeyWorkingCopy = {
-            ...current,
-            status: "DEPLOYED",
-            deployedAt: new Date().toISOString(),
-            deployedCommitSha:
-              typeof result.commitSha === "string"
-                ? result.commitSha
-                : typeof result.remoteCommitSha === "string"
-                ? result.remoteCommitSha
-                : current.deployedCommitSha,
-            updatedAt: new Date().toISOString(),
-          };
-          writeWorkingCopy(deployed);
-          writeMirroredKeyState({
-            workingCopyId: deployed.workingCopyId,
-            workingCopyStatus: deployed.status,
-            workingCopyDeployedAt: deployed.deployedAt,
-            deployedCommitSha: deployed.deployedCommitSha,
-            workingCopy: deployed,
-          });
-        }
-      }
-
-      res.json(result);
-    } catch (err: unknown) {
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? err.message
-            : "Failed to execute automated deployment.",
+      result = await executeFullGitHubStructureDeploy({
+        githubToken,
+        repoOwner,
+        repoName,
+        branch,
+        sourceWorkspace: staged.candidateWorkspace,
+        forceRebuild: false,
+      });
+    } else {
+      result = await executeFullGitHubStructureDeploy({
+        githubToken,
+        repoOwner,
+        repoName,
+        branch,
+        mirroredState: deploymentState,
+        forceRebuild: true,
       });
     }
-  });
+
+    if (result.needsGitHubAuth === true) {
+      try {
+        const dev = await startOrReuseServerDeviceSession(
+          false,
+          typeof stagedSessionId === "string"
+            ? stagedSessionId.trim()
+            : undefined
+        );
+
+        res.json({
+          ...result,
+          user_code: dev.user_code,
+          device_code: dev.device_code,
+          verification_uri:
+            dev.verification_uri ||
+            "https://github.com/login/device",
+        });
+        return;
+      } catch {
+        res.status(401).json({
+          success: false,
+          verified: false,
+          needsGitHubAuth: true,
+          error: "GitHub authorization is required.",
+        });
+        return;
+      }
+    }
+
+    if (result.success !== true) {
+      res.status(502).json({
+        success: false,
+        verified: false,
+        stage: "push",
+        error:
+          typeof result.error === "string"
+            ? result.error
+            : "The deployment did not complete successfully.",
+      });
+      return;
+    }
+
+    const commitSha =
+      typeof result.commitSha === "string"
+        ? result.commitSha
+        : typeof result.remoteCommitSha === "string"
+          ? result.remoteCommitSha
+          : "";
+
+    if (!/^[a-f0-9]{40}$/i.test(commitSha)) {
+      res.status(502).json({
+        success: false,
+        verified: false,
+        stage: "commit",
+        error:
+          "The push did not return a valid commit SHA. Deployment cannot be verified.",
+      });
+      return;
+    }
+
+    // Never trust the deployment function's verified flag as proof
+    // that the GitHub Actions workflow completed successfully.
+    const token =
+      typeof githubToken === "string" && githubToken.trim()
+        ? githubToken.trim()
+        : readSavedGitHubToken();
+
+    if (!token) {
+      res.status(502).json({
+        success: false,
+        verified: false,
+        stage: "workflow",
+        commitSha,
+        error: "No server-side GitHub token is available for workflow verification.",
+      });
+      return;
+    }
+
+    const owner = String(repoOwner || "malazhub").trim();
+    const repo = String(repoName || "key").trim();
+
+    const headers = {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "Key-Multi-AI-Consensus-Deployer",
+    };
+
+    const deadline = Date.now() + 8 * 60 * 1000;
+    let workflowUrl = "";
+
+    while (Date.now() < deadline) {
+      const response = await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/deploy.yml/runs?head_sha=${encodeURIComponent(commitSha)}&per_page=10`,
+        { headers }
+      );
+
+      if (!response.ok) {
+        res.status(502).json({
+          success: false,
+          verified: false,
+          stage: "workflow",
+          commitSha,
+          error:
+            `GitHub workflow verification request failed with HTTP ${response.status}. Check token permissions, including Actions: Read.`,
+        });
+        return;
+      }
+
+      const data = (await response.json()) as {
+        workflow_runs?: Array<{
+          id: number;
+          html_url: string;
+          status: string;
+          conclusion: string | null;
+          head_sha: string;
+          name: string;
+        }>;
+      };
+
+      const run = (data.workflow_runs || []).find(
+        (item) =>
+          item.head_sha.toLowerCase() === commitSha.toLowerCase() &&
+          item.name.includes("Deploy Key to GitHub Pages")
+      );
+
+      if (run) {
+        workflowUrl = run.html_url;
+
+        if (
+          run.status === "completed" &&
+          run.conclusion === "success"
+        ) {
+          // Only now is the exact commit's workflow verified.
+          if (staged) {
+            staged.session.status = "COMPLETED";
+            staged.session.updatedAt = new Date().toISOString();
+
+            const workspaceRoot = path.resolve(
+              resolveKeyWorkspaceRoot(__dirname).root
+            );
+
+            fs.writeFileSync(
+              path.join(
+                workspaceRoot,
+                "sessions",
+                `${staged.session.sessionId}.json`
+              ),
+              JSON.stringify(staged.session, null, 2),
+              "utf8"
+            );
+          }
+
+          if (workingCopyId) {
+            const current = readWorkingCopy();
+
+            if (
+              current &&
+              current.workingCopyId === String(workingCopyId)
+            ) {
+              const deployed: KeyWorkingCopy = {
+                ...current,
+                status: "DEPLOYED",
+                deployedAt: new Date().toISOString(),
+                deployedCommitSha: commitSha,
+                updatedAt: new Date().toISOString(),
+              };
+
+              writeWorkingCopy(deployed);
+
+              writeMirroredKeyState({
+                workingCopyId: deployed.workingCopyId,
+                workingCopyStatus: deployed.status,
+                workingCopyDeployedAt: deployed.deployedAt,
+                deployedCommitSha: deployed.deployedCommitSha,
+                workingCopy: deployed,
+              });
+            }
+          }
+
+          res.status(200).json({
+            success: true,
+            verified: true,
+            commitSha,
+            workflowUrl,
+            repoUrl: `https://github.com/${owner}/${repo}`,
+            pushedCount: result.pushedCount,
+            pushedFiles: result.pushedFiles,
+          });
+          return;
+        }
+
+        if (run.status === "completed") {
+          res.status(502).json({
+            success: false,
+            verified: false,
+            stage: "workflow",
+            error: `GitHub Actions workflow concluded: ${run.conclusion || "unknown"}.`,
+            commitSha,
+            workflowUrl,
+          });
+          return;
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    res.status(202).json({
+      success: false,
+      verified: false,
+      stage: "pending",
+      error:
+        "The commit was pushed, but its GitHub Actions deployment was not confirmed within eight minutes.",
+      commitSha,
+      workflowUrl: workflowUrl || undefined,
+    });
+  } catch (err: unknown) {
+    res.status(500).json({
+      success: false,
+      verified: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to execute automated deployment.",
+    });
+  }
+});
 
   // Pre-warm GitHub device session on startup if no token is saved yet so the 1-click code is ready immediately
   if (!readSavedGitHubToken()) {
