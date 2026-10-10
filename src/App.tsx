@@ -2336,47 +2336,24 @@ export default function App() {
     ChatAttachment[]
   >([]);
 
-    
   // User-controlled automatic query-abort timeout.
-  // Default: 3 minutes. No fixed 100-minute application limit.
+// Default: 3 minutes. No fixed 100-minute application limit.
   const [queryTimeoutMinutes, setQueryTimeoutMinutes] = useState<number>(() => {
     try {
       const savedTimeout = localStorage.getItem(
         QUERY_TIMEOUT_MINUTES_STORAGE_KEY
       );
-
       if (savedTimeout) {
         const n = Number(savedTimeout);
         if (Number.isSafeInteger(n) && n >= 1) {
-          return n;
+            return n;
         }
-      }
+        }
     } catch {
       // ignore
     }
-
     return 3;
   });
-
-  // User-controlled maximum consensus refinement rounds.
-  // Default: 10 rounds; accepted range: 3–50.
-  const [maxRevisionRounds, setMaxRevisionRounds] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem("key_max_revision_rounds_v1");
-      const parsed = saved === null ? 10 : Number(saved);
-
-      return Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
-        ? parsed
-        : 10;
-    } catch {
-      return 10;
-    }
-  });
-
-  const [maxRevisionRoundsInput, setMaxRevisionRoundsInput] =
-    useState<string>(() => String(maxRevisionRounds));
-
-
 
   const [target, setTarget] = useState<number>(() => {
     try {
@@ -3141,21 +3118,6 @@ export default function App() {
       // ignore
     }
   }, [queryTimeoutMinutes]);
-    
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "key_max_revision_rounds_v1",
-        String(maxRevisionRounds)
-      );
-    } catch {
-      // Ignore unavailable local storage.
-    }
-  }, [maxRevisionRounds]);
-
-
-
-  // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
 
   // Direct Launcher for Live AI Key Entry Point (https://malazhub.github.io/key/) & Force-Deploy Portal
   const launchLiveAiKeyEntry = useCallback(() => {
@@ -6167,153 +6129,7 @@ const data = await res.json();
               </div>
             </section>
 
-                {!isAdminAuthenticated ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAdminLoginError(null);
-                      setShowAdminLoginModal(true);
-                    }}
-                    className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    <span>Admin Login</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={adminDeploying}
-                      onClick={() => handleOneClickAdminDeploy()}
-                      className="w-full py-2.5 px-3 rounded-lg bg-emerald-400 hover:bg-emerald-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-colors"
-                    >
-                      <FolderGit2 className="w-4 h-4" />
-                      <span>
-                        {adminDeploying ? "Deploying..." : "Deploy"}
-                      </span>
-                    </button>
-                    value={selfUpgradeInstruction}
-                    onChange={(e) =>
-                      setSelfUpgradeInstruction(e.target.value)
-                    }
-                    rows={3}
-                    className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-200 outline-none focus:border-sky-500"
-                    aria-label="Self-upgrade instruction"
-                  />
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-[11px] text-slate-300">
-                      <span className="block mb-1 font-bold text-slate-400">Max rounds (1–50)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={selfUpgradeRounds}
-                        onChange={(e) =>
-                          setSelfUpgradeRounds(
-                            Math.max(1, Math.min(50, Number(e.target.value) || 1))
-                          )
-                        }
-                        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-white"
-                      />
-                    </label>
-                    <label className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-2 text-[11px] text-slate-300">
-                      <span className="block mb-1 font-bold text-slate-400">Conformity target (1–100%)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={selfUpgradeConformityTarget}
-                        onChange={(e) =>
-                          setSelfUpgradeConformityTarget(
-                            Math.max(1, Math.min(100, Number(e.target.value) || 1))
-                          )
-                        }
-                        className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-white"
-                      />
-                    </label>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={selfUpgradeBusy}
-                    onClick={handleGenerateSelfUpgrade}
-                    className="w-full rounded-lg bg-sky-400 hover:bg-sky-300 disabled:opacity-60 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                  >
-                    {selfUpgradeBusy
-                      ? "Testing..."
-                      : "Generate + Test Upgrade"}
-                  </button>
-
-                  {selfUpgradeStatus && (
-                    <div className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-[11px] text-slate-300">
-                      {selfUpgradeStatus}
-                    </div>
-                  )}
-
-                  {stagedSelfUpgrade && (
-                    <div className="space-y-2">
-                      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2 text-[11px]">
-                        <div className="font-bold text-emerald-300">
-                          STAGED
-                        </div>
-                        <div className="text-slate-300">
-                          File: {stagedSelfUpgrade.candidatePath}
-                        </div>
-                        <div className="text-slate-400">
-                          Status: {stagedSelfUpgrade.status}
-                        </div>
-                      </div>
-
-                      {stagedSelfUpgrade.previewReady &&
-                        selfUpgradePreviewUrl &&
-                        selfUpgradePreviewOpen && (
-                          <div className="rounded-lg border border-slate-700 overflow-hidden bg-white">
-                            <iframe
-                              key={stagedSelfUpgrade.sessionId}
-                              title="Tested staged Key upgrade preview"
-                              src={selfUpgradePreviewUrl}
-                              className="w-full h-[420px] border-0"
-                            />
-                          </div>
-                        )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelfUpgradePreviewOpen(
-                            !selfUpgradePreviewOpen
-                          );
-                        }}
-                        className="w-full rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-2 text-xs font-bold text-slate-200 cursor-pointer"
-                      >
-                        {selfUpgradePreviewOpen
-                          ? "Preview Visible"
-                          : "Show Tested Preview"}
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={
-                          selfUpgradeBusy ||
-                          selfUpgradeApproved
-                        }
-                        onClick={handleApproveStagedSelfUpgrade}
-                        className="w-full rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-50 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                      >
-                        {selfUpgradeApproved
-                          ? "Approved for Deployment Review"
-                          : "Approve Staged Upgrade"}
-                      </button>
-
-                      {/* No local activation button.
-                        The staged upgrade remains inactive until the separate
-                        deployment/commit workflow is explicitly used. */}
-                    </div>
-                  )}
-                </div>
-
-                            {/* Admin Login / Logout + Single Deploy Button & Code Box */}
+            {/* Admin Login / Logout + Single Deploy Button & Code Box */}
             <section className="pt-2 border-t border-slate-800/80">
               <div className="bg-slate-950/95 rounded-xl border border-slate-800 p-3 space-y-2.5">
                 <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-2.5">
@@ -8267,61 +8083,7 @@ const data = await res.json();
                 </div>
               )}
 
-              {/* Multi-Round Refinement Depth */}
-              <div className="mb-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
-                <label
-                  htmlFor="maxRevisionRounds"
-                  className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-300"
-                >
-                  Multi-Round Refinement Depth
-                </label>
-                <p className="mb-2 text-[11px] text-slate-400">
-                  Maximum revision rounds for the consensus workflow. Default: 10; range: 3–50.
-                </p>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="maxRevisionRounds"
-                    type="number"
-                    min={3}
-                    max={50}
-                    step={1}
-                    value={maxRevisionRounds}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") {
-                        setMaxRevisionRoundsInput("");
-                        return;
-                      }
-
-                      const parsed = Number(raw);
-                      if (Number.isInteger(parsed)) {
-                        setMaxRevisionRoundsInput(
-                          String(Math.max(3, Math.min(50, parsed)))
-                        );
-                      }
-                    }}
-                    onBlur={() => {
-                      const parsed = Number(maxRevisionRoundsInput);
-                      const validated =
-                        Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
-                          ? parsed
-                          : 10;
-
-                      setMaxRevisionRounds(validated);
-                      setMaxRevisionRoundsInput(String(validated));
-                    }}
-                    className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-white focus:border-blue-500 focus:outline-none"
-                  />
-                  <span className="text-xs text-slate-400">
-                    Maximum rounds:{" "}
-                    <strong className="text-blue-400">
-                      {maxRevisionRounds}
-                    </strong>
-                  </span>
-                </div>
-              </div>
-
-                            {/* Upgraded Large Input Box: Fits Full Available Width + Auto-Expands up to 5 Rows in Height */}
+              {/* Upgraded Large Input Box: Fits Full Available Width + Auto-Expands up to 5 Rows in Height */}
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
