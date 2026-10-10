@@ -1,5 +1,4 @@
-import { run_self_tests } from "../src/upgrades/version8Harness.ts";
-
+import { run_self_tests } from "../upgrades/version8Harness.ts";
 async function main(): Promise<void> {
   const result = await run_self_tests();
 
