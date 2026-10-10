@@ -4817,11 +4817,21 @@ const data = await res.json();
     try {
       const discoveredToken =
         manualGithubTokenInput.trim() || discoverSavedGitHubTokenInBrowser();
-            const response = await fetchFromKeyBackend(
+
+      const consensusHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (isAdminAuthenticated && adminEmailInput.trim() && adminPassInput.trim()) {
+        consensusHeaders["x-admin-email"] = adminEmailInput.trim().toLowerCase();
+        consensusHeaders["x-admin-password"] = adminPassInput;
+      }
+
+      const response = await fetchFromKeyBackend(
         "/api/consensus-chat",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: consensusHeaders,
           body: JSON.stringify({
             question: queryText,
 
