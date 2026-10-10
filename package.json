@@ -9,14 +9,15 @@
   },
   "type": "module",
   "scripts": {
-  "dev": "tsx runtimeLauncher.ts",
-  "build": "vite build",
-  "start": "node --import tsx runtimeLauncher.ts",
-  "preview": "vite preview",
-  "clean": "rm -rf dist server.js",
-  "lint": "tsc --noEmit",
-  "test:planner": "node --import tsx src/queryExecutionPlanner.test.ts"
-},
+    "dev": "tsx runtimeLauncher.ts",
+    "build": "vite build",
+    "start": "node --import tsx runtimeLauncher.ts",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "test:planner": "node --import tsx src/queryExecutionPlanner.test.ts",
+    "test:self": "node --import tsx scripts/test-self.ts"
+  },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
