@@ -16,7 +16,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:planner": "node --import tsx src/queryExecutionPlanner.test.ts",
-    "test:self": "node --import tsx scripts/test-self.ts"
+    "test:self": "node --import tsx src/scripts/test-self.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
