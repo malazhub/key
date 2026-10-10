@@ -1,4 +1,7 @@
 import express from "express";
+import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
+import { evaluateCompletionClaim } from "./src/upgrades/evidenceGuard";
+import { recordLesson, formatLessonsForPrompt } from "./src/upgrades/failureMemory";
 import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate, assertSafeRelativePath } from "./src/upgrades/selfUpgradeController";
 import { resolveKeyWorkspaceRoot, resolveAuditRoot, safeAuditPath, isAuditReadablePath } from "./src/upgrades/workspace";
 import path from "path";
@@ -3628,7 +3631,140 @@ Treat the current follow-up as a recovery signal and produce the complete answer
               "Please provide a question or attach a photo, video, or file.",
           });
         return;
+        }
+              // ── Explicit code-modification command routing ──
+      let intent: Intent;
+      try {
+        intent = routeIntent(effectiveQuestion);
+      } catch (error) {
+        res.status(400).json({
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Invalid command.",
+        });
+        return;
       }
+
+      if (intent.type === "ui_edit" || intent.type === "self_upgrade") {
+        const adminEmail = validateAdminCredentials(
+          req.get("x-admin-email"),
+          req.get("x-admin-password")
+        );
+
+        if (!adminEmail) {
+          res.status(401).json({
+            success: false,
+            error: "Admin authentication required for code changes.",
+          });
+          return;
+        }
+
+        const instruction = intent.instruction;
+        const rounds = intent.type === "ui_edit" ? 50 : intent.rounds;
+
+        try {
+          const lessonBlock = await formatLessonsForPrompt(instruction);
+
+          const session = await runBoundedSelfUpgradeSession(
+            {
+              instruction: `${instruction}${lessonBlock}`,
+              requestedRounds: rounds,
+              conformityTarget: 100,
+              candidates: undefined,
+              deploy: intent.type === "self_upgrade",
+            },
+            {
+              activeWorkspace: __dirname,
+              githubToken: undefined,
+              generateCandidate: generateAutonomousSelfUpgradeCandidate,
+              deploy: async (args) =>
+                (await executeFullGitHubStructureDeploy(
+                  args
+                )) as Record<string, unknown>,
+            }
+          );
+
+          const allRounds = session.rounds;
+          const lastRound =
+            allRounds.length > 0 ? allRounds[allRounds.length - 1] : null;
+
+          if (!lastRound) {
+            res.status(422).json({
+              success: false,
+              routedTo: "bounded-self-upgrade",
+              error: "The upgrade session produced no round results.",
+            });
+            return;
+          }
+
+          const profile =
+            intent.type === "ui_edit" ? "ui_edit_staged" : "full_upgrade";
+
+          const gate = evaluateCompletionClaim(
+            {
+              fileWriteVerified: lastRound.readBackVerified === true,
+              intendedFileChanged: lastRound.intendedFileChanged === true,
+              lintPassed: lastRound.checks?.lint === true,
+              buildPassed: lastRound.checks?.build === true,
+              selfTestPassed: lastRound.checks?.selfTest === true,
+              selfDiagnosisPassed: lastRound.checks?.selfDiagnosis === true,
+            },
+            profile
+          );
+
+          if (!gate.passed) {
+            try {
+              await recordLesson({
+                keywords: instruction
+                  .toLowerCase()
+                  .split(/[^a-z0-9_-]+/)
+                  .filter((word) => word.length >= 3)
+                  .slice(0, 10),
+                failedAction: `Attempted: ${instruction}`,
+                actualError: `Evidence gate blocked: ${gate.blocking.join(", ")}`,
+                correction:
+                  "Verify the staged file or live promotion and all required checks before reporting success.",
+                source: "consensus-chat-self-upgrade",
+              });
+            } catch (memoryError) {
+              console.error("Could not record failure lesson:", memoryError);
+            }
+
+            res.status(422).json({
+              success: false,
+              routedTo: "bounded-self-upgrade",
+              blockedBy: gate.blocking,
+              receipts: gate.receipts,
+              failureReason: lastRound.failureReason ?? null,
+              error:
+                "Evidence verification failed; completion is not confirmed.",
+            });
+            return;
+          }
+
+          res.json({
+            success: true,
+            routedTo: "bounded-self-upgrade",
+            status: session.status,
+            completedRounds: session.rounds.length,
+            receipts: gate.receipts,
+            deployed: lastRound.deployed === true,
+          });
+          return;
+        } catch (error) {
+          res.status(500).json({
+            success: false,
+            routedTo: "bounded-self-upgrade",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Self-upgrade failed.",
+          });
+          return;
+        }
+      }
+
+      // ── question and chat fall through to the existing handler below.
 
       const modelsList: string[] = Array.from(
         new Set(
@@ -4079,8 +4215,8 @@ Return ONLY JSON in this exact shape:
   app.post("/api/self-upgrade/execute", requireAdmin, async (req, res) => {
     try {
       const requestedRounds = Number(
-        req.body?.requestedRounds ?? req.body?.revisionRounds ?? 1
-      );
+        req.body?.requestedRounds ?? req.body?.revisionRounds ?? 50
+        );
 
       const result = await runBoundedSelfUpgradeSession(
         {
