@@ -10,15 +10,22 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
 jobs:
   pages:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -28,25 +35,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Lint / typecheck
+      - name: Lint and typecheck
         run: npm run lint
 
       - name: Version 8 self-tests
-        run: >
-          node --import tsx --input-type=module -e
-          "import { run_self_tests } from './src/upgrades/version8Harness.ts';
-          const r = await run_self_tests();
-          if (!r.passed) {
-            console.error(JSON.stringify(r));
-            process.exit(1);
-          }
-          console.log(JSON.stringify({
-            passed_checks: r.passed_checks,
-            total_checks: r.total_checks
-          }));"
+        run: npm run test:self
 
       - name: Build
         run: npm run build
+
+      - name: Verify build output
+        run: test -s dist/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -57,4 +56,5 @@ jobs:
           path: ./dist
 
       - name: Deploy Pages
+        id: deployment
         uses: actions/deploy-pages@v4
