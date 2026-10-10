@@ -2336,7 +2336,8 @@ export default function App() {
     ChatAttachment[]
   >([]);
 
-    // User-controlled automatic query-abort timeout.
+    
+  // User-controlled automatic query-abort timeout.
   // Default: 3 minutes. No fixed 100-minute application limit.
   const [queryTimeoutMinutes, setQueryTimeoutMinutes] = useState<number>(() => {
     try {
@@ -2356,6 +2357,24 @@ export default function App() {
 
     return 3;
   });
+
+  // User-controlled maximum consensus refinement rounds.
+  // Default: 10 rounds; accepted range: 3–50.
+  const [maxRevisionRounds, setMaxRevisionRounds] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("key_max_revision_rounds_v1");
+      const parsed = saved === null ? 10 : Number(saved);
+
+      return Number.isInteger(parsed) && parsed >= 3 && parsed <= 50
+        ? parsed
+        : 10;
+    } catch {
+      return 10;
+    }
+  });
+
+  const [maxRevisionRoundsInput, setMaxRevisionRoundsInput] =
+    useState<string>(() => String(maxRevisionRounds));
 
   // User-controlled maximum consensus refinement rounds.
   // Default: 10 rounds; accepted range: 3–50.
@@ -3138,6 +3157,17 @@ export default function App() {
       // ignore
     }
   }, [queryTimeoutMinutes]);
+    
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "key_max_revision_rounds_v1",
+        String(maxRevisionRounds)
+      );
+    } catch {
+      // Ignore unavailable local storage.
+    }
+  }, [maxRevisionRounds]);
 
   useEffect(() => {
     try {
@@ -8165,7 +8195,19 @@ const data = await res.json();
                 </div>
               </div>
 
-              {/* Existing composer continues below */}
+                            {/* Upgraded Large Input Box: Fits Full Available Width + Auto-Expands up to 5 Rows in Height */}
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    processSelectedFiles(e.dataTransfer.files);
+                  }
+                }}
+                className="w-full rounded-2xl bg-slate-900 border border-slate-700/90 focus-within:border-emerald-500/80 p-3.5 flex items-end gap-3 transition-colors shadow-lg"
+              >
+                <textarea
+                  ref={textareaRef}
                   rows={2}
                   value={question}
                   onChange={(e) => {
