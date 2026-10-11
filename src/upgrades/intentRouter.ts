@@ -1,55 +1,65 @@
 // src/upgrades/intentRouter.ts
+
 export type Intent =
   | { type: "question"; text: string }
   | { type: "chat"; text: string }
   | { type: "ui_edit"; instruction: string }
   | { type: "self_upgrade"; instruction: string; rounds: number };
 
-export function routeIntent(message: string): Intent {
-  const trimmed = message.trim();
+const DEFAULT_UPGRADE_INSTRUCTION =
+  "Inspect the codebase, identify the highest-priority reproducible bug or improvement, make a focused and safe change, run relevant tests and the production build, and deploy only if all required checks pass. Verify results using actual evidence. Never claim success without evidence. Do not modify unrelated files.";
 
-  if (/^\/edit-ui\s*$/i.test(trimmed)) {
+export function routeIntent(message: string): Intent {
+  const text = message.trim();
+
+  if (!text) {
+    return { type: "chat", text: "" };
+  }
+
+  // Bare "upgrade", "upgrade!", "/upgrade", or "/upgrade!"
+  if (/^(?:\/)?upgrade[.!]?$/i.test(text)) {
+    return {
+      type: "self_upgrade",
+      instruction: DEFAULT_UPGRADE_INSTRUCTION,
+      rounds: 1,
+    };
+  }
+
+  // /edit-ui with nothing after it
+  if (/^\/edit-ui\s*$/i.test(text)) {
     throw new Error("Provide an instruction after /edit-ui.");
   }
-  if (/^\/upgrade(?:\s+--rounds=\d+)?\s*$/i.test(trimmed)) {
-    throw new Error("Provide an instruction after /upgrade.");
-  }
 
-  const uiEditMatch = trimmed.match(/^\/edit-ui\s+([\s\S]+)$/i);
-  if (uiEditMatch) {
-    const instruction = uiEditMatch[1].trim();
+  // /edit-ui <instruction>
+  const uiMatch = text.match(/^\/edit-ui\s+([\s\S]+)$/i);
+  if (uiMatch) {
+    const instruction = uiMatch[1].trim();
     if (!instruction) {
       throw new Error("Provide an instruction after /edit-ui.");
     }
     return { type: "ui_edit", instruction };
   }
 
-  const upgradeMatch = trimmed.match(
+  // /upgrade <instruction> with optional --rounds=N
+  const upgradeMatch = text.match(
     /^\/upgrade(?:\s+--rounds=(\d+))?\s+([\s\S]+)$/i
   );
   if (upgradeMatch) {
-    const requestedRounds = upgradeMatch[1]
-      ? Number(upgradeMatch[1])
-      : 50;
+    const rounds = upgradeMatch[1] ? Number(upgradeMatch[1]) : 1;
     const instruction = upgradeMatch[2].trim();
-    if (
-      !Number.isInteger(requestedRounds) ||
-      requestedRounds < 1 ||
-      requestedRounds > 50
-    ) {
-      throw new Error("Upgrade rounds must be an integer from 1 to 50.");
+    if (!Number.isInteger(rounds) || rounds < 1 || rounds > 50) {
+      throw new Error("Upgrade rounds must be between 1 and 50.");
     }
     if (!instruction) {
       throw new Error("Provide an instruction after /upgrade.");
     }
-    return { type: "self_upgrade", instruction, rounds: requestedRounds };
+    return { type: "self_upgrade", instruction, rounds };
   }
 
   const isQuestion =
     /^(how|what|why|when|where|who|which|can|does|is|are|explain|tell me)\b/i.test(
-      trimmed
-    ) || trimmed.endsWith("?");
+      text
+    ) || text.endsWith("?");
 
-  if (isQuestion) return { type: "question", text: trimmed };
-  return { type: "chat", text: trimmed };
+  return isQuestion ? { type: "question", text } : { type: "chat", text };
 }
