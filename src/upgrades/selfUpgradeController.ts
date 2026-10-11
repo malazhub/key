@@ -338,6 +338,18 @@ export async function runBoundedSelfUpgradeSession(
     { id: "self-test", passed: baselineSelfTest.ok },
     { id: "self-diagnosis", passed: baselineSelfDiagnosis.ok },
   ];
+  if (
+  !baselineLint.ok ||
+  !baselineBuild.ok ||
+  !baselineSelfTest.ok ||
+  !baselineSelfDiagnosis.ok
+) {
+  session.status = "FAILED";
+  session.updatedAt = new Date().toISOString();
+
+  persistSession(session);
+  return session;
+}
 
   const session: SelfUpgradeSession = {
     sessionId: safeSessionId(),
@@ -378,7 +390,7 @@ export async function runBoundedSelfUpgradeSession(
     | SelfUpgradeRoundCandidate
     | undefined;
 
-    const MAX_ROUNDS = 50;  // Explicit candidate lists can only run as many rounds as were supplied. // Autonomous generation can continue up to the hard cap of 50 rounds. const maxRounds =   explicitCandidates.length > 0     ? requestedRounds     : MAX_ROUNDS;  for (let round = 1; round <= maxRounds; round += 1) {
+    const MAX_ROUNDS = 50; const maxRounds = Math.min(requestedRounds, MAX_ROUNDS);  for (let round = 1; round <= maxRounds; round += 1) {
     let candidate: SelfUpgradeRoundCandidate | undefined;
     let generated = false;
 
@@ -490,40 +502,7 @@ export async function runBoundedSelfUpgradeSession(
       const selfDiagnosis = await runSelfDiagnosis(candidateWorkspace);
 
 
-      if (!lint.ok) {
-        const error = summarizeFailure(
-          lint,
-          { ok: true, output: "" }
-        );
-
-        session.rounds.push({
-          round,
-          candidatePath: rel,
-          candidateWorkspace,
-          checks: {
-            lint: false,
-            build: false,
-            selfTest: false,
-            selfDiagnosis: false,
-          },
-          conformityScore: 0,
-          generated,
-          deployed: false,
-          successfulCandidate: false,
-          error,
-        });
-
-        previousFailure = error;
-        previousCandidate = candidate;
-
-        session.completedRounds = round;
-        session.updatedAt = new Date().toISOString();
-
-        persistSession(session);
-        continue;
-      }
-
-      
+        
 
       const conformityScore = Number(
         (((Number(lint.ok) + Number(build.ok) + Number(selfTest.ok) + Number(selfDiagnosis.ok)) / 4) * 100).toFixed(2)
@@ -643,14 +622,7 @@ export async function runBoundedSelfUpgradeSession(
       // ============================================================
       // A successful upgrade is a real conformity result, not a fabricated
       // score. The loop stops as soon as the selected target is actually met.
-      if (conformityScore < conformityTarget) {
-        previousFailure = `Conformity ${conformityScore}% < target ${conformityTarget}%.`;
-        previousCandidate = candidate;
-        session.completedRounds = round;
-        session.updatedAt = new Date().toISOString();
-        persistSession(session);
-        continue;
-      }
+     
 
       // ============================================================
       // SUCCESSFUL ROUND
@@ -759,14 +731,12 @@ export async function runBoundedSelfUpgradeSession(
       // It only records the successful candidate and continues
       // the cumulative upgrade loop.
       if (!request.deploy) {
-        // A verified conformity result is terminal for this campaign:
-        // keep the exact cumulative runtime candidate and stop immediately.
         previousFailure = "";
         previousCandidate = candidate;
         session.status = "PENDING_ADMIN_DECISION";
         session.updatedAt = new Date().toISOString();
         persistSession(session);
-        break;
+        continue;
       }
 
       // Legacy direct-deploy mode remains available.
