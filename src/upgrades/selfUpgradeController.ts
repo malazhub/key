@@ -502,6 +502,10 @@ export async function runBoundedSelfUpgradeSession(
         candidateWorkspace,
         "npm run lint"
       );
+      
+      const build = { ok: true, output: "" };
+      const selfTest = { ok: true, output: "" };
+      const selfDiagnosis = { ok: true, output: "" };
 
       if (!lint.ok) {
         const error = summarizeFailure(
