@@ -2735,9 +2735,9 @@ async function startServer() {
       "GET, POST, PUT, DELETE, OPTIONS"
     );
 
-    res.setHeader(
+        res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
+      "Content-Type, Authorization, X-Admin-Email, X-Admin-Password"
     );
 
     if (req.method === "OPTIONS") {
