@@ -3664,105 +3664,107 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         const instruction = intent.instruction;
         const rounds = intent.type === "ui_edit" ? 50 : intent.rounds;
 
-        try {
-          const lessonBlock = await formatLessonsForPrompt(instruction);
+                // Run the upgrade in the background so the HTTP request returns
+        // before Render kills it at the 100-second mark.
+        const upgradeSessionId = `upgrade_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 10)}`;
 
-          const session = await runBoundedSelfUpgradeSession(
-            {
-              instruction: `${instruction}${lessonBlock}`,
-              requestedRounds: rounds,
-              conformityTarget: 100,
-              candidates: undefined,
-              deploy: intent.type === "self_upgrade",
-            },
-            {
-              activeWorkspace: __dirname,
-              githubToken: undefined,
-              generateCandidate: generateAutonomousSelfUpgradeCandidate,
-              deploy: async (args) =>
-                (await executeFullGitHubStructureDeploy(
-                  args
-                )) as Record<string, unknown>,
-            }
-          );
-
-          const allRounds = session.rounds;
-          const lastRound =
-            allRounds.length > 0 ? allRounds[allRounds.length - 1] : null;
-
-          if (!lastRound) {
-            res.status(422).json({
-              success: false,
-              routedTo: "bounded-self-upgrade",
-              error: "The upgrade session produced no round results.",
-            });
-            return;
-          }
-
-             const profile: GateProfile = "full_upgrade";
-
-          const gate = evaluateCompletionClaim(
-            {
-              fileWriteVerified: lastRound.readBackVerified === true,
-              intendedFileChanged: lastRound.intendedFileChanged === true,
-              lintPassed: lastRound.checks?.lint === true,
-              buildPassed: lastRound.checks?.build === true,
-              selfTestPassed: lastRound.checks?.selfTest === true,
-              selfDiagnosisPassed: lastRound.checks?.selfDiagnosis === true,
-            },
-            profile
-          );
-
-          if (!gate.passed) {
+        setImmediate(() => {
+          void (async () => {
             try {
-              await recordLesson({
-                keywords: instruction
-                  .toLowerCase()
-                  .split(/[^a-z0-9_-]+/)
-                  .filter((word) => word.length >= 3)
-                  .slice(0, 10),
-                failedAction: `Attempted: ${instruction}`,
-                actualError: `Evidence gate blocked: ${gate.blocking.join(", ")}`,
-                correction:
-                  "Verify the staged file or live promotion and all required checks before reporting success.",
-                source: "consensus-chat-self-upgrade",
-              });
-            } catch (memoryError) {
-              console.error("Could not record failure lesson:", memoryError);
+              const lessonBlock = await formatLessonsForPrompt(instruction);
+
+              const session = await runBoundedSelfUpgradeSession(
+                {
+                  instruction: `${instruction}${lessonBlock}`,
+                  requestedRounds: rounds,
+                  conformityTarget: 100,
+                  candidates: undefined,
+                  deploy: intent.type === "self_upgrade",
+                },
+                {
+                  activeWorkspace: __dirname,
+                  githubToken: undefined,
+                  generateCandidate: generateAutonomousSelfUpgradeCandidate,
+                  deploy: async (args) =>
+                    (await executeFullGitHubStructureDeploy(
+                      args
+                    )) as Record<string, unknown>,
+                }
+              );
+
+              const allRounds = session.rounds;
+              const lastRound =
+                allRounds.length > 0 ? allRounds[allRounds.length - 1] : null;
+
+              if (!lastRound) {
+                console.error(
+                  `[upgrade] ${upgradeSessionId} no round results`
+                );
+                return;
+              }
+
+              const profile: GateProfile = "full_upgrade";
+
+              const gate = evaluateCompletionClaim(
+                {
+                  fileWriteVerified: lastRound.readBackVerified === true,
+                  intendedFileChanged: lastRound.intendedFileChanged === true,
+                  lintPassed: lastRound.checks?.lint === true,
+                  buildPassed: lastRound.checks?.build === true,
+                  selfTestPassed: lastRound.checks?.selfTest === true,
+                  selfDiagnosisPassed: lastRound.checks?.selfDiagnosis === true,
+                },
+                profile
+              );
+
+              console.log(
+                `[upgrade] ${upgradeSessionId} finished`,
+                { passed: gate.passed, blocking: gate.blocking }
+              );
+
+              if (!gate.passed) {
+                try {
+                  await recordLesson({
+                    keywords: instruction
+                      .toLowerCase()
+                      .split(/[^a-z0-9_-]+/)
+                      .filter((word) => word.length >= 3)
+                      .slice(0, 10),
+                    failedAction: `Attempted: ${instruction}`,
+                    actualError: `Evidence gate blocked: ${gate.blocking.join(
+                      ", "
+                    )}`,
+                    correction:
+                      "Verify the staged file or live promotion and all required checks before reporting success.",
+                    source: "consensus-chat-self-upgrade",
+                  });
+                } catch (memoryError) {
+                  console.error(
+                    "Could not record failure lesson:",
+                    memoryError
+                  );
+                }
+              }
+            } catch (error) {
+              console.error(
+                `[upgrade] ${upgradeSessionId} failed`,
+                error instanceof Error ? error.message : String(error)
+              );
             }
+          })();
+        });
 
-            res.status(422).json({
-              success: false,
-              routedTo: "bounded-self-upgrade",
-              blockedBy: gate.blocking,
-              receipts: gate.receipts,
-              failureReason: lastRound.failureReason ?? null,
-              error:
-                "Evidence verification failed; completion is not confirmed.",
-            });
-            return;
-          }
-
-          res.json({
-            success: true,
-            routedTo: "bounded-self-upgrade",
-            status: session.status,
-            completedRounds: session.rounds.length,
-            receipts: gate.receipts,
-            deployed: lastRound.deployed === true,
-          });
-          return;
-        } catch (error) {
-          res.status(500).json({
-            success: false,
-            routedTo: "bounded-self-upgrade",
-            error:
-              error instanceof Error
-                ? error.message
-                : "Self-upgrade failed.",
-          });
-          return;
-        }
+        res.status(202).json({
+          success: true,
+          routedTo: "bounded-self-upgrade",
+          status: "queued",
+          sessionId: upgradeSessionId,
+          message:
+            "Upgrade started in the background. Watch the Render Logs for [upgrade] completion.",
+        });
+        return;
       }
 
       // ── question and chat fall through to the existing handler below.
