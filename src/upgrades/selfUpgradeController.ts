@@ -338,18 +338,7 @@ export async function runBoundedSelfUpgradeSession(
     { id: "self-test", passed: baselineSelfTest.ok },
     { id: "self-diagnosis", passed: baselineSelfDiagnosis.ok },
   ];
-  if (
-  !baselineLint.ok ||
-  !baselineBuild.ok ||
-  !baselineSelfTest.ok ||
-  !baselineSelfDiagnosis.ok
-) {
-  session.status = "FAILED";
-  session.updatedAt = new Date().toISOString();
-
-  persistSession(session);
-  return session;
-}
+  
 
   const session: SelfUpgradeSession = {
     sessionId: safeSessionId(),
@@ -365,6 +354,17 @@ export async function runBoundedSelfUpgradeSession(
   };
 
   persistSession(session);
+    if (
+    !baselineLint.ok ||
+    !baselineBuild.ok ||
+    !baselineSelfTest.ok ||
+    !baselineSelfDiagnosis.ok
+  ) {
+    session.status = "FAILED";
+    session.updatedAt = new Date().toISOString();
+    persistSession(session);
+    return session;
+  }
 
   let previousFailure = "";
   let previousCandidate: SelfUpgradeRoundCandidate | undefined;
@@ -390,7 +390,7 @@ export async function runBoundedSelfUpgradeSession(
     | SelfUpgradeRoundCandidate
     | undefined;
 
-    const MAX_ROUNDS = 50; const maxRounds = Math.min(requestedRounds, MAX_ROUNDS);  for (let round = 1; round <= maxRounds; round += 1) {
+  const MAX_ROUNDS = 50;   const maxRounds = Math.min(requestedRounds, MAX_ROUNDS);    for (let round = 1; round <= maxRounds; round += 1) {
     let candidate: SelfUpgradeRoundCandidate | undefined;
     let generated = false;
 
