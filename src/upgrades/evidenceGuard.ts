@@ -2,10 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export type GateProfile =
-  | "ui_edit_staged"
-  | "ui_edit_live"
-  | "full_upgrade";
+export type GateProfile = "full_upgrade";
 
 export type Receipt = {
   decision: string;
@@ -95,9 +92,8 @@ export function evaluateCompletionClaim(
   const blocking: string[] = [];
   const receipts: Receipt[] = [];
 
-  // Fix #1: ui_edit_staged now requires intendedFileChanged too.
-  // A staging write that does not change the staging file is not a
-  // successful edit.
+  // Every admin upgrade operation must satisfy the full evidence gate:
+  // file write, intended change, lint, build, self-test, self-diagnosis.
   const checks: Array<{
     key: keyof CompletionEvidence;
     decision: string;
@@ -110,22 +106,14 @@ export function evaluateCompletionClaim(
       decision: "file_write_verification",
       metric: "verified",
       blockingCode: "file_write_not_verified",
-      requiredFor: [
-        "ui_edit_staged",
-        "ui_edit_live",
-        "full_upgrade",
-      ],
+      requiredFor: ["full_upgrade"],
     },
     {
       key: "intendedFileChanged",
       decision: "file_change_verification",
       metric: "changed",
       blockingCode: "intended_file_not_changed",
-      requiredFor: [
-        "ui_edit_staged",
-        "ui_edit_live",
-        "full_upgrade",
-      ],
+      requiredFor: ["full_upgrade"],
     },
     {
       key: "lintPassed",
