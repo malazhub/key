@@ -657,8 +657,9 @@ function calculateMathematicalRelationWithPrevious(
     };
   }
 
-  // State Consistency Protocol (Global State Sync): cross-reference the entire conversation history so 100% of previous points are accounted for
-  const pairsForSynthesis = windowPairs;
+    // Only include turns that the relation detector actually matched.
+  // A follow-up must not pull unrelated conversation turns into the prompt.
+  const pairsForSynthesis = matchedPairs;
 
   // Deduplicate and sort by pairIndex
   const uniqueSynthPairs = Array.from(
@@ -2014,6 +2015,96 @@ async function fetchGoogleSearchGrounding(
   }
 }
 
+type FulfillmentVerification = {
+  status: "pass" | "needs_revision" | "unverified";
+  feedback: string;
+  missingRequirements: string[];
+};
+
+async function verifyUserRequestFulfillment(
+  question: string,
+  candidateAnswer: string,
+  verifierModel: string
+): Promise<FulfillmentVerification> {
+  try {
+    const response = await ai.models.generateContent({
+      model: verifierModel,
+      contents: [
+        "Evaluate whether the candidate answer fulfills the user's current request.",
+        "Return JSON only, using the required schema.",
+        "Identify concrete requirements and check each against the candidate answer.",
+        "PASS only if every material requirement is addressed with adequate evidence in the answer.",
+        "If any requirement is missing or only partly addressed, return needs_revision.",
+        "If you cannot reliably determine fulfillment, return unverified.",
+        "Do not treat claims that an external action occurred as proof that it occurred.",
+        "If the request requires an action such as running code, opening a UI, saving a file, or deploying, require actual execution evidence. If none is provided, mark that requirement missing or unverified.",
+        "Do not judge success based on answer length, confidence, or engine agreement percentage.",
+        "",
+        "USER REQUEST:",
+        question,
+        "",
+        "CANDIDATE ANSWER:",
+        candidateAnswer,
+      ].join("\n"),
+      config: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            status: {
+              type: Type.STRING,
+              enum: ["pass", "needs_revision", "unverified"],
+            },
+            feedback: { type: Type.STRING },
+            missingRequirements: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+          },
+          required: ["status", "feedback", "missingRequirements"],
+        },
+      },
+    });
+
+    const raw = response.text?.trim();
+    if (!raw) throw new Error("Empty fulfillment-verifier response");
+
+    const parsed = JSON.parse(
+      raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+    );
+
+    if (
+      !["pass", "needs_revision", "unverified"].includes(parsed.status) ||
+      typeof parsed.feedback !== "string" ||
+      !Array.isArray(parsed.missingRequirements) ||
+      !parsed.missingRequirements.every(
+        (item: unknown) => typeof item === "string"
+      )
+    ) {
+      throw new Error("Invalid fulfillment-verifier response");
+    }
+
+    return {
+      status: parsed.status,
+      feedback: parsed.feedback,
+      missingRequirements: parsed.missingRequirements,
+    };
+  } catch (error) {
+    console.error("[Fulfillment Verification] Failed:", error);
+
+    return {
+      status: "unverified",
+      feedback:
+        "Fulfillment verification could not be completed. Do not claim that all requirements were met.",
+      missingRequirements: [
+        "Verification unavailable; requirements have not been confirmed.",
+      ],
+    };
+  }
+}
+
+
 async function runSmartMemoryConsensusLoop(
   question: string,
   history: HistoryTurn[],
@@ -2439,6 +2530,13 @@ Mode: ${
     let finalSuccessfulResults: any[] = [];
     let achievedAgreement = 0;
     let iterationsRequired = 0;
+        let fulfillmentVerification: FulfillmentVerification = {
+      status: "unverified",
+      feedback: "No successful verification round has completed.",
+      missingRequirements: [
+        "Fulfillment has not yet been confirmed.",
+      ],
+    };
     const convergenceRounds: Array<{
       round: number;
       similarityScore: number;
@@ -2504,20 +2602,80 @@ Mode: ${
             : `Real conformity measured at ${achievedAgreement}%; another live round is required for the selected ${safeTarget}% target.`,
       });
 
-      priorAnswers = answers;
+      
+      const candidateAnswer = answers.join(
+        "\n\n--- ENGINE ANSWER ---\n\n"
+      );
 
-      if (achievedAgreement >= safeTarget) break;
+      const verifierModel =
+        parallelCandidates[parallelCandidates.length - 1];
+
+            fulfillmentVerification =
+        await verifyUserRequestFulfillment(
+          question,
+          candidateAnswer,
+          verifierModel
+        );
+
+      priorAnswers =
+        fulfillmentVerification.status === "pass"
+          ? answers
+          : [
+              ...answers,
+              [
+                "FULFILLMENT VERIFICATION FEEDBACK:",
+                fulfillmentVerification.feedback,
+                "Requirements not yet confirmed:",
+                ...fulfillmentVerification.missingRequirements.map(
+                  (item) => `- ${item}`
+                ),
+                "Revise the answer to address these gaps. Do not claim external actions occurred without evidence.",
+              ].join("\n"),
+            ];
+
+      // Agreement is necessary for consensus, but is not proof of fulfillment.
+      // Continue the bounded loop if the request has not passed verification.
+      if (
+        achievedAgreement >= safeTarget &&
+        fulfillmentVerification.status === "pass"
+      ) {
+        break;
+      }
+
     }
 
     if (finalSuccessfulResults.length > 0) {
       const groundingSources = await groundingPromise;
-      const completeFinalAnswer = finalSuccessfulResults
-        .map((result, index) =>
-          `[ENGINE SLOT ${index + 1}]\n${String(
-            result.finalAnswer || ""
-          ).trim()}`
-        )
-        .join("\n\n--- ENGINE ANSWER ---\n\n");
+      
+      const completeFinalAnswer = [
+        finalSuccessfulResults
+          .map((result, index) =>
+            `[ENGINE SLOT ${index + 1}]\n${String(
+              result.finalAnswer || ""
+            ).trim()}`
+          )
+          .join("\n\n--- ENGINE ANSWER ---\n\n"),
+
+        "### User-Request Fulfillment Check",
+        `**Status:** ${
+          fulfillmentVerification.status === "pass"
+            ? "PASS — the verifier found the stated requirements addressed."
+            : fulfillmentVerification.status === "needs_revision"
+            ? "NOT PASSED — one or more requirements remain unmet."
+            : "UNVERIFIED — fulfillment could not be confirmed."
+        }`,
+        `**Verifier feedback:** ${fulfillmentVerification.feedback}`,
+        ...(fulfillmentVerification.missingRequirements.length > 0
+          ? [
+              "**Requirements needing attention:**",
+              ...fulfillmentVerification.missingRequirements.map(
+                (item) => `- ${item}`
+              ),
+            ]
+          : []),
+        "**Note:** This is an AI-based content check, not proof that external actions ran successfully.",
+      ].join("\n\n");
+
 
       const enriched = sanitizeAndEnrichConsensusResult(
         {
