@@ -707,7 +707,8 @@ function buildStandaloneGitHubPagesHtml(): string {
       const sendBtnLabel = document.getElementById("sendBtnLabel");
       sendBtnLabel.textContent = "Running...";
 
-      let data;
+            let data;
+
       try {
         data = await callLiveBackend({
           question: queryText,
@@ -720,26 +721,34 @@ function buildStandaloneGitHubPagesHtml(): string {
           attachments: sentAttachments
         });
       } catch (err) {
-        const achieved = Math.max(targetAgreement, 98);
-        data = {
-          contextMode: "NEW_QUERY_ONLY",
-          historyMatchScore: 0,
-          payloadSentToEngines: queryText,
-          finalAnswer: "### Multi-Engine Consensus Answer\\n\\n1. **Direct Resolution:** All **" + activeModels.length + " active AI engines** analyzed your current query and converged on a verified solution (**" + achieved + "% agreement**).\\n\\n2. **Per-Engine Detailed Responses:** Click **View Engine Loop** below and click any engine to inspect its complete independent response.",
-          achievedAgreement: achieved,
-          targetAgreement,
-          iterationsRequired: 2,
-          hasAppPreview: allowApplicationMode || isAdminAuthenticated,
-          appTitle: "Interactive Application Preview (key1)",
-          generatedAppHtml: "",
-          nodeContributions: activeModels.map((m, idx) => ({
-            modelName: m,
-            agreementScore: achieved,
-            initialReply: "[" + m + " Initial Analysis]: Evaluated core requirements and structured step-by-step execution.",
-            finalMatchedReply: "[" + m + " Final Consensus]: Converged on the verified multi-engine response.",
-            detailedResponse: "### " + m + " — Complete Independent Engine Response\\n\\n1. **Analytical Focus:** Evaluated query parameters and verified technical accuracy.\\n\\n2. **Consensus Confirmation:** Confirmed " + achieved + "% match across all active engines."
-          }))
-        };
+        console.error("[Consensus] Backend request failed:", err);
+
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Unknown backend error";
+
+        showBanner(
+          "No answer was generated because the backend request failed. " +
+          "Your query was not verified. Details: " + errorMessage
+        );
+
+        sendBtnLabel.textContent = "Send";
+        return;
+      }
+
+      if (
+        !data ||
+        typeof data.finalAnswer !== "string" ||
+        data.finalAnswer.trim().length === 0
+      ) {
+        showBanner(
+          "The backend returned no usable final answer. " +
+          "No consensus or requirement fulfillment is being claimed."
+        );
+
+        sendBtnLabel.textContent = "Send";
+        return;
       }
 
       sendBtnLabel.textContent = "Send";
