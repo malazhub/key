@@ -8,7 +8,7 @@ import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate, assertSaf
 import { resolveKeyWorkspaceRoot, resolveAuditRoot, safeAuditPath, isAuditReadablePath } from "./src/upgrades/workspace";
 import path from "path";
 import fs from "fs";
-import os from "os";
+import os from "os";f
 import crypto from "crypto";
 import { exec, spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -3664,31 +3664,91 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         const instruction = intent.instruction;
         const rounds = intent.type === "ui_edit" ? 50 : intent.rounds;
 
-        try {
-          const lessonBlock = await formatLessonsForPrompt(instruction);
+               const upgradeSessionId = `upgrade_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-          const session = await runBoundedSelfUpgradeSession(
-            {
-              instruction: `${instruction}${lessonBlock}`,
-              requestedRounds: rounds,
-              conformityTarget: 100,
-              candidates: undefined,
-              deploy: intent.type === "self_upgrade",
-            },
-            {
-              activeWorkspace: __dirname,
-              githubToken: undefined,
-              generateCandidate: generateAutonomousSelfUpgradeCandidate,
-              deploy: async (args) =>
-                (await executeFullGitHubStructureDeploy(
-                  args
-                )) as Record<string, unknown>,
+        void (async () => {
+          try {
+            const lessonBlock = await formatLessonsForPrompt(instruction);
+
+            const session = await runBoundedSelfUpgradeSession(
+              {
+                instruction: `${instruction}${lessonBlock}`,
+                requestedRounds: rounds,
+                conformityTarget: 100,
+                candidates: undefined,
+                deploy: false,
+              },
+              {
+                activeWorkspace: __dirname,
+                githubToken: undefined,
+                generateCandidate: generateAutonomousSelfUpgradeCandidate,
+                deploy: async (args) =>
+                  (await executeFullGitHubStructureDeploy(args)) as Record<string, unknown>,
+              }
+            );
+
+            const allRounds = session.rounds;
+            const lastRound =
+              allRounds.length > 0 ? allRounds[allRounds.length - 1] : null;
+
+            if (!lastRound) {
+              console.error("[upgrade] no round results", upgradeSessionId);
+              return;
             }
-          );
 
-          const allRounds = session.rounds;
-          const lastRound =
-            allRounds.length > 0 ? allRounds[allRounds.length - 1] : null;
+            const profile: GateProfile = "full_upgrade";
+            const gate = evaluateCompletionClaim(
+              {
+                fileWriteVerified: lastRound.readBackVerified === true,
+                intendedFileChanged: lastRound.intendedFileChanged === true,
+                lintPassed: lastRound.checks?.lint === true,
+                buildPassed: lastRound.checks?.build === true,
+                selfTestPassed: lastRound.checks?.selfTest === true,
+                selfDiagnosisPassed: lastRound.checks?.selfDiagnosis === true,
+              },
+              profile
+            );
+
+            console.log(
+              `[upgrade] ${upgradeSessionId} finished`,
+              { passed: gate.passed, blocking: gate.blocking }
+            );
+
+            if (!gate.passed) {
+              try {
+                await recordLesson({
+                  keywords: instruction
+                    .toLowerCase()
+                    .split(/[^a-z0-9_-]+/)
+                    .filter((word) => word.length >= 3)
+                    .slice(0, 10),
+                  failedAction: `Attempted: ${instruction}`,
+                  actualError: `Evidence gate blocked: ${gate.blocking.join(", ")}`,
+                  correction:
+                    "Verify the staged file and all required checks before reporting success.",
+                  source: "consensus-chat-self-upgrade",
+                });
+              } catch (memoryError) {
+                console.error("Could not record failure lesson:", memoryError);
+              }
+            }
+          } catch (error) {
+            console.error(
+              `[upgrade] ${upgradeSessionId} failed`,
+              error instanceof Error ? error.message : String(error)
+            );
+          }
+        })();
+
+        res.status(202).json({
+          success: true,
+          routedTo: "bounded-self-upgrade",
+          status: "queued",
+          sessionId: upgradeSessionId,
+          message:
+            "Upgrade started in the background. Poll /api/self-upgrade/staged/:sessionId for status.",
+        });
+        return;
 
           if (!lastRound) {
             res.status(422).json({
