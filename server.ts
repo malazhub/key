@@ -1,7 +1,9 @@
 import express from "express";
 import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
-import { evaluateCompletionClaim } from "./src/upgrades/evidenceGuard";
-import { recordLesson, formatLessonsForPrompt } from "./src/upgrades/failureMemory";
+import {
+  evaluateCompletionClaim,
+  type GateProfile,
+} from "./src/upgrades/evidenceGuard";import { recordLesson, formatLessonsForPrompt } from "./src/upgrades/failureMemory";
 import { runBoundedSelfUpgradeSession, type SelfUpgradeRoundCandidate, assertSafeRelativePath } from "./src/upgrades/selfUpgradeController";
 import { resolveKeyWorkspaceRoot, resolveAuditRoot, safeAuditPath, isAuditReadablePath } from "./src/upgrades/workspace";
 import path from "path";
@@ -3697,8 +3699,7 @@ Treat the current follow-up as a recovery signal and produce the complete answer
             return;
           }
 
-          const profile =
-            intent.type === "ui_edit" ? "ui_edit_staged" : "full_upgrade";
+             const profile: GateProfile = "full_upgrade";
 
           const gate = evaluateCompletionClaim(
             {
