@@ -323,13 +323,14 @@ export async function runBoundedSelfUpgradeSession(
 
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
-    // Baseline capability gate — stubbed to fit the 512 MB free tier.
-  // The heavy checks (build, self-test, self-diagnosis) are skipped here
-  // to stay under memory. The candidate still runs real lint below.
-  const baselineLint = { ok: true, output: "" };
-  const baselineBuild = { ok: true, output: "" };
-  const baselineSelfTest = { ok: true, output: "" };
-  const baselineSelfDiagnosis = { ok: true, output: "" };
+    
+  // Run real checks on the starting workspace so capability comparisons
+  // are based on actual results rather than assumed success.
+  const baselineLint = await runCheck(activeRoot, "npm run lint");
+  const baselineBuild = await runCheck(activeRoot, "npm run build");
+  const baselineSelfTest = await runCheck(activeRoot, "npm run test:self");
+  const baselineSelfDiagnosis = await runSelfDiagnosis(activeRoot);
+
 
   const baselineCapabilities: CapabilityTestResult[] = [
     { id: "lint", passed: baselineLint.ok },
@@ -377,7 +378,7 @@ export async function runBoundedSelfUpgradeSession(
     | SelfUpgradeRoundCandidate
     | undefined;
 
-    for (let round = 1; round <= Math.min(requestedRounds, 1); round += 1) {
+    const MAX_ROUNDS = 50;  // Explicit candidate lists can only run as many rounds as were supplied. // Autonomous generation can continue up to the hard cap of 50 rounds. const maxRounds =   explicitCandidates.length > 0     ? requestedRounds     : MAX_ROUNDS;  for (let round = 1; round <= maxRounds; round += 1) {
     let candidate: SelfUpgradeRoundCandidate | undefined;
     let generated = false;
 
@@ -478,10 +479,16 @@ export async function runBoundedSelfUpgradeSession(
         continue;
       }
 
-            const lint = { ok: true, output: "" };
-      const build = { ok: true, output: "" };
-      const selfTest = { ok: true, output: "" };
-      const selfDiagnosis = { ok: true, output: "" };
+      
+      // Run the real checks against this round's candidate workspace.
+      const lint = await runCheck(candidateWorkspace, "npm run lint");
+      const build = await runCheck(candidateWorkspace, "npm run build");
+      const selfTest = await runCheck(
+        candidateWorkspace,
+        "npm run test:self"
+      );
+      const selfDiagnosis = await runSelfDiagnosis(candidateWorkspace);
+
 
       if (!lint.ok) {
         const error = summarizeFailure(
@@ -546,11 +553,31 @@ export async function runBoundedSelfUpgradeSession(
         candidateCapabilities
       );
 
-      if (lostCapabilities.length > 0 || conformityScore < conformityTarget) {
+      
+      if (
+        !lint.ok ||
+        !build.ok ||
+        !selfTest.ok ||
+        !selfDiagnosis.ok ||
+        lostCapabilities.length > 0 ||
+        conformityScore < conformityTarget
+      ) {
+        const failedChecks = [
+          !lint.ok ? `lint failed:\n${lint.output}` : "",
+          !build.ok ? `build failed:\n${build.output}` : "",
+          !selfTest.ok ? `self-test failed:\n${selfTest.output}` : "",
+          !selfDiagnosis.ok
+            ? `self-diagnosis failed:\n${selfDiagnosis.output}`
+            : "",
+        ].filter(Boolean);
+
         const error =
-          lostCapabilities.length > 0
-            ? `OLD PASS + NEW FAIL: ${lostCapabilities.join(", ")}. Latest successful candidate retained; trying next round.`
-            : `Conformity ${conformityScore}% is below the selected ${conformityTarget}% target. Latest successful candidate retained; trying next round.`;
+          failedChecks.length > 0
+            ? failedChecks.join("\n\n")
+            : lostCapabilities.length > 0
+              ? `Capability regression: ${lostCapabilities.join(", ")}. Trying the next round.`
+              : `Conformity ${conformityScore}% is below the selected ${conformityTarget}% target. Trying the next round.`;
+
 
         session.rounds.push({
           round,
@@ -699,13 +726,15 @@ export async function runBoundedSelfUpgradeSession(
         round,
         candidatePath: rel,
         candidateWorkspace,
+        
         checks: {
-          lint: true,
-          build: true,
-          selfTest: true,
-          selfDiagnosis: true,
+          lint: lint.ok,
+          build: build.ok,
+          selfTest: selfTest.ok,
+          selfDiagnosis: selfDiagnosis.ok,
         },
-        conformityScore: 100,
+        conformityScore,
+
         generated,
         deployed: false,
         successfulCandidate: true,
