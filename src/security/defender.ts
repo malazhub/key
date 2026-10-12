@@ -1,5 +1,5 @@
 // ============================================================================
-// permenent logic
+// testing real ai attacker scenario to manage our system
 // ============================================================================
 // AUTHORIZED USE ONLY. Requires explicit written permission for target systems.
 // ============================================================================
@@ -433,7 +433,7 @@ export function validateCampaignArguments(
 }
 
 // ============================================================================
-# SCORING
+// SCORING
 // ============================================================================
 
 export function classifyResult(options: {
@@ -1639,7 +1639,7 @@ export function makeFixtures(): Record<number, FixtureDefinition> {
 
 export const FIXTURE_REGISTRY = makeFixtures();
 
-for const fixture of Object.values(FIXTURE_REGISTRY)) {
+for (const fixture of Object.values(FIXTURE_REGISTRY)) {
     validateFixture(fixture);
 }
 
