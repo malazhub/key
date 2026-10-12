@@ -598,7 +598,7 @@ export class HTTPTarget {
         return [extracted, null];
     }
 
-    async send(payload: any, metadata?: Record<string, any>): void; // implemented below fully
+    async send(payload: any, metadata?: Record<string, any>): Promise<Record<string, any>>;
     async send(
         payload: any,
         metadata?: Record<string, any>
