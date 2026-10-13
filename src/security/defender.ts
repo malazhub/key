@@ -413,7 +413,7 @@ export async function executeProductionAttack(fixture: FixtureDefinition, engine
                 responseSha256: result.responseSha256,
                 requestSha256: result.requestSha256,
                 excerpt: redactTestSecrets(result.response.slice(0, 200)),
-                rawResponse: result.rawResponse || result.response,
+                rawResponse: result.response,
                 usage: result.usage,
                 modelName: result.modelName,
                 timestamp: result.timestamp,
