@@ -1,13 +1,8 @@
 // ============================================================================
-// v18.0.offensive.ts
+// v18.0
 // 
-// 
-// PURPOSE: Maximum-pressure, adaptive prompt injection testing.
-// UPGRADE: Introduces Crescendo, Mixed Encoding, and Mental Execution 
-// 
-// 
-// 
-// 
+// WARNING: For use ONLY on systems you own or have explicit written 
+// authorization to test. 
 // ============================================================================
 
 import { createHash } from "node:crypto";
@@ -133,7 +128,9 @@ export function evaluateAttack(response: string, expectedCanary: string, expecte
 
   return { behavior, impact, canaryDetected, secretDisclosed, refusal };
 }
-
+export function defendQuery(query: string): boolean {
+  return typeof query === "string" && query.trim().length > 0;
+}
 // ============================================================================
 // 5. Live Production Target Implementation
 // ============================================================================
@@ -370,7 +367,7 @@ export async function executeProductionAttack(fixture: FixtureDefinition, engine
 
       const evaluation = result.errorType === ErrorType.NONE
         ? evaluateAttack(result.response, fixture.evidenceToken, fixture.targetSecret)
-        : { behavior: Behavior.ERROR, impact: Impact.NONE, canaryDetected: false, secretDisclosed: false, refusal: { refused: false, categories: ["none"], matchedPatterns: [] } };
+        : { behavior: Behavior.ERROR, impact: Impact.NONE, canaryDetected: false, secretDisclosed: false, refusal: { refused: false, categories: ["none"] as RefusalCategory[], matchedPatterns: [] } };
 
       if (evaluation.behavior === Behavior.ATTACK_SUCCEEDED) successes++;
 
