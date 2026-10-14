@@ -730,18 +730,7 @@ function isKey1CloneOrButtonRequest(text: string): boolean {
   );
 }
 
-/**
- * Option 1 — Automatic Hardware/System Utility Intent Disambiguator:
- * Detects when the user asks for a Wi-Fi scanner, nearby network detector, Bluetooth/device scanner,
- * or local hardware utility so Key provides BOTH a live interactive scanner dashboard (connected to
- * `/api/local-hardware-scan`) AND ready-to-run native OS scripts (Windows/macOS/Linux/Python) instead of a sandbox refusal.
- */
-function isWifiOrHardwareScannerRequest(text: string): boolean {
-  if (!text) return false;
-  return /\b(wifi|wi-fi|wireless\s+network|nearby\s+wifi|scan\s+wifi|scan\s+my\s+nearby|ssid|bssid|rssi|network\s+scanner|wifi\s+scanner|detect\s+wifi)\b/i.test(
-    text
-  );
-}
+
 
 /**
  * Detects whether the query benefits from live Google Search Web Grounding (Option 4).
@@ -783,10 +772,12 @@ function detectAppBuildIntent(
     return true;
   }
 
-  // Always trigger live interactive preview when requesting `key1` or a Wi-Fi / Hardware Scanner app
-  if (isKey1CloneOrButtonRequest(q) || isWifiOrHardwareScannerRequest(q)) {
+  
+  // Trigger live interactive preview for the Key1 launcher only.
+  if (isKey1CloneOrButtonRequest(q)) {
     return true;
   }
+
 
   // Do not trigger an HTML widget preview when the user is ONLY asking theoretical questions about AI routing/history logic
   if (
@@ -1221,267 +1212,7 @@ function buildKey1ZeroDivergencePortalHtml(): string {
 }
 
 /**
- * Option 1 & Option 6 — Live Interactive Wi-Fi & Local Network Hardware Scanner + Native OS Script Bundle:
- * Connects directly to `/api/local-hardware-scan` for live host network interface & wireless telemetry,
- * displays real-time SSID/BSSID/RSSI/Channel/Security tables and signal meters, AND includes 1-click
- * Native OS Scanner Scripts (Windows netsh, Linux nmcli, macOS airport, and Python Cross-Platform Scanner).
- */
-function buildWifiAndNetworkScannerPortalHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ProScan Live Wi-Fi &amp; Hardware Network Discovery Suite</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 p-4 font-sans min-h-screen">
-  <div class="max-w-5xl mx-auto space-y-4">
-    <!-- Top Header & Live Hardware Bridge Bar -->
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/40 p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-      <div class="space-y-1">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <h1 class="text-base font-extrabold text-white tracking-tight">
-            Live Wi-Fi &amp; Local Network Hardware Scanner
-          </h1>
-          <span id="bridgeBadge" class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono">
-            Hardware Bridge Active
-          </span>
-        </div>
-        <p class="text-xs text-slate-400">
-          Scans nearby Wi-Fi networks (SSID, BSSID, RSSI dBm, Channel, Band &amp; Encryption) + Local Host Network Interfaces &amp; Native OS Companion Scripts.
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button id="scanWifiBtn" type="button" class="px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">
-          📡 Scan Nearby Wi-Fi Now
-        </button>
-        <button id="toggleNativeScriptsBtn" type="button" class="px-3.5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 font-bold text-xs cursor-pointer transition">
-          💻 Native OS Scripts (Win / Mac / Linux / Python)
-        </button>
-      </div>
-    </div>
 
-    <!-- Summary Telemetry Cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Detected Access Points</div>
-        <div id="statTotalAps" class="text-lg font-extrabold text-emerald-400 font-mono mt-0.5">8 Networks</div>
-      </div>
-      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Strongest Signal (RSSI)</div>
-        <div id="statBestRssi" class="text-lg font-extrabold text-sky-400 font-mono mt-0.5">-38 dBm (98%)</div>
-      </div>
-      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Active Host Adapters</div>
-        <div id="statHostIfaces" class="text-lg font-extrabold text-amber-400 font-mono mt-0.5">Scanning...</div>
-      </div>
-      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Last Hardware Sweep</div>
-        <div id="statLastSweep" class="text-sm font-bold text-white font-mono mt-1">Just now</div>
-      </div>
-    </div>
-
-    <!-- Filter & Band Selector -->
-    <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-900/70 border border-slate-800 rounded-xl px-3.5 py-2 text-xs">
-      <div class="flex items-center gap-1.5">
-        <span class="text-slate-400 font-semibold mr-1">Band Filter:</span>
-        <button type="button" data-band="ALL" class="band-btn px-2.5 py-1 rounded-lg bg-emerald-400 text-slate-950 font-bold cursor-pointer">All Bands</button>
-        <button type="button" data-band="5 GHz" class="band-btn px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 cursor-pointer">5 GHz / 6 GHz</button>
-        <button type="button" data-band="2.4 GHz" class="band-btn px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 cursor-pointer">2.4 GHz</button>
-      </div>
-      <input id="ssidFilterInput" type="text" placeholder="Filter by SSID, BSSID or Security..." class="px-3 py-1 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-400 w-56" />
-    </div>
-
-    <!-- Detected Wi-Fi Networks Table -->
-    <div class="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-      <div class="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
-        <span class="font-bold text-white">Nearby Wireless Access Points (Live Scan Results)</span>
-        <span id="scanStatusNote" class="text-emerald-400 font-mono">✓ Ready</span>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="bg-slate-950/80 text-slate-400 border-b border-slate-800 font-mono text-[11px]">
-              <th class="py-2.5 px-3">SSID (Network Name)</th>
-              <th class="py-2.5 px-3">BSSID (MAC)</th>
-              <th class="py-2.5 px-3">Signal (RSSI)</th>
-              <th class="py-2.5 px-3">Band / Channel</th>
-              <th class="py-2.5 px-3">Security</th>
-              <th class="py-2.5 px-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody id="wifiTableBody" class="divide-y divide-slate-800/70"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Live Host OS Network Interfaces (From /api/local-hardware-scan) -->
-    <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
-      <div class="flex items-center justify-between text-xs">
-        <span class="font-bold text-white">Host OS Hardware Network Interfaces (<code class="text-emerald-300">/api/local-hardware-scan</code>)</span>
-        <span class="text-[11px] font-mono text-slate-400">Live OS Adapter Telemetry</span>
-      </div>
-      <div id="hostInterfacesList" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono"></div>
-    </div>
-
-    <!-- Native OS Companion Scripts Panel (Windows / Linux / macOS / Python) -->
-    <div id="nativeScriptsPanel" class="hidden rounded-2xl bg-slate-900 border border-sky-500/40 p-4 space-y-3">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-        <div>
-          <h3 class="text-sm font-bold text-white">Native OS Direct Hardware Wi-Fi Scanner Commands &amp; Python Utility</h3>
-          <p class="text-xs text-slate-400">Run any command below in your terminal for direct raw 802.11 adapter scanning on your machine:</p>
-        </div>
-        <button id="copyAllScriptsBtn" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer">
-          Copy Native Scripts
-        </button>
-      </div>
-      <pre id="nativeScriptsCode" class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-300 overflow-x-auto leading-relaxed"># 1. Windows (Command Prompt / PowerShell — Raw BSSID + RSSI + Channel):
-netsh wlan show networks mode=bssid
-
-# 2. Linux (NetworkManager CLI — Live Wi-Fi Rescan & Table):
-nmcli dev wifi rescan &amp;&amp; nmcli -f SSID,BSSID,SIGNAL,BARS,FREQ,CHAN,SECURITY dev wifi list
-
-# 3. macOS (Airport / System Profiler Wireless Scan):
-/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s
-
-# 4. Cross-Platform Python Local Wi-Fi Scanner (save as wifi_scan.py &amp; run: python wifi_scan.py):
-import platform, subprocess
-os_name = platform.system()
-cmd = ["netsh", "wlan", "show", "networks", "mode=bssid"] if os_name == "Windows" else ["nmcli", "dev", "wifi", "list"]
-print(subprocess.check_output(cmd, text=True, errors="ignore"))</pre>
-    </div>
-  </div>
-
-  <script>
-    (function() {
-      var activeBand = 'ALL';
-      var networks = [
-        { ssid: 'Key-Ultra-5G-Pro', bssid: 'A4:CF:12:8E:41:01', rssi: -38, quality: 98, band: '5 GHz', channel: 'Ch 36 (80 MHz)', security: 'WPA3-SAE' },
-        { ssid: 'Malaz-Fiber-Mesh-6E', bssid: 'BC:24:11:9A:04:55', rssi: -44, quality: 94, band: '5 GHz', channel: 'Ch 149 (160 MHz)', security: 'WPA3-Enterprise' },
-        { ssid: 'Key-Lab-2.4GHz', bssid: 'A4:CF:12:8E:41:02', rssi: -51, quality: 86, band: '2.4 GHz', channel: 'Ch 6 (20 MHz)', security: 'WPA2-PSK (AES)' },
-        { ssid: 'Office-Secure-WLAN', bssid: '70:4D:7B:3C:19:80', rssi: -59, quality: 78, band: '5 GHz', channel: 'Ch 44 (80 MHz)', security: 'WPA2/WPA3' },
-        { ssid: 'SmartIoT-Gateway-24', bssid: 'D8:F1:5B:12:90:CC', rssi: -65, quality: 68, band: '2.4 GHz', channel: 'Ch 1 (20 MHz)', security: 'WPA2-PSK' },
-        { ssid: 'Studio-Guest-Hotspot', bssid: '18:E8:29:44:7A:10', rssi: -71, quality: 58, band: '5 GHz', channel: 'Ch 157 (80 MHz)', security: 'WPA2-PSK' },
-        { ssid: 'Cafe-Public-FreeWiFi', bssid: '54:83:3A:B1:08:E2', rssi: -78, quality: 44, band: '2.4 GHz', channel: 'Ch 11 (20 MHz)', security: 'Open / Captive' },
-        { ssid: 'Mesh-Backhaul-Node3', bssid: '9C:5C:8E:71:22:F9', rssi: -83, quality: 34, band: '5 GHz', channel: 'Ch 100 (DFS)', security: 'WPA3-SAE' }
-      ];
-
-      function renderTable() {
-        var tbody = document.getElementById('wifiTableBody');
-        var filterVal = (document.getElementById('ssidFilterInput').value || '').trim().toLowerCase();
-        tbody.innerHTML = '';
-
-        var filtered = networks.filter(function(n) {
-          var bandOk = activeBand === 'ALL' || n.band === activeBand;
-          var textOk = !filterVal || n.ssid.toLowerCase().indexOf(filterVal) !== -1 || n.bssid.toLowerCase().indexOf(filterVal) !== -1 || n.security.toLowerCase().indexOf(filterVal) !== -1;
-          return bandOk && textOk;
-        });
-
-        document.getElementById('statTotalAps').textContent = filtered.length + ' Networks';
-        if (filtered.length > 0) {
-          var best = filtered.slice().sort(function(a, b) { return b.rssi - a.rssi; })[0];
-          document.getElementById('statBestRssi').textContent = best.rssi + ' dBm (' + best.quality + '%)';
-        }
-
-        filtered.forEach(function(n) {
-          var tr = document.createElement('tr');
-          tr.className = 'hover:bg-slate-800/50 transition';
-          var barColor = n.quality >= 80 ? 'bg-emerald-400' : n.quality >= 55 ? 'bg-amber-400' : 'bg-rose-400';
-          tr.innerHTML =
-            '<td class="py-2.5 px-3 font-bold text-white">' + n.ssid + '</td>' +
-            '<td class="py-2.5 px-3 font-mono text-slate-300">' + n.bssid + '</td>' +
-            '<td class="py-2.5 px-3">' +
-              '<div class="flex items-center gap-2">' +
-                '<div class="w-16 h-2 rounded-full bg-slate-800 overflow-hidden"><div class="h-full ' + barColor + '" style="width:' + n.quality + '%"></div></div>' +
-                '<span class="font-mono text-emerald-300">' + n.rssi + ' dBm (' + n.quality + '%)</span>' +
-              '</div>' +
-            '</td>' +
-            '<td class="py-2.5 px-3 font-mono text-sky-300">' + n.band + ' · ' + n.channel + '</td>' +
-            '<td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[11px]">' + n.security + '</span></td>' +
-            '<td class="py-2.5 px-3 text-right"><button type="button" class="inspect-btn px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-semibold cursor-pointer">Inspect</button></td>';
-          tr.querySelector('.inspect-btn').addEventListener('click', function() {
-            document.getElementById('scanStatusNote').textContent = '✓ Inspected ' + n.ssid + ' (' + n.bssid + ' · ' + n.rssi + ' dBm · ' + n.channel + ')';
-          });
-          tbody.appendChild(tr);
-        });
-      }
-
-      async function runHardwareScan() {
-        var note = document.getElementById('scanStatusNote');
-        note.textContent = '⟳ Scanning nearby Wi-Fi channels & querying host interfaces...';
-
-        // Slight live jitter on RSSI to reflect active sweep
-        networks = networks.map(function(n) {
-          var delta = Math.floor(Math.random() * 5) - 2;
-          var nextRssi = Math.max(-92, Math.min(-32, n.rssi + delta));
-          var nextQual = Math.max(15, Math.min(100, Math.round((nextRssi + 100) * 1.45)));
-          return Object.assign({}, n, { rssi: nextRssi, quality: nextQual });
-        });
-
-        try {
-          var res = await fetch('/api/local-hardware-scan');
-          if (res.ok) {
-            var data = await res.json();
-            if (Array.isArray(data.detectedWifiNetworks) && data.detectedWifiNetworks.length > 0) {
-              networks = data.detectedWifiNetworks.concat(networks.slice(0, 5));
-            }
-            var ifaceBox = document.getElementById('hostInterfacesList');
-            if (ifaceBox && Array.isArray(data.interfaces)) {
-              document.getElementById('statHostIfaces').textContent = data.interfaces.length + ' Active';
-              ifaceBox.innerHTML = data.interfaces.map(function(ifc) {
-                return '<div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">' +
-                  '<div><span class="text-emerald-400 font-bold">' + ifc.name + '</span> <span class="text-slate-400">(' + ifc.family + ')</span></div>' +
-                  '<div class="text-slate-200">' + ifc.address + (ifc.mac ? ' · <span class="text-slate-400">' + ifc.mac + '</span>' : '') + '</div>' +
-                '</div>';
-              }).join('');
-            }
-          }
-        } catch (e) {
-          document.getElementById('statHostIfaces').textContent = '2 Active (Local)';
-        }
-
-        document.getElementById('statLastSweep').textContent = new Date().toLocaleTimeString();
-        note.textContent = '✓ Live Sweep Complete (' + networks.length + ' APs)';
-        renderTable();
-      }
-
-      document.getElementById('scanWifiBtn').addEventListener('click', runHardwareScan);
-      document.getElementById('ssidFilterInput').addEventListener('input', renderTable);
-      document.getElementById('toggleNativeScriptsBtn').addEventListener('click', function() {
-        document.getElementById('nativeScriptsPanel').classList.toggle('hidden');
-      });
-      document.getElementById('copyAllScriptsBtn').addEventListener('click', function() {
-        try {
-          if (document.hasFocus && document.hasFocus() && navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(document.getElementById('nativeScriptsCode').textContent).catch(function(){});
-          }
-        } catch (e) {}
-        this.textContent = '✓ Copied Scripts!';
-        var self = this;
-        setTimeout(function() { self.textContent = 'Copy Native Scripts'; }, 1800);
-      });
-
-      document.querySelectorAll('.band-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          activeBand = btn.getAttribute('data-band') || 'ALL';
-          document.querySelectorAll('.band-btn').forEach(function(b) {
-            b.className = 'band-btn px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 cursor-pointer';
-          });
-          btn.className = 'band-btn px-2.5 py-1 rounded-lg bg-emerald-400 text-slate-950 font-bold cursor-pointer';
-          renderTable();
-        });
-      });
-
-      runHardwareScan();
-    })();
-  </script>
-</body>
-</html>`;
-}
-
-function buildFallbackInteractivePortalHtml(
   question: string,
   appTitle: string,
   cumulativeContext?: string
@@ -1490,9 +1221,7 @@ function buildFallbackInteractivePortalHtml(
   if (isKey1CloneOrButtonRequest(question || "")) {
     return buildKey1ZeroDivergencePortalHtml();
   }
-  if (isWifiOrHardwareScannerRequest(question || "")) {
-    return buildWifiAndNetworkScannerPortalHtml();
-  }
+  
 
   const safeTitle = (appTitle || "Interactive Live Application Preview")
     .replace(/</g, "&lt;")
@@ -1757,7 +1486,6 @@ function sanitizeAndEnrichConsensusResult(
 
   // Strictly check the current question (and cumulativeContextText only if question itself doesn't introduce an unrelated topic)
   const isKey1Request = isKey1CloneOrButtonRequest(question);
-  const isWifiRequest = isWifiOrHardwareScannerRequest(question);
 
   // Detect if the LLM generated a fake status message placeholder instead of a real Key1 application
   const hasDummyStatusPlaceholder =
@@ -1765,19 +1493,11 @@ function sanitizeAndEnrichConsensusResult(
       generatedAppHtml
     );
 
-  if (isKey1Request) {
+    if (isKey1Request) {
     hasAppPreview = true;
     appTitle =
       "Direct GitHub Force-Deployment — https://github.com/malazhub/key (https://malazhub.github.io/key/)";
     generatedAppHtml = buildKey1ZeroDivergencePortalHtml();
-  } else if (isWifiRequest) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "ProScan Live Wi-Fi & Hardware Network Discovery Suite (Web + Native OS Bridge)";
-    if (!generatedAppHtml || !generatedAppHtml.includes("wifiTableBody")) {
-      generatedAppHtml = buildWifiAndNetworkScannerPortalHtml();
-    }
   } else {
     // Only treat text as claiming an interactive preview if shouldGenerateAppPreview is true or it explicitly points to a live preview below
     const answerMentionsInteractivePreview =
@@ -2152,7 +1872,7 @@ async function runSmartMemoryConsensusLoop(
   );
   const nextVer = "key";
   const isKey1CloneTarget = isKey1CloneOrButtonRequest(question);
-  const isWifiScannerTarget = isWifiOrHardwareScannerRequest(question);
+  
 
   // Option 5 — Instant Repeat-Query LRU Cache Check (only for standalone non-correction queries without attachments)
   const cacheKey = getNormalizedCacheKey(
@@ -2202,13 +1922,7 @@ CRITICAL PRIORITY, SINGLE-TOPIC & ANTI-REPETITION RULES FOR "finalAnswer":
       ? `ANTI-REPETITION & SELF-CORRECTION ALERT: The user is repeating or refining their query because the previous answer was incomplete or showed a dummy text status instead of a real working implementation. DO NOT write a generic apology ("I sincerely apologize...") and DO NOT repeat the previous text! Directly provide the exact working solution and confirm how every requirement in the Cumulative User Specification is now active.`
       : `Always provide a fresh, accurate, direct response to the user's current query without repeating prior text.`
   }
-- ${
-    isWifiScannerTarget
-      ? `AUTOMATIC HARDWARE & SYSTEM INTENT CLARIFIER ACTIVE: The user is requesting a Wi-Fi / Network Scanner application. DO NOT tell the user "cannot be done due to browser sandboxing"! Instead:
-  1. Provide the complete Live Interactive Wi-Fi & Hardware Network Discovery Dashboard in the preview below (connected to /api/local-hardware-scan).
-  2. Include ready-to-run Native OS Direct Wi-Fi Scanner commands in "finalAnswer" for Windows (netsh wlan show networks mode=bssid), Linux (nmcli dev wifi list), macOS (airport -s), and a cross-platform Python scanner script so the user has both the live web dashboard AND raw hardware scanning!`
-      : ""
-  }
+- 
 - NEVER return a dense, unsorted book-like wall of text!
 - NEVER put raw HTML tags (<div...>, <button...>, <iframe...>, <!DOCTYPE html>) inside "finalAnswer"! Put ALL interactive HTML/buttons/portals/UIs exclusively inside "generatedAppHtml" and set "hasAppPreview" = true.
 - ALWAYS structure "finalAnswer" wisely, thoroughly, and clearly in detailed Markdown for instant human visibility:
@@ -2241,12 +1955,6 @@ ${
     1. **Direct Repository Targeting (\`https://github.com/malazhub/key\`):** All secondary instances have been removed; the architecture points exclusively to \`https://github.com/malazhub/key\`.
     2. **Clean-Slate Git Force-Commit & Push:** Pushes all 21 compiled and source files (including compiled \`index.html\` with inlined CSS, \`./assets/*\`, \`.nojekyll\`, \`src/App.tsx\`, \`server.ts\`, \`package.json\`, and \`README.md\`) directly to \`main\`.
     3. **Live Entry Point (\`https://malazhub.github.io/key/\`):** Configured as the repository homepage and live URL.`
-    : isWifiScannerTarget
-    ? `- LIVE WI-FI & HARDWARE NETWORK SCANNER SUITE MODE IS ACTIVE:
-  - Set "hasAppPreview" = true and "appTitle" = "ProScan Live Wi-Fi & Hardware Network Discovery Suite (Web + Native OS Bridge)".
-  - In "finalAnswer", provide:
-    1. **Live Interactive Wi-Fi & Network Discovery Dashboard:** Explain how the live scanner below sweeps nearby SSIDs, BSSIDs (MAC), RSSI signal strength (dBm & %), 2.4 GHz / 5 GHz / 6 GHz bands, channels, security protocols (WPA3/WPA2), and live host network adapters via \`/api/local-hardware-scan\`.
-    2. **Native OS Direct Hardware Wi-Fi Scanner Commands (Windows, Linux, macOS & Python):** Provide copy-ready terminal commands (\`netsh wlan show networks mode=bssid\`, \`nmcli dev wifi list\`, \`airport -s\`, and a Python script) for direct raw 802.11 radio access on the user's device.`
     : options?.adminUpgradeMode
     ? `- ADMIN SELF-UPGRADE MODE IS ACTIVE (Target Version: https://github.com/malazhub/${nextVer}):
   - The Admin is requesting an upgrade/modification to the Key Multi-AI Consensus Application ("${question}").
@@ -2808,8 +2516,6 @@ Mode: ${
           .join(", ")}).\n\nOur **Persistent Contextual Router (PCR)** and **Global State Sync** are actively tracking every turn in real time with zero data loss. What topic, task, or application would you like us to work on next?`
     : isKey1CloneTarget
     ? `### Final Architectural Resolution: Direct GitHub Deployment (\`https://github.com/malazhub/key\`)\n\nI have completely purged all references to secondary instances. The system is now hard-coded to target your primary repository at **\`https://github.com/malazhub/key\`** and primary entry URL **\`https://malazhub.github.io/key/\`** (**${achievedFallback}% consensus** across all **${modelsList.length} AI engines**):\n\n1. **Direct Repository Targeting:**\n   - The application points exclusively to **\`https://github.com/malazhub/key\`** (branch \`main\`). All previous references to secondary instances have been removed from the source code and version ledger.\n\n2. **One-Click Full Structure Force-Deployment:**\n   - Clicking **\`Deploy\`** in the Admin panel (or inside the **Direct GitHub Force-Deployment** preview below) triggers a clean-slate Git commit and force-push of all 23 project files (including the compiled production \`index.html\`, \`assets/*\`, \`src/App.tsx\`, \`server.ts\`, \`package.json\`, and \`README.md\`) directly to **\`https://github.com/malazhub/key\`**.\n\n3. **URL Integration (\`https://malazhub.github.io/key/\`):**\n   - The primary link **\`https://malazhub.github.io/key/\`** is integrated into your GitHub repository homepage, \`README.md\`, and internal routing so clicking it opens the live **Key Multi-AI Consensus Engine**.\n\n4. **Execution:**\n   - Click the **\`Deploy\`** button in the Admin panel on the left (or click **\`Preview Application\`** below and click **\`🚀 Deploy to malazhub/key\`**) to execute the clean-slate force-push to your repository.`
-    : isWifiScannerTarget
-    ? `### ProScan Live Wi-Fi & Hardware Network Discovery Suite (Web + Native OS Bridge)\n\nAll **${modelsList.length} active AI engines** converged (**${achievedFallback}% consensus**) and deployed your complete **Live Wi-Fi & Hardware Network Scanner** below:\n\n1. **Live Interactive Wi-Fi & Network Discovery Dashboard (Active Below):**\n   - Click **\`📡 Scan Nearby Wi-Fi Now\`** inside the live preview below to sweep nearby wireless access points (**SSID**, **BSSID MAC**, **RSSI Signal Strength in dBm & %**, **2.4 GHz / 5 GHz / 6 GHz Bands**, **Channels**, and **WPA3/WPA2 Security**).\n   - Connects automatically to \`/api/local-hardware-scan\` to inspect active host OS network adapters in real time.\n\n2. **Direct Native OS Hardware Scanner Commands (Windows / Linux / macOS / Python):**\n   - Click **\`💻 Native OS Scripts\`** inside the preview (or run the commands below in your terminal) to query your raw 802.11 Wi-Fi adapter directly on your computer:\n   - **Windows:** \`netsh wlan show networks mode=bssid\`\n   - **Linux:** \`nmcli dev wifi rescan && nmcli -f SSID,BSSID,SIGNAL,BARS,FREQ,CHAN,SECURITY dev wifi list\`\n   - **macOS:** \`/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s\``
     : isKeyUpgradeQuery
     ? `### Direct GitHub Force-Deployment: \`https://github.com/malazhub/key\` → \`https://malazhub.github.io/key/\`\n\nAll **${modelsList.length} active AI engines** verified and executed the direct force-deployment architecture for **\`https://github.com/malazhub/key\`** (**${achievedFallback}% consensus**):\n\n1. **Direct Repository Targeting:** Hard-coded exclusively to **\`https://github.com/malazhub/key\`** (\`main\` branch) with all secondary instances purged.\n2. **Full Compiled + Source Key Structure Force-Push:** Pushes the compiled production \`index.html\` (with inlined CSS), \`./assets/*\`, \`.nojekyll\`, \`src/App.tsx\`, \`server.ts\`, \`package.json\`, and \`README.md\`.\n3. **Primary Live URL (\`https://malazhub.github.io/key/\`):** Linked directly in the repository homepage and header.`
     : isContextRouterQuery
@@ -3164,80 +2870,7 @@ async function startServer() {
     });
   });
 
-  // Option 1 & Option 6 — Local Hardware & Network Interface Scanner Bridge
-  app.get("/api/local-hardware-scan", async (_req, res) => {
-    const rawIfaces = os.networkInterfaces();
-    const interfaces: Array<{
-      name: string;
-      address: string;
-      family: string;
-      mac: string;
-      internal: boolean;
-    }> = [];
-
-    for (const [name, list] of Object.entries(rawIfaces)) {
-      if (!Array.isArray(list)) continue;
-      for (const item of list) {
-        if (!item.internal) {
-          interfaces.push({
-            name,
-            address: item.address,
-            family: String(item.family),
-            mac: item.mac || "",
-            internal: Boolean(item.internal),
-          });
-        }
-      }
-    }
-
-    const detectedWifiNetworks: Array<{
-      ssid: string;
-      bssid: string;
-      rssi: number;
-      quality: number;
-      band: string;
-      channel: string;
-      security: string;
-    }> = [];
-
-    await new Promise<void>((resolve) => {
-      exec(
-        "nmcli -t -f SSID,BSSID,SIGNAL,FREQ,CHAN,SECURITY dev wifi list 2>/dev/null",
-        { timeout: 1500 },
-        (err, stdout) => {
-          if (!err && stdout && stdout.trim()) {
-            const lines = stdout.trim().split("\n").slice(0, 12);
-            for (const line of lines) {
-              const parts = line.split(":");
-              if (parts.length >= 4 && parts[0]) {
-                const qual = Math.max(10, Math.min(100, Number(parts[2]) || 80));
-                const rssi = Math.round(-100 + qual * 0.65);
-                detectedWifiNetworks.push({
-                  ssid: parts[0],
-                  bssid: parts[1] || "00:1A:2B:3C:4D:5E",
-                  rssi,
-                  quality: qual,
-                  band: String(parts[3] || "").includes("5") ? "5 GHz" : "2.4 GHz",
-                  channel: `Ch ${parts[4] || "6"}`,
-                  security: parts[5] || "WPA2/WPA3",
-                });
-              }
-            }
-          }
-          resolve();
-        }
-      );
-    });
-
-    res.json({
-      hostname: os.hostname(),
-      platform: os.platform(),
-      arch: os.arch(),
-      interfaces,
-      detectedWifiNetworks,
-      scannedAt: new Date().toISOString(),
-    });
-  });
+  
 
   // Option 3 — Live Server-Sent Events (SSE) Streaming Endpoint (/api/consensus-stream)
   app.post("/api/consensus-stream", async (req, res) => {
