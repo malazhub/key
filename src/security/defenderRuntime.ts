@@ -1,6 +1,5 @@
 // ============================================================================
-// v18.0
-// 
+// v18.0.
 // WARNING: For use ONLY on systems you own or have explicit written 
 // authorization to test. 
 // ============================================================================
@@ -426,6 +425,14 @@ async function main() {
   await executeProductionAttack(fixture, engines);
 }
 
-if (require.main === module) {
-  main().catch((err) => { console.error("Campaign failed:", err); process.exit(1); });
+
+if (
+  typeof require !== "undefined" &&
+  typeof module !== "undefined" &&
+  require.main === module
+) {
+  main().catch((err) => {
+    console.error("Campaign failed:", err);
+    process.exit(1);
+  });
 }
