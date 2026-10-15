@@ -3807,7 +3807,6 @@ export const VERSION8_SUPERSEDING_ENGINE = {
   );
 });
 
-res.json(finalApiPayload);
       }
 
       res.json(finalApiPayload);
