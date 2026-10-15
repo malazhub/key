@@ -3517,28 +3517,29 @@ Treat the current follow-up as a recovery signal and produce the complete answer
             }))
         : [];
 
-                  const liveStructureContext =
-        await buildLiveServerStructureAndCachedStateContext(effectiveQuestion);
+                        const liveStructureContext =
+        await buildLiveServerStructureAndCachedStateContext(
+          effectiveQuestion
+        );
 
-      
-if (flowTraceId) {
-  recordFlowStep(
-    flowTraceId,
-    "4. Context preparation",
-    "ok",
-    {
-      incoming: {
-        effectiveQuestion,
-        cleanHistory,
-        safeAttachments,
-      },
-      outgoing: liveStructureContext ?? null,
-      decision: liveStructureContext
-        ? "Context returned and passed to the consensus loop."
-        : "No additional live context returned.",
-    },
-  );
-}
+      if (flowTraceId) {
+        recordFlowStep(
+          flowTraceId,
+          "4. Context preparation",
+          "ok",
+          {
+            incoming: {
+              effectiveQuestion,
+              cleanHistory,
+              safeAttachments,
+            },
+            outgoing: liveStructureContext ?? null,
+            decision: liveStructureContext
+              ? "Context returned and passed to the consensus loop."
+              : "No additional live context returned.",
+          }
+        );
+      }
 
 
      
