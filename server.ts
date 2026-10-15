@@ -18,6 +18,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import {
   startFlowTrace,
   recordFlowEvent,
+  recordFlowStep,
   finishFlowTrace,
   getLatestFlowTrace,
   formatFlowTrace,
@@ -3570,12 +3571,11 @@ if (flowTraceId) {
     engineResults: result.nodeContributions,
   },
   outgoing: {
-    finalAnswer: result.finalAnswer,
-    achievedAgreement: result.achievedAgreement,
-    targetAgreement: result.targetAgreement,
-    iterationsRequired: result.iterationsRequired,
-    convergenceRounds: result.convergenceRounds,
-  },
+  finalAnswer: result.answer,
+  achievedAgreement: result.consensus.achievedAgreement,
+  targetAgreement: result.consensus.targetAgreement,
+  iterationsRequired: result.consensus.iterationsRequired,
+},
   decision: "Consensus returned its result. Individual comparison and retry decisions must be recorded inside the consensus loop.",
 });
       }
