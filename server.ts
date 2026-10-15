@@ -3284,7 +3284,7 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         return;
       }
 
-      flowTraceId = startFlowTrace();
+     flowTraceId = startFlowTrace(effectiveQuestion);
 
       recordFlowEvent(
         flowTraceId,
