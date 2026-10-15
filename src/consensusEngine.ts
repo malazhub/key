@@ -39,21 +39,6 @@ export interface EngineDispatchRequest {
   responseSchema?: unknown;
 }
 
-recordFlowStep(traceId, `5. Engine dispatch: ${engine}`, "ok", {
-  incoming: {
-    engine: result.engine,
-    provider: result.provider,
-    modelId: result.modelId,
-    prompt: actualPrompt,
-    systemInstruction: actualSystemInstruction,
-  },
-  outgoing: {
-    answer: result.answer,
-    latencyMs: result.latencyMs,
-    status: "ok",
-  },
-  decision: "Dispatch returned a result; record the actual downstream handling decision.",
-});
 
 export const ENGINE_REGISTRY: Record<
   string,
