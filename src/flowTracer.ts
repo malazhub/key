@@ -141,76 +141,81 @@ export function getLatestFlowTrace(): FlowTrace | undefined {
 export function formatFlowTrace(trace: FlowTrace | undefined): string {
   if (!trace) {
     return [
-      "QUERY-TO-RESPONSE FLOW",
+      "# Query-to-response trace",
       "",
-      "Your question",
-      "     |",
-      "     v",
-      "Trace lookup",
-      "     |",
-      "     v",
       "No previous query trace was found.",
       "",
-      "Send a normal message first, then type: show trace",
+      "Send a normal message first, then type: show trace.",
     ].join("\n");
   }
 
   const lines = [
-    "QUERY-TO-RESPONSE FLOW",
-    "======================",
+    "# Query-to-response trace",
     "",
-    `Trace: ${trace.id}`,
-    `Question: ${trace.question || "(Question not recorded)"}`,
-    `Started: ${trace.startedAt}`,
-    `Finished: ${trace.finishedAt ?? "Still running"}`,
-    `Result: ${trace.status === "ok" ? "Completed successfully" : trace.status.toUpperCase()}`,
+    "- **Trace ID:** " + trace.id,
+    "- **Question:** " + (trace.question || "(Question not recorded)"),
+    "- **Started:** " + trace.startedAt,
+    "- **Finished:** " + (trace.finishedAt ?? "Still running"),
+    "- **Execution status:** " +
+      (trace.status === "ok"
+        ? "OK — the request/response completed; this does not verify answer correctness."
+        : trace.status.toUpperCase()),
     "",
-    "QUERY-TO-RESPONSE EXECUTION",
-    "     |",
-    "     v",
+    "> Every step below shows the data actually recorded at that boundary. A field marked NOT RECORDED was not captured; it is not inferred.",
+    "",
   ];
 
-    for (const event of trace.events) {
-    const step = event.step.trim().toLowerCase();
+  function jsonBlock(value: unknown): string[] {
+    if (value === undefined) return ["NOT RECORDED"];
+    if (value === null) return ["null"];
 
-    let title = event.step;
-    let detail = event.detail ?? "";
-
-    if (step === "request received") {
-      title = "1. Request received";
-      detail = "The server accepted the user's question.";
-    } else if (step === "intent routing") {
-      title = "2. Request intent determined";
-      detail = detail.includes("chat")
-        ? "Classified as a normal conversation."
-        : detail.replace(/^Intent type:\s*/i, "Request type: ");
-    } else if (step === "engine selection validated") {
-      title = "3. AI engine selection validated";
-      const engineCount = detail.match(/(\d+)\s+engine/i)?.[1];
-      const agreement = detail.match(/(\d+)%/i)?.[1];
-
-      detail = [
-        engineCount ? `${engineCount} AI engines selected` : detail,
-        agreement ? `Target agreement: ${agreement}%` : "",
-      ].filter(Boolean).join(". ");
-    } else if (step === "server context preparation") {
-      title = "4. Request context prepared";
-      detail = /no additional live structure context returned/i.test(detail)
-        ? "No additional live context was returned."
-        : detail;
-    } else if (step === "consensus engine completed") {
-      title = "5. Consensus processing completed";
-      detail = "The consensus process returned its result.";
-    } else if (step === "final response prepared") {
-      title = "6. Final response prepared";
-      detail = event.durationMs === undefined
-        ? "The response was assembled for delivery."
-        : `Response assembly took ${(event.durationMs / 1000).toFixed(2)} seconds.`;
-    } else if (step === "request failed") {
-      title = "Request failed";
-      detail = detail || "The server could not complete the request.";
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(value, null, 2) ?? String(value);
+    } catch {
+      serialized = "[Value could not be serialized]";
     }
 
+    return ["~~~json", serialized, "~~~"];
+  }
+
+  function normalizeStepName(value: string): string {
+    return value
+      .trim()
+      .replace(/^\d+\s*[.):\-]\s*/, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function readableStepName(value: string): string {
+    const step = normalizeStepName(value);
+
+    if (step === "request received") return "Request received";
+    if (step === "intent routing") return "Intent routing";
+    if (
+      step === "engine selection and validation" ||
+      step === "engine selection validated"
+    ) return "Engine selection and validation";
+    if (
+      step === "context preparation" ||
+      step === "server context preparation"
+    ) return "Context preparation";
+    if (
+      step === "consensus processing" ||
+      step === "consensus engine completed"
+    ) return "Consensus processing";
+    if (
+      step === "final response assembly" ||
+      step === "final response prepared"
+    ) return "Final response assembly";
+    if (step === "response delivery") return "Response delivery";
+    if (step === "request failed") return "Request failed";
+
+    return value.trim().replace(/^\d+\s*[.):\-]\s*/, "").trim() || "Unnamed step";
+  }
+
+  trace.events.forEach((event, index) => {
+    const title = readableStepName(event.step);
     const status =
       event.status === "ok"
         ? "COMPLETED"
@@ -220,33 +225,46 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
             ? "SKIPPED"
             : "RUNNING";
 
-    lines.push(`     ${title}`);
-    lines.push("          |");
-    lines.push(`          +-- Status: ${status}`);
-
+    lines.push("## Step " + (index + 1) + " — " + title);
+    lines.push("");
+    lines.push("- **Status:** " + status);
+    lines.push("- **Timestamp:** " + event.at);
     if (typeof event.durationMs === "number") {
-      lines.push(`          +-- Duration: ${event.durationMs} ms`);
+      lines.push("- **Duration:** " + event.durationMs + " ms");
+    }
+    lines.push("");
+
+    if (event.detail) {
+      lines.push("**Detail**");
+      lines.push("");
+      lines.push(event.detail);
+      lines.push("");
     }
 
-    if (detail) {
-  lines.push(`          +-- ${detail}`);
-}
-lines.push(`          +-- Timestamp: ${event.at}`);
-lines.push(`          +-- Input: ${formatFlowValue(event.incoming)}`);
-lines.push(`          +-- Output: ${formatFlowValue(event.outgoing)}`);
-lines.push(`          +-- Decision: ${event.decision ?? "NOT RECORDED"}`);
+    lines.push("**Incoming**");
+    lines.push("");
+    lines.push(...jsonBlock(event.incoming));
+    lines.push("");
+    lines.push("**Outgoing**");
+    lines.push("");
+    lines.push(...jsonBlock(event.outgoing));
+    lines.push("");
 
-    lines.push("          |");
-    lines.push("          v");
+    lines.push("**Decision**");
+    lines.push("");
+    lines.push(event.decision || "NOT RECORDED");
+    lines.push("");
+  });
+
+  lines.push("## Trace conclusion");
+  lines.push("");
+  if (trace.status === "ok") {
+    lines.push("The request/response path finished without a recorded transport error. Answer correctness is not evaluated by this status.");
+  } else if (trace.status === "error") {
+    lines.push("The request ended with a recorded error.");
+  } else {
+    lines.push("The request is still running or has not been finalized.");
   }
-
-  lines.push(
-    trace.status === "ok"
-      ? "FINAL RESPONSE DELIVERED"
-      : trace.status === "error"
-        ? "REQUEST ENDED WITH AN ERROR"
-        : "REQUEST STILL RUNNING"
-  );
 
   return lines.join("\n");
 }
