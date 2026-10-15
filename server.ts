@@ -3271,8 +3271,15 @@ Treat the current follow-up as a recovery signal and produce the complete answer
       }
 
       // Show the previous completed trace only when the user explicitly asks.
-            const wantsFlowTrace =
-        /^\s*show\s+trace\s*[.!?]*\s*$/i.test(requestedQuestion);
+           const traceRequestText = requestedQuestion.trim();
+
+const wantsFlowTrace =
+  /\b(show|display|print|view|inspect|explain|walk me through)\b[\s\S]{0,120}\b(trace|execution flow|logic steps|processing steps|inputs and outputs)\b/i.test(
+    traceRequestText
+  ) ||
+  /\b(trace the logic|trace the flow|trace from the beginning|steps from the beginning of (the )?query|query to the final response)\b/i.test(
+    traceRequestText
+  );
 
       if (wantsFlowTrace) {
         const trace = getLatestFlowTrace();
@@ -3812,13 +3819,17 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       res.json(finalApiPayload);
     } catch (error: unknown) {
       if (flowTraceId) {
-        recordFlowEvent(
-          flowTraceId,
-          "Request failed",
-          "error",
-          "The request failed in the server handler",
-          Date.now() - flowTraceStartedAt
-        );
+        recordFlowStep(flowTraceId, "Request failed", "error", {
+  incoming: { question: requestedQuestion },
+  outgoing: {
+    statusCode: 500,
+    error: error instanceof Error
+      ? error.message
+      : "Failed to run multi-AI consensus loop.",
+  },
+  decision: "The server handler failed before successful completion.",
+  durationMs: Date.now() - flowTraceStartedAt,
+});
 
         finishFlowTrace(flowTraceId, "error");
       }
