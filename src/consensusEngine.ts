@@ -39,6 +39,14 @@ export interface EngineDispatchRequest {
   responseSchema?: unknown;
 }
 
+export interface EngineDispatchResult {
+  engine: string;
+  provider: EngineProvider;
+  modelId: string;
+  answer: string;
+  latencyMs: number;
+}
+
 
 export const ENGINE_REGISTRY: Record<
   string,
