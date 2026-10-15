@@ -170,7 +170,8 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     "     v",
   ];
 
-  for (const event of trace.events) {
+    for (const event of trace.events) {
+    const step = event.step.trim().toLowerCase();
 
     let title = event.step;
     let detail = event.detail ?? "";
