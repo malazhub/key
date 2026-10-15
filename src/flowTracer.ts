@@ -85,26 +85,68 @@ export function getLatestFlowTrace(): FlowTrace | undefined {
 
 export function formatFlowTrace(trace: FlowTrace | undefined): string {
   if (!trace) {
-    return "No completed query trace is available in this server session yet.";
+    return [
+      "QUERY-TO-RESPONSE FLOWCHART",
+      "",
+      "[Show Trace Command]",
+      "        |",
+      "        v",
+      "[Trace Lookup]",
+      "        |",
+      "        v",
+      "[No Completed Query Trace Found]",
+      "",
+      "Run a normal query first, then ask: show trace",
+    ].join("\n");
   }
 
   const lines = [
-    `Query Flow Trace`,
+    "QUERY-TO-RESPONSE FLOWCHART",
+    "",
     `Trace ID: ${trace.id}`,
     `Started: ${trace.startedAt}`,
-    `Finished: ${trace.finishedAt ?? "still running"}`,
-    `Status: ${trace.status}`,
+    `Finished: ${trace.finishedAt ?? "Still running"}`,
+    `Overall Status: ${trace.status.toUpperCase()}`,
     "",
-    ...trace.events.map((event) => {
-      const elapsed =
-        event.durationMs === undefined ? "" : ` (${event.durationMs} ms)`;
-      const detail = event.detail ? ` — ${event.detail}` : "";
-
-      return `${event.id}. [${event.status.toUpperCase()}] ${event.step}${elapsed}${detail}`;
-    }),
-    "",
-    "Only instrumented events are shown. This trace does not expose hidden model reasoning.",
+    "[USER QUERY RECEIVED]",
+    "        |",
   ];
+
+  for (const event of trace.events) {
+    const status =
+      event.status === "ok"
+        ? "PASS"
+        : event.status === "error"
+          ? "FAIL"
+          : event.status.toUpperCase();
+
+    const elapsed =
+      event.durationMs === undefined
+        ? ""
+        : ` | ${event.durationMs} ms`;
+
+    lines.push("        v");
+    lines.push(
+      `[${String(event.id).padStart(2, "0")}] ${event.step}`
+    );
+    lines.push(`     Status: ${status}${elapsed}`);
+
+    if (event.detail) {
+      lines.push(`     Detail: ${event.detail}`);
+    }
+
+    lines.push("        |");
+  }
+
+  lines.push(
+    "        v",
+    "[FINAL RESPONSE PREPARED]",
+    "        |",
+    "        v",
+    `[REQUEST FINISHED: ${trace.status.toUpperCase()}]`,
+    "",
+    "Only instrumented execution events are shown; hidden model reasoning is not exposed."
+  );
 
   return lines.join("\n");
 }
