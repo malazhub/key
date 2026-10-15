@@ -3788,6 +3788,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 );
 
         res.once("finish", () => {
+          if (!flowTraceId) return;
   recordFlowStep(flowTraceId, "8. Response delivery", "ok", {
     incoming: {
       statusCode: res.statusCode,
