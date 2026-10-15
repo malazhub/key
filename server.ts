@@ -3542,12 +3542,17 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         }
       );
 
-      if (flowTraceId) {
+            if (flowTraceId) {
+        const resultSummary =
+          typeof result === "string"
+            ? result
+            : JSON.stringify(result);
+
         recordFlowEvent(
           flowTraceId,
           "Consensus engine completed",
           "ok",
-          "Existing consensus function returned"
+          `Consensus result: ${(resultSummary || "No result returned").slice(0, 200)}`
         );
       }
 
@@ -3734,12 +3739,17 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         }
       }
 
-           if (flowTraceId) {
+                      if (flowTraceId) {
+        const responseSummary =
+          typeof finalApiPayload.answer === "string"
+            ? finalApiPayload.answer
+            : JSON.stringify(finalApiPayload.answer ?? finalApiPayload);
+
         recordFlowEvent(
           flowTraceId,
           "Final response prepared",
           "ok",
-          "Final API payload prepared",
+          `Reply prepared: ${(responseSummary || "No readable answer returned").slice(0, 200)}`,
           Date.now() - flowTraceStartedAt
         );
 
