@@ -86,66 +86,106 @@ export function getLatestFlowTrace(): FlowTrace | undefined {
 export function formatFlowTrace(trace: FlowTrace | undefined): string {
   if (!trace) {
     return [
-      "QUERY-TO-RESPONSE FLOWCHART",
+      "QUERY-TO-RESPONSE FLOW",
       "",
-      "[Show Trace Command]",
-      "        |",
-      "        v",
-      "[Trace Lookup]",
-      "        |",
-      "        v",
-      "[No Completed Query Trace Found]",
+      "Your question",
+      "     |",
+      "     v",
+      "Trace lookup",
+      "     |",
+      "     v",
+      "No previous query trace was found.",
       "",
-      "Run a normal query first, then ask: show trace",
+      "Send a normal message first, then type: show trace",
     ].join("\n");
   }
 
   const lines = [
-    "QUERY-TO-RESPONSE FLOWCHART",
+    "QUERY-TO-RESPONSE FLOW",
+    "======================",
     "",
-    `Trace ID: ${trace.id}`,
+    `Trace: ${trace.id}`,
     `Started: ${trace.startedAt}`,
     `Finished: ${trace.finishedAt ?? "Still running"}`,
-    `Overall Status: ${trace.status.toUpperCase()}`,
+    `Result: ${trace.status === "ok" ? "Completed successfully" : trace.status.toUpperCase()}`,
     "",
-    "[USER QUERY RECEIVED]",
-    "        |",
+    "YOUR MESSAGE",
+    "     |",
   ];
 
+  const shownSteps = new Set<string>();
+
   for (const event of trace.events) {
-    const status =
-      event.status === "ok"
-        ? "PASS"
-        : event.status === "error"
-          ? "FAIL"
-          : event.status.toUpperCase();
+    const step = event.step.trim().toLowerCase();
 
-    const elapsed =
-      event.durationMs === undefined
-        ? ""
-        : ` | ${event.durationMs} ms`;
+    // Hide repeated events that add no new information.
+    const key = `${step}:${event.detail ?? ""}`;
+    if (shownSteps.has(key)) continue;
+    shownSteps.add(key);
 
-    lines.push("        v");
-    lines.push(
-      `[${String(event.id).padStart(2, "0")}] ${event.step}`
-    );
-    lines.push(`     Status: ${status}${elapsed}`);
+    let title = event.step;
+    let detail = event.detail ?? "";
 
-    if (event.detail) {
-      lines.push(`     Detail: ${event.detail}`);
+    if (step === "request received") {
+      title = "Message received by the server";
+      detail = "The server accepted your request.";
+    } else if (step === "intent routing") {
+      title = "Understanding your request";
+      detail = detail.includes("chat")
+        ? "Classified as a normal conversation."
+        : detail.replace(/^Intent type:\s*/i, "Request type: ");
+    } else if (step === "engine selection validated") {
+      title = "Checking the selected AI engines";
+      const engineCount = detail.match(/(\d+)\s+engine/i)?.[1];
+      const agreement = detail.match(/(\d+)%/i)?.[1];
+      detail = [
+        engineCount ? `${engineCount} AI engines selected` : "",
+        agreement ? `Target agreement: ${agreement}%` : "",
+      ].filter(Boolean).join(". ");
+    } else if (step === "server context preparation") {
+      title = "Preparing supporting context";
+      detail = /no additional live structure context returned/i.test(detail)
+        ? "No extra live context was needed for this request."
+        : detail;
+    } else if (step === "consensus engine completed") {
+      title = "AI response generation completed";
+      detail = "The consensus process returned its result.";
+    } else if (step === "final response prepared") {
+      title = "Preparing the reply";
+      detail = event.durationMs === undefined
+        ? "The response was assembled for delivery."
+        : `The response was assembled in ${(event.durationMs / 1000).toFixed(2)} seconds.`;
+    } else if (step === "request failed") {
+      title = "The request encountered an error";
+      detail = detail || "The server could not complete the request.";
     }
 
-    lines.push("        |");
+    const status =
+      event.status === "ok"
+        ? "Completed"
+        : event.status === "error"
+          ? "Failed"
+          : event.status;
+
+    lines.push("     v");
+    lines.push(title);
+    lines.push(`     Result: ${status}`);
+
+    if (detail) {
+      lines.push(`     ${detail}`);
+    }
+
+    lines.push("     |");
   }
 
   lines.push(
-    "        v",
-    "[FINAL RESPONSE PREPARED]",
-    "        |",
-    "        v",
-    `[REQUEST FINISHED: ${trace.status.toUpperCase()}]`,
-    "",
-    "Only instrumented execution events are shown; hidden model reasoning is not exposed."
+    "     v",
+    "REPLY READY",
+    "     |",
+    "     v",
+    trace.status === "ok"
+      ? "Your response was prepared successfully."
+      : `Request ended with status: ${trace.status}.`
   );
 
   return lines.join("\n");
