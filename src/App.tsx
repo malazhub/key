@@ -5573,11 +5573,41 @@ const data = await res.json();
       });
 
       const data = await response.json();
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to generate application preview from context."
-        );
-      }
+if (!response.ok) {
+  throw new Error(
+    data.error || "Failed to generate application preview from context."
+  );
+}
+
+if (data.tracerOnly === true) {
+  const traceMessage: ChatMessage = {
+    id: `assistant-trace-${Date.now()}`,
+    role: "assistant",
+    content:
+      typeof data.answer === "string"
+        ? data.answer
+        : "No trace output was returned.",
+    timestamp: new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+  };
+
+  setThreads((prev) =>
+    prev.map((thread) =>
+      thread.id === activeThreadId
+        ? {
+            ...thread,
+            updatedAt: traceMessage.timestamp,
+            messages: [...thread.messages, traceMessage],
+          }
+        : thread
+    )
+  );
+
+  setProcessing(false);
+  return;
+}
 
       const finalApp = buildInstantClientAppFromContext(
         contextUserMsg.content,
