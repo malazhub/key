@@ -3819,10 +3819,10 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       res.json(finalApiPayload);
     } catch (error: unknown) {
       if (flowTraceId) {
-        recordFlowStep(flowTraceId, "Request failed", "error", {
-  incoming: { question: requestedQuestion },
-  outgoing: {
-    statusCode: 500,
+                recordFlowStep(flowTraceId, "Request failed", "error", {
+          incoming: { traceId: flowTraceId },
+          outgoing: {
+            statusCode: 500,
     error: error instanceof Error
       ? error.message
       : "Failed to run multi-AI consensus loop.",
