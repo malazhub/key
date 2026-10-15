@@ -14,6 +14,7 @@ export interface FlowEvent {
 
 export interface FlowTrace {
   id: string;
+  question: string;
   startedAt: string;
   finishedAt?: string;
   status: FlowStatus;
@@ -24,11 +25,12 @@ const MAX_TRACES = 30;
 const traces = new Map<string, FlowTrace>();
 let latestCompletedTraceId: string | undefined;
 
-export function startFlowTrace(): string {
+export function startFlowTrace(question = ""): string {
   const id = randomUUID();
 
   traces.set(id, {
     id,
+    question: question.slice(0, 2000),
     startedAt: new Date().toISOString(),
     status: "running",
     events: [],
@@ -105,21 +107,22 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     "======================",
     "",
     `Trace: ${trace.id}`,
+    `Question: ${trace.question || "(Question not recorded)"}`,
     `Started: ${trace.startedAt}`,
     `Finished: ${trace.finishedAt ?? "Still running"}`,
     `Result: ${trace.status === "ok" ? "Completed successfully" : trace.status.toUpperCase()}`,
     "",
-    "YOUR MESSAGE",
+    "QUERY-TO-RESPONSE EXECUTION",
     "     |",
+    "     v",
   ];
 
   const shownSteps = new Set<string>();
 
   for (const event of trace.events) {
     const step = event.step.trim().toLowerCase();
-
-    // Hide repeated events that add no new information.
     const key = `${step}:${event.detail ?? ""}`;
+
     if (shownSteps.has(key)) continue;
     shownSteps.add(key);
 
@@ -127,65 +130,71 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     let detail = event.detail ?? "";
 
     if (step === "request received") {
-      title = "Message received by the server";
-      detail = "The server accepted your request.";
+      title = "1. Request received";
+      detail = "The server accepted the user's question.";
     } else if (step === "intent routing") {
-      title = "Understanding your request";
+      title = "2. Request intent determined";
       detail = detail.includes("chat")
         ? "Classified as a normal conversation."
         : detail.replace(/^Intent type:\s*/i, "Request type: ");
     } else if (step === "engine selection validated") {
-      title = "Checking the selected AI engines";
+      title = "3. AI engine selection validated";
       const engineCount = detail.match(/(\d+)\s+engine/i)?.[1];
       const agreement = detail.match(/(\d+)%/i)?.[1];
+
       detail = [
-        engineCount ? `${engineCount} AI engines selected` : "",
+        engineCount ? `${engineCount} AI engines selected` : detail,
         agreement ? `Target agreement: ${agreement}%` : "",
       ].filter(Boolean).join(". ");
     } else if (step === "server context preparation") {
-      title = "Preparing supporting context";
+      title = "4. Request context prepared";
       detail = /no additional live structure context returned/i.test(detail)
-        ? "No extra live context was needed for this request."
+        ? "No additional live context was returned."
         : detail;
     } else if (step === "consensus engine completed") {
-      title = "AI response generation completed";
+      title = "5. Consensus processing completed";
       detail = "The consensus process returned its result.";
     } else if (step === "final response prepared") {
-      title = "Preparing the reply";
+      title = "6. Final response prepared";
       detail = event.durationMs === undefined
         ? "The response was assembled for delivery."
-        : `The response was assembled in ${(event.durationMs / 1000).toFixed(2)} seconds.`;
+        : `Response assembly took ${(event.durationMs / 1000).toFixed(2)} seconds.`;
     } else if (step === "request failed") {
-      title = "The request encountered an error";
+      title = "Request failed";
       detail = detail || "The server could not complete the request.";
     }
 
     const status =
       event.status === "ok"
-        ? "Completed"
+        ? "COMPLETED"
         : event.status === "error"
-          ? "Failed"
-          : event.status;
+          ? "FAILED"
+          : event.status === "skipped"
+            ? "SKIPPED"
+            : "RUNNING";
 
-    lines.push("     v");
-    lines.push(title);
-    lines.push(`     Result: ${status}`);
+    lines.push(`     ${title}`);
+    lines.push("          |");
+    lines.push(`          +-- Status: ${status}`);
 
-    if (detail) {
-      lines.push(`     ${detail}`);
+    if (typeof event.durationMs === "number") {
+      lines.push(`          +-- Duration: ${event.durationMs} ms`);
     }
 
-    lines.push("     |");
+    if (detail) {
+      lines.push(`          +-- ${detail}`);
+    }
+
+    lines.push("          |");
+    lines.push("          v");
   }
 
   lines.push(
-    "     v",
-    "REPLY READY",
-    "     |",
-    "     v",
     trace.status === "ok"
-      ? "Your response was prepared successfully."
-      : `Request ended with status: ${trace.status}.`
+      ? "FINAL RESPONSE DELIVERED"
+      : trace.status === "error"
+        ? "REQUEST ENDED WITH AN ERROR"
+        : "REQUEST STILL RUNNING"
   );
 
   return lines.join("\n");
