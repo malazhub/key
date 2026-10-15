@@ -14,6 +14,15 @@ import { exec, spawn } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
+
+import {
+  startFlowTrace,
+  recordFlowEvent,
+  finishFlowTrace,
+  getLatestFlowTrace,
+  formatFlowTrace,
+} from "./src/flowTracer";
+
 import {
   dispatchEngine,
   ENGINE_REGISTRY,
@@ -3168,7 +3177,10 @@ async function startServer() {
   }
 );
 
-  app.post("/api/consensus-chat", async (req, res) => {
+    app.post("/api/consensus-chat", async (req, res) => {
+    let flowTraceId: string | undefined;
+    const flowTraceStartedAt = Date.now();
+
     try {
       const {
         question,
@@ -3247,7 +3259,7 @@ Treat the current follow-up as a recovery signal and produce the complete answer
               .join(", ")} and provide a clear, well-structured response.`
           : "";
 
-      if (!effectiveQuestion) {
+            if (!effectiveQuestion) {
         res
           .status(400)
           .json({
@@ -3255,11 +3267,45 @@ Treat the current follow-up as a recovery signal and produce the complete answer
               "Please provide a question or attach a photo, video, or file.",
           });
         return;
-        }
-              // ── Explicit code-modification command routing ──
-      let intent: Intent;
+      }
+
+      // Show the previous completed trace only when the user explicitly asks.
+            const wantsFlowTrace =
+        /^\s*show\s+trace\s*[.!?]*\s*$/i.test(requestedQuestion);
+
+      if (wantsFlowTrace) {
+        const trace = getLatestFlowTrace();
+
+        res.json({
+          answer: formatFlowTrace(trace),
+          flowTrace: trace ?? null,
+          tracerOnly: true,
+        });
+        return;
+      }
+
+      flowTraceId = startFlowTrace();
+
+      recordFlowEvent(
+        flowTraceId,
+        "Request received",
+        "ok",
+        "POST /api/consensus-chat"
+      );
+
+      // ── Explicit code-modification command routing ──
+            let intent: Intent;
       try {
         intent = routeIntent(effectiveQuestion);
+
+        if (flowTraceId) {
+          recordFlowEvent(
+            flowTraceId,
+            "Intent routing",
+            "ok",
+            `Intent type: ${intent.type}`
+          );
+        }
       } catch (error) {
         res.status(400).json({
           success: false,
@@ -3423,7 +3469,7 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         return;
       }
 
-      const safeTarget = Math.max(
+            const safeTarget = Math.max(
         0,
         Math.min(
           100,
@@ -3433,6 +3479,15 @@ Treat the current follow-up as a recovery signal and produce the complete answer
             : 95
         )
       );
+
+      if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Engine selection validated",
+          "ok",
+          `${modelsList.length} engine(s); target agreement ${safeTarget}%`
+        );
+      }
 
       const cleanHistory: HistoryTurn[] = Array.isArray(history)
         ? history
@@ -3448,10 +3503,32 @@ Treat the current follow-up as a recovery signal and produce the complete answer
             }))
         : [];
 
-      const liveStructureContext =
+                  const liveStructureContext =
         await buildLiveServerStructureAndCachedStateContext(effectiveQuestion);
 
-      const result = await runSharedConsensusLoop(
+      if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Server context preparation",
+          "ok",
+          liveStructureContext
+            ? "Context prepared"
+            : "No additional live structure context returned"
+        );
+      }
+
+      if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Server context preparation",
+          "ok",
+          liveStructureContext
+            ? "Context prepared"
+            : "No additional live structure context returned"
+        );
+      }
+
+            const result = await runSharedConsensusLoop(
         effectiveQuestion,
         cleanHistory,
         modelsList,
@@ -3464,6 +3541,15 @@ Treat the current follow-up as a recovery signal and produce the complete answer
           liveStructureContext,
         }
       );
+
+      if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Consensus engine completed",
+          "ok",
+          "Existing consensus function returned"
+        );
+      }
 
       // If the user is asking to force-deploy to GitHub, immediately trigger the server-side force-deploy as well
       let autoDeployResult: Record<string, any> | null = null;
@@ -3648,8 +3734,32 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         }
       }
 
+           if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Final response prepared",
+          "ok",
+          "Final API payload prepared",
+          Date.now() - flowTraceStartedAt
+        );
+
+        finishFlowTrace(flowTraceId, "ok");
+      }
+
       res.json(finalApiPayload);
     } catch (error: unknown) {
+      if (flowTraceId) {
+        recordFlowEvent(
+          flowTraceId,
+          "Request failed",
+          "error",
+          "The request failed in the server handler",
+          Date.now() - flowTraceStartedAt
+        );
+
+        finishFlowTrace(flowTraceId, "error");
+      }
+
       console.error("Consensus API Error:", error);
       const message =
         error instanceof Error
