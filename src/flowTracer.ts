@@ -3,7 +3,17 @@ import { randomUUID } from "node:crypto";
 
 export type FlowStatus = "running" | "ok" | "error" | "skipped";
 
+function formatFlowValue(value: unknown): string {
+  if (value === undefined) return "NOT RECORDED";
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
 
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return "[Value could not be serialized]";
+  }
+}
 export interface FlowEvent {
   id: number;
   step: string;
@@ -218,8 +228,12 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     }
 
     if (detail) {
-      lines.push(`          +-- ${detail}`);
-    }
+  lines.push(`          +-- ${detail}`);
+}
+lines.push(`          +-- Timestamp: ${event.at}`);
+lines.push(`          +-- Input: ${formatFlowValue(event.incoming)}`);
+lines.push(`          +-- Output: ${formatFlowValue(event.outgoing)}`);
+lines.push(`          +-- Decision: ${event.decision ?? "NOT RECORDED"}`);
 
     lines.push("          |");
     lines.push("          v");
