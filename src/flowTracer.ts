@@ -160,14 +160,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     "     v",
   ];
 
-  const shownSteps = new Set<string>();
-
   for (const event of trace.events) {
-    const step = event.step.trim().toLowerCase();
-    const key = `${step}:${event.detail ?? ""}`;
-
-    if (shownSteps.has(key)) continue;
-    shownSteps.add(key);
 
     let title = event.step;
     let detail = event.detail ?? "";
