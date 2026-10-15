@@ -3557,12 +3557,22 @@ Treat the current follow-up as a recovery signal and produce the complete answer
             ? result
             : JSON.stringify(result);
 
-        recordFlowEvent(
-          flowTraceId,
-          "Consensus engine completed",
-          "ok",
-          `Consensus result: ${(resultSummary || "No result returned").slice(0, 200)}`
-        );
+        recordFlowStep(flowTraceId, "6. Consensus processing", "ok", {
+  incoming: {
+    question: effectiveQuestion,
+    models: modelsList,
+    targetAgreement: safeTarget,
+    engineResults: result.nodeContributions,
+  },
+  outgoing: {
+    finalAnswer: result.finalAnswer,
+    achievedAgreement: result.achievedAgreement,
+    targetAgreement: result.targetAgreement,
+    iterationsRequired: result.iterationsRequired,
+    convergenceRounds: result.convergenceRounds,
+  },
+  decision: "Consensus returned its result. Individual comparison and retry decisions must be recorded inside the consensus loop.",
+});
       }
 
       // If the user is asking to force-deploy to GitHub, immediately trigger the server-side force-deploy as well
@@ -3754,15 +3764,43 @@ export const VERSION8_SUPERSEDING_ENGINE = {
             ? finalApiPayload.answer
             : JSON.stringify(finalApiPayload.answer ?? finalApiPayload);
 
-        recordFlowEvent(
-          flowTraceId,
-          "Final response prepared",
-          "ok",
-          `Reply prepared: ${(responseSummary || "No readable answer returned").slice(0, 200)}`,
-          Date.now() - flowTraceStartedAt
-        );
+        recordFlowStep(
+  flowTraceId,
+  "7. Final response assembly",
+  "ok",
+  {
+    incoming: {
+      consensusResult: result,
+    },
+    outgoing: finalApiPayload,
+    decision:
+      finalApiPayload.answer === result.finalAnswer
+        ? "Final answer matches the consensus answer."
+        : "Final answer differs from the consensus answer; inspect the payload transformation.",
+    durationMs: Date.now() - flowTraceStartedAt,
+  },
+);
 
-        finishFlowTrace(flowTraceId, "ok");
+        res.once("finish", () => {
+  recordFlowStep(flowTraceId, "8. Response delivery", "ok", {
+    incoming: {
+      statusCode: res.statusCode,
+    },
+    outgoing: {
+      statusCode: res.statusCode,
+      headersSent: res.headersSent,
+      writableEnded: res.writableEnded,
+    },
+    decision: "HTTP response finished; client receipt or display is NOT CAPTURED.",
+  });
+
+  finishFlowTrace(
+    flowTraceId,
+    res.statusCode >= 200 && res.statusCode < 400 ? "ok" : "error",
+  );
+});
+
+res.json(finalApiPayload);
       }
 
       res.json(finalApiPayload);
