@@ -1449,7 +1449,75 @@ function buildKey1ZeroDivergencePortalHtml(): string {
 </body>
 </html>`;
 }
+function buildFallbackInteractivePortalHtml(
+  question: string,
+  appTitle: string,
+  cumulativeContext?: string
+): string {
+  if (isKey1CloneOrButtonRequest(question || "")) {
+    return buildKey1ZeroDivergencePortalHtml();
+  }
 
+  if (/malazhub\/key|mjkey1971/i.test(question || "")) {
+    return buildKey1ZeroDivergencePortalHtml();
+  }
+
+  const safeTitle = (appTitle || "Interactive Live Application Preview")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const safeQuery = (question || cumulativeContext || "Interactive Application")
+    .slice(0, 120)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>${safeTitle}</title>
+</head>
+<body class="bg-slate-950 text-slate-100 p-5 font-sans min-h-screen">
+  <main class="max-w-xl mx-auto rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4">
+    <h2 class="text-lg font-bold">${safeTitle}</h2>
+    <p class="text-sm text-slate-400">Interactive application preview</p>
+    <label for="actionInput" class="block text-sm">Input</label>
+    <input id="actionInput" value="${safeQuery}"
+      class="w-full rounded-xl bg-slate-950 border border-slate-700 p-3 text-white">
+    <div class="flex gap-3">
+      <button id="runButton" type="button"
+        class="rounded-xl bg-emerald-400 text-slate-950 font-bold p-3">
+        Run
+      </button>
+      <button id="resetButton" type="button"
+        class="rounded-xl bg-slate-700 p-3">
+        Reset
+      </button>
+    </div>
+    <p id="result" role="status" class="rounded-xl bg-slate-950 border border-slate-700 p-3">
+      Ready.
+    </p>
+  </main>
+  <script>
+    const input = document.getElementById('actionInput');
+    const result = document.getElementById('result');
+
+    document.getElementById('runButton').addEventListener('click', function () {
+      result.textContent = 'Input received: ' + input.value;
+    });
+
+    document.getElementById('resetButton').addEventListener('click', function () {
+      input.value = '';
+      result.textContent = 'Reset complete.';
+    });
+  </script>
+</body>
+</html>`;
+}
 /**
  * Post-processes the raw LLM JSON output to guarantee:
  * 1. Nothing is ever stripped or hidden from the user's answer: both the Markdown explanation/code
