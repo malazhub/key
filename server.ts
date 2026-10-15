@@ -3839,7 +3839,9 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         error instanceof Error
           ? error.message
           : "Failed to run multi-AI consensus loop.";
-      res.status(500).json({ error: message });
+      if (!res.headersSent) {
+  res.status(500).json({ error: message });
+}
     }
   });
     
