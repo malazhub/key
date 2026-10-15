@@ -4868,11 +4868,40 @@ const data = await res.json();
         queryTimeoutMinutes * 60 * 1000
       );
 
-      const data = await response.json();
+            const data = await response.json();
       if (!response.ok) {
         throw new Error(
           data.error || "Consensus synthesis failed. Please try again."
         );
+      }
+
+      if (data.tracerOnly === true) {
+        const traceMessage: ChatMessage = {
+          id: `assistant-trace-${Date.now()}`,
+          role: "assistant",
+          content:
+            typeof data.answer === "string"
+              ? data.answer
+              : "No trace output was returned.",
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+
+        setThreads((prev) =>
+          prev.map((thread) =>
+            thread.id === activeThreadId
+              ? {
+                  ...thread,
+                  updatedAt: traceMessage.timestamp,
+                  messages: [...updatedMessages, traceMessage],
+                }
+              : thread
+          )
+        );
+
+        return;
       }
 
       if (
