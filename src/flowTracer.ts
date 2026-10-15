@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 export type FlowStatus = "running" | "ok" | "error" | "skipped";
 
+
 export interface FlowEvent {
   id: number;
   step: string;
@@ -10,7 +11,49 @@ export interface FlowEvent {
   at: string;
   durationMs?: number;
   detail?: string;
+  incoming?: unknown;
+  outgoing?: unknown;
+  decision?: string;
 }
+
+export interface FlowStepData {
+  incoming?: unknown;
+  outgoing?: unknown;
+  decision?: string;
+  detail?: string;
+  durationMs?: number;
+}
+
+export function recordFlowStep(
+  traceId: string,
+  step: string,
+  status: FlowStatus,
+  data: FlowStepData,
+): void {
+  const trace = traces.get(traceId);
+  if (!trace) return;
+
+  trace.events.push({
+    id: trace.events.length + 1,
+    step,
+    status,
+    at: new Date().toISOString(),
+    ...(data.durationMs === undefined
+      ? {}
+      : { durationMs: data.durationMs }),
+    ...(data.detail === undefined ? {} : { detail: data.detail }),
+    ...(data.incoming === undefined
+      ? {}
+      : { incoming: structuredClone(data.incoming) }),
+    ...(data.outgoing === undefined
+      ? {}
+      : { outgoing: structuredClone(data.outgoing) }),
+    ...(data.decision === undefined
+      ? {}
+      : { decision: data.decision }),
+  });
+}
+
 
 export interface FlowTrace {
   id: string;
