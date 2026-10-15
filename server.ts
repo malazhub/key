@@ -3286,25 +3286,29 @@ Treat the current follow-up as a recovery signal and produce the complete answer
 
      flowTraceId = startFlowTrace(effectiveQuestion);
 
-      recordFlowEvent(
-        flowTraceId,
-        "Request received",
-        "ok",
-        "POST /api/consensus-chat"
-      );
-
+      recordFlowStep(flowTraceId, "1. Request received", "ok", {
+  incoming: {
+    method: req.method,
+    path: req.path,
+    requestedQuestion,
+  },
+  outgoing: { effectiveQuestion },
+  decision:
+    effectiveQuestion === requestedQuestion
+      ? "Accepted without question-text normalization."
+      : "Question text changed before processing; compare incoming and outgoing.",
+});
       // ── Explicit code-modification command routing ──
             let intent: Intent;
       try {
         intent = routeIntent(effectiveQuestion);
 
         if (flowTraceId) {
-          recordFlowEvent(
-            flowTraceId,
-            "Intent routing",
-            "ok",
-            `Intent type: ${intent.type}`
-          );
+          recordFlowStep(flowTraceId, "2. Intent routing", "ok", {
+  incoming: { effectiveQuestion },
+  outgoing: intent,
+  decision: `routeIntent selected intent.type=${intent.type}`,
+});
         }
       } catch (error) {
         res.status(400).json({
@@ -3481,12 +3485,21 @@ Treat the current follow-up as a recovery signal and produce the complete answer
       );
 
       if (flowTraceId) {
-        recordFlowEvent(
-          flowTraceId,
-          "Engine selection validated",
-          "ok",
-          `${modelsList.length} engine(s); target agreement ${safeTarget}%`
-        );
+        recordFlowStep(
+  flowTraceId,
+  "3. Engine selection and validation",
+  "ok",
+  {
+    incoming: {
+      activeModels,
+      requestedTargetAgreement: targetAgreement,
+    },
+    outgoing: { modelsList, safeTarget },
+    decision:
+      `Accepted registered engines: ${modelsList.join(", ")}. ` +
+      `Target agreement used: ${safeTarget}%.`,
+  },
+);
       }
 
       const cleanHistory: HistoryTurn[] = Array.isArray(history)
@@ -3509,24 +3522,20 @@ Treat the current follow-up as a recovery signal and produce the complete answer
       if (flowTraceId) {
         recordFlowEvent(
           flowTraceId,
-          "Server context preparation",
-          "ok",
-          liveStructureContext
-            ? "Context prepared"
-            : "No additional live structure context returned"
-        );
+          recordFlowStep(flowTraceId, "4. Context preparation", "ok", {
+  incoming: {
+    effectiveQuestion,
+    cleanHistory,
+    safeAttachments,
+  },
+  outgoing: liveStructureContext ?? null,
+  decision: liveStructureContext
+    ? "Context returned and passed to the consensus loop."
+    : "No additional live structure context returned.",
+});
       }
 
-      if (flowTraceId) {
-        recordFlowEvent(
-          flowTraceId,
-          "Server context preparation",
-          "ok",
-          liveStructureContext
-            ? "Context prepared"
-            : "No additional live structure context returned"
-        );
-      }
+     
 
             const result = await runSharedConsensusLoop(
         effectiveQuestion,
