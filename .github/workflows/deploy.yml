@@ -1,3 +1,4 @@
+```yaml
 name: Deploy Key to GitHub Pages
 
 on:
@@ -30,10 +31,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+
+      - name: Update npm
+        run: npm install -g npm@11.6.0
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint and typecheck
         run: npm run lint
@@ -58,3 +62,4 @@ jobs:
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
+```
