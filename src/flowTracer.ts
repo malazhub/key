@@ -152,16 +152,13 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   const lines = [
     "# Query-to-response trace",
     "",
-    "- **Trace ID:** " + trace.id,
-    "- **Question:** " + (trace.question || "(Question not recorded)"),
-    "- **Started:** " + trace.startedAt,
-    "- **Finished:** " + (trace.finishedAt ?? "Still running"),
-    "- **Execution status:** " +
-      (trace.status === "ok"
-        ? "OK — the request/response completed; this does not verify answer correctness."
-        : trace.status.toUpperCase()),
+    "## Original user query",
     "",
-    "> Every step below shows the data actually recorded at that boundary. A field marked NOT RECORDED was not captured; it is not inferred.",
+    "~~~text",
+    trace.question || "NOT RECORDED",
+    "~~~",
+    "",
+    "> Each step displays only its name, incoming value, and outgoing value. Values marked NOT RECORDED were not captured.",
     "",
   ];
 
@@ -173,74 +170,19 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     try {
       serialized = JSON.stringify(value, null, 2) ?? String(value);
     } catch {
-      serialized = "[Value could not be serialized]";
+      return ["[Value could not be serialized]"];
     }
 
     return ["~~~json", serialized, "~~~"];
   }
 
-  function normalizeStepName(value: string): string {
-    return value
-      .trim()
-      .replace(/^\d+\s*[.):\-]\s*/, "")
-      .trim()
-      .toLowerCase();
-  }
-
-  function readableStepName(value: string): string {
-    const step = normalizeStepName(value);
-
-    if (step === "request received") return "Request received";
-    if (step === "intent routing") return "Intent routing";
-    if (
-      step === "engine selection and validation" ||
-      step === "engine selection validated"
-    ) return "Engine selection and validation";
-    if (
-      step === "context preparation" ||
-      step === "server context preparation"
-    ) return "Context preparation";
-    if (
-      step === "consensus processing" ||
-      step === "consensus engine completed"
-    ) return "Consensus processing";
-    if (
-      step === "final response assembly" ||
-      step === "final response prepared"
-    ) return "Final response assembly";
-    if (step === "response delivery") return "Response delivery";
-    if (step === "request failed") return "Request failed";
-
-    return value.trim().replace(/^\d+\s*[.):\-]\s*/, "").trim() || "Unnamed step";
-  }
-
   trace.events.forEach((event, index) => {
-    const title = readableStepName(event.step);
-    const status =
-      event.status === "ok"
-        ? "COMPLETED"
-        : event.status === "error"
-          ? "FAILED"
-          : event.status === "skipped"
-            ? "SKIPPED"
-            : "RUNNING";
+    const title =
+      event.step.trim().replace(/^\d+\s*[.):\-]\s*/, "") ||
+      "Unnamed step";
 
     lines.push("## Step " + (index + 1) + " — " + title);
     lines.push("");
-    lines.push("- **Status:** " + status);
-    lines.push("- **Timestamp:** " + event.at);
-    if (typeof event.durationMs === "number") {
-      lines.push("- **Duration:** " + event.durationMs + " ms");
-    }
-    lines.push("");
-
-    if (event.detail) {
-      lines.push("**Detail**");
-      lines.push("");
-      lines.push(event.detail);
-      lines.push("");
-    }
-
     lines.push("**Incoming**");
     lines.push("");
     lines.push(...jsonBlock(event.incoming));
@@ -249,22 +191,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     lines.push("");
     lines.push(...jsonBlock(event.outgoing));
     lines.push("");
-
-    lines.push("**Decision**");
-    lines.push("");
-    lines.push(event.decision || "NOT RECORDED");
-    lines.push("");
   });
-
-  lines.push("## Trace conclusion");
-  lines.push("");
-  if (trace.status === "ok") {
-    lines.push("The request/response path finished without a recorded transport error. Answer correctness is not evaluated by this status.");
-  } else if (trace.status === "error") {
-    lines.push("The request ended with a recorded error.");
-  } else {
-    lines.push("The request is still running or has not been finalized.");
-  }
 
   return lines.join("\n");
 }
