@@ -7187,7 +7187,7 @@ if (data.tracerOnly === true) {
                                         <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-2 select-none">
                                           <div className="flex flex-wrap items-center gap-1.5">
                                             <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.version}
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.version}
                                             </span>
                                             <span className="text-slate-200 font-bold">
                                               2026 OWASP LLM/Agentic Top 10 &amp; MITRE ATLAS Matrix (Parts I–IV)
@@ -7195,7 +7195,7 @@ if (data.tracerOnly === true) {
                                           </div>
                                           <div className="flex items-center gap-1.5">
                                             <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.activeScanStatus}
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.activeScanStatus}
                                             </span>
                                             <span className="text-slate-400 group-open:rotate-180 transition-transform">
                                               ▼
@@ -7210,7 +7210,7 @@ if (data.tracerOnly === true) {
                                               IV. 5 Core Recommendations Implemented &amp; Verified
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIVCoreRecommendations.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.partIVCoreRecommendations.map(
                                                 (rec) => (
                                                   <div
                                                     key={rec.recNumber}
@@ -7242,7 +7242,7 @@ if (data.tracerOnly === true) {
                                               II. 10 Standardized 2026 Framework Additions (OWASP Agentic Top 10 &amp; MITRE ATLAS AML.0058–0062)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIIStandardized2026Additions.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.partIIStandardized2026Additions.map(
                                                 (item) => (
                                                   <div
                                                     key={item.id}
@@ -7274,7 +7274,7 @@ if (data.tracerOnly === true) {
                                               III. Full Methodology Reclassified by Attack Surface (10 Surfaces)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIIIAttackSurfaceMatrix.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.partIIIAttackSurfaceMatrix.map(
                                                 (surf, sIdx) => (
                                                   <div
                                                     key={sIdx}
@@ -7306,7 +7306,7 @@ if (data.tracerOnly === true) {
                                               I. Retained &amp; Amended Original Report Methods (A.1–A.12 &amp; B.11–B.22 · 25 Vectors)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-1">
-                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIRetainedAndAmended.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026!.partIRetainedAndAmended.map(
                                                 (m) => (
                                                   <div
                                                     key={m.section}
@@ -7338,15 +7338,15 @@ if (data.tracerOnly === true) {
                           })()}
 
                           {/* Ultra-Enhanced L0-L5 Memory Operating System Pipeline Telemetry around the Model */}
-                          {msg.metadata && msg.metadata.memoryOS && (
+                          {msg.metadata && msg.metadata!.memoryOS! && (
                             <div className="p-3 rounded-xl bg-slate-900/95 border border-violet-500/30 space-y-3">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="px-2 py-0.5 rounded bg-violet-500/20 border border-violet-500/40 text-violet-300 font-mono text-[10px] font-bold">
-                                    {msg.metadata.memoryOS.architectureVersion || "KEY-MemOS-v3.0 (L0–L5)"}
+                                    {msg.metadata!.memoryOS!.architectureVersion || "KEY-MemOS-v3.0 (L0–L5)"}
                                   </span>
                                   <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px] font-bold">
-                                    {msg.metadata.memoryOS.goldenRuleFormula || "Qₜ ≠ WMₜ ≠ LTM ≠ ESₑ"}
+                                    {msg.metadata!.memoryOS!.goldenRuleFormula || "Qₜ ≠ WMₜ ≠ LTM ≠ ESₑ"}
                                   </span>
                                   <span className="font-bold text-slate-200 text-[11px]">
                                     Ultra-Enhanced Self-Developing Memory Operating System
@@ -7355,18 +7355,18 @@ if (data.tracerOnly === true) {
                                 <span className="font-mono text-[10px] text-emerald-300">
                                   Do I need history? →{" "}
                                   <strong>
-                                    {msg.metadata.memoryOS.memoryRouter
+                                    {msg.metadata!.memoryOS!.memoryRouter
                                       .doINeedHistory
                                       ? "YES"
                                       : "NO (Isolated)"}
                                   </strong>{" "}
                                   · Mode:{" "}
-                                  {msg.metadata.memoryOS.memoryRouter.routingMode}
+                                  {msg.metadata!.memoryOS!.memoryRouter.routingMode}
                                 </span>
                               </div>
 
                               {/* 4 Foundational Layers: Qₜ ≠ WMₜ ≠ LTM ≠ ESₑ */}
-                              {msg.metadata.memoryOS.foundationalLayers && (
+                              {msg.metadata!.memoryOS!.foundationalLayers && (
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                                   <div className="p-2 rounded-lg bg-slate-950/95 border border-sky-500/30 space-y-0.5">
                                     <div className="flex items-center justify-between font-mono">
@@ -7378,11 +7378,11 @@ if (data.tracerOnly === true) {
                                     <div className="text-slate-300 truncate">
                                       Class:{" "}
                                       <span className="text-white font-mono">
-                                        {msg.metadata.memoryOS.foundationalLayers.Qt.queryClass}
+                                        {msg.metadata!.memoryOS!.foundationalLayers.Qt.queryClass}
                                       </span>{" "}
                                       · Rule:{" "}
                                       <span className="text-sky-200 font-mono">
-                                        {msg.metadata.memoryOS.l1DisambiguationRule?.replace(
+                                        {msg.metadata!.memoryOS!.l1DisambiguationRule?.replace(
                                           /^RULE_\d_/,
                                           ""
                                         )}
@@ -7398,7 +7398,7 @@ if (data.tracerOnly === true) {
                                       <span className="text-slate-400">Session</span>
                                     </div>
                                     <div className="text-slate-300 truncate">
-                                      {msg.metadata.memoryOS.foundationalLayers.WMt.activeTask}
+                                      {msg.metadata!.memoryOS!.foundationalLayers.WMt.activeTask}
                                     </div>
                                   </div>
 
@@ -7412,17 +7412,17 @@ if (data.tracerOnly === true) {
                                     <div className="text-slate-300 font-mono">
                                       State v
                                       {
-                                        msg.metadata.memoryOS.foundationalLayers.LTM
+                                        msg.metadata!.memoryOS!.foundationalLayers.LTM
                                           .persistentStateVectorVersion
                                       }{" "}
                                       · Triples:{" "}
                                       {
-                                        msg.metadata.memoryOS.foundationalLayers.LTM
+                                        msg.metadata!.memoryOS!.foundationalLayers.LTM
                                           .semanticTriplesCount
                                       }{" "}
                                       · Skills:{" "}
                                       {
-                                        msg.metadata.memoryOS.foundationalLayers.LTM
+                                        msg.metadata!.memoryOS!.foundationalLayers.LTM
                                           .proceduralSkillsCount
                                       }
                                     </div>
@@ -7437,7 +7437,7 @@ if (data.tracerOnly === true) {
                                     </div>
                                     <div className="text-slate-300 truncate">
                                       {
-                                        msg.metadata.memoryOS.foundationalLayers.ESe
+                                        msg.metadata!.memoryOS!.foundationalLayers.ESe
                                           .kvCachePolicy
                                       }
                                     </div>
@@ -7455,26 +7455,26 @@ if (data.tracerOnly === true) {
                                     Intent:{" "}
                                     <span className="text-white font-mono">
                                       {
-                                        msg.metadata.memoryOS.queryUnderstanding
+                                        msg.metadata!.memoryOS!.queryUnderstanding
                                           .intent
                                       }
                                     </span>
                                   </div>
                                   <div className="text-slate-400">
                                     Entities:{" "}
-                                    {msg.metadata.memoryOS.queryUnderstanding.entities
+                                    {msg.metadata!.memoryOS!.queryUnderstanding.entities
                                       .slice(0, 3)
                                       .join(", ") || "none"}
                                   </div>
                                   <div className="text-slate-400">
                                     Temporal:{" "}
                                     {
-                                      msg.metadata.memoryOS.queryUnderstanding
+                                      msg.metadata!.memoryOS!.queryUnderstanding
                                         .temporalReferences.horizon
                                     }{" "}
                                     · Uncert:{" "}
                                     {
-                                      msg.metadata.memoryOS.queryUnderstanding
+                                      msg.metadata!.memoryOS!.queryUnderstanding
                                         .uncertainty.score
                                     }
                                   </div>
@@ -7487,7 +7487,7 @@ if (data.tracerOnly === true) {
                                   <div className="text-slate-300">
                                     Tiers:{" "}
                                     <span className="text-amber-200 font-mono">
-                                      {msg.metadata.memoryOS.memoryRouter.activeTiers.join(
+                                      {msg.metadata!.memoryOS!.memoryRouter.activeTiers.join(
                                         ", "
                                       )}
                                     </span>
@@ -7495,16 +7495,16 @@ if (data.tracerOnly === true) {
                                   <div className="text-slate-400">
                                     Recent:{" "}
                                     {
-                                      msg.metadata.memoryOS.tierCounts
+                                      msg.metadata!.memoryOS!.tierCounts
                                         .recentContext
                                     }{" "}
                                     · LTM:{" "}
                                     {
-                                      msg.metadata.memoryOS.tierCounts
+                                      msg.metadata!.memoryOS!.tierCounts
                                         .longTermMemory
                                     }{" "}
                                     · Docs:{" "}
-                                    {msg.metadata.memoryOS.tierCounts.knowledge}
+                                    {msg.metadata!.memoryOS!.tierCounts.knowledge}
                                   </div>
                                 </div>
 
@@ -7515,29 +7515,29 @@ if (data.tracerOnly === true) {
                                   <div className="text-slate-300 font-mono">
                                     Sem:{" "}
                                     {
-                                      msg.metadata.memoryOS.parallelSearchMetrics
+                                      msg.metadata!.memoryOS!.parallelSearchMetrics
                                         .semanticHits
                                     }{" "}
                                     · BM25:{" "}
                                     {
-                                      msg.metadata.memoryOS.parallelSearchMetrics
+                                      msg.metadata!.memoryOS!.parallelSearchMetrics
                                         .bm25Hits
                                     }
                                   </div>
                                   <div className="text-slate-400 font-mono">
                                     Ent:{" "}
                                     {
-                                      msg.metadata.memoryOS.parallelSearchMetrics
+                                      msg.metadata!.memoryOS!.parallelSearchMetrics
                                         .entityHits
                                     }{" "}
                                     · Temp:{" "}
                                     {
-                                      msg.metadata.memoryOS.parallelSearchMetrics
+                                      msg.metadata!.memoryOS!.parallelSearchMetrics
                                         .temporalHits
                                     }{" "}
                                     · Ref:{" "}
                                     {
-                                      msg.metadata.memoryOS.parallelSearchMetrics
+                                      msg.metadata!.memoryOS!.parallelSearchMetrics
                                         .exactRefHits
                                     }
                                   </div>
@@ -7550,26 +7550,26 @@ if (data.tracerOnly === true) {
                                   <div className="text-slate-300">
                                     Raw:{" "}
                                     {
-                                      msg.metadata.memoryOS.candidateMerger
+                                      msg.metadata!.memoryOS!.candidateMerger
                                         .rawCandidatesCount
                                     }{" "}
                                     → Top:{" "}
                                     <span className="text-violet-200 font-bold">
                                       {
-                                        msg.metadata.memoryOS.smartReranker
+                                        msg.metadata!.memoryOS!.smartReranker
                                           .selectedCount
                                       }
                                     </span>
                                     /
                                     {
-                                      msg.metadata.memoryOS.smartReranker
+                                      msg.metadata!.memoryOS!.smartReranker
                                         .retrievalBudget
                                     }
                                   </div>
                                   <div className="text-slate-400">
                                     Superseded Purged:{" "}
                                     {
-                                      msg.metadata.memoryOS.candidateMerger
+                                      msg.metadata!.memoryOS!.candidateMerger
                                         .supersededFilteredCount
                                     }
                                   </div>
@@ -7587,7 +7587,7 @@ if (data.tracerOnly === true) {
                                   </div>
                                   <div className="text-slate-400 font-mono">
                                     Compiled Budget:{" "}
-                                    {msg.metadata.memoryOS.contextCompiler
+                                    {msg.metadata!.memoryOS!.contextCompiler
                                       ?.compiledTokenBudget ?? 240}{" "}
                                     tok
                                   </div>
@@ -7600,30 +7600,30 @@ if (data.tracerOnly === true) {
                                   <div className="text-slate-300 font-mono">
                                     Dispatch:{" "}
                                     <span className="text-emerald-300 font-bold">
-                                      {msg.metadata.memoryOS.l3EngineRouter
+                                      {msg.metadata!.memoryOS!.l3EngineRouter
                                         ?.dispatchMode ?? "ENSEMBLE"}
                                     </span>{" "}
                                     · Verifier:{" "}
-                                    {msg.metadata.memoryOS.l4SynthesisCritique
+                                    {msg.metadata!.memoryOS!.l4SynthesisCritique
                                       ?.verifierConfidence ?? 98}
                                     %
                                   </div>
                                   <div className="text-slate-400 font-mono truncate">
                                     Salience S(m,t):{" "}
-                                    {msg.metadata.memoryOS.l5WriteBackAndSelfDev
+                                    {msg.metadata!.memoryOS!.l5WriteBackAndSelfDev
                                       ?.decayFormula.meanSalienceScore ?? 0.94}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 6 Memory Subsystems (M_ep, M_sem, M_proc, M_wm, M_meta, M_eng) + Salience Decay Formula */}
-                              {msg.metadata.memoryOS.l2MemorySubsystems && (
+                              {msg.metadata!.memoryOS!.l2MemorySubsystems && (
                                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-sky-300">
                                       M_ep:{" "}
                                       {
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_ep.recordsCount
                                       }{" "}
                                       ep
@@ -7631,7 +7631,7 @@ if (data.tracerOnly === true) {
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-300">
                                       M_sem:{" "}
                                       {
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_sem.factsCount
                                       }{" "}
                                       facts
@@ -7639,7 +7639,7 @@ if (data.tracerOnly === true) {
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-amber-300">
                                       M_proc:{" "}
                                       {
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_proc.workflowsCount
                                       }{" "}
                                       skills
@@ -7647,7 +7647,7 @@ if (data.tracerOnly === true) {
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-300">
                                       M_wm:{" "}
                                       {
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_wm.activeNodes
                                       }{" "}
                                       nodes
@@ -7655,7 +7655,7 @@ if (data.tracerOnly === true) {
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-violet-300">
                                       M_meta:{" "}
                                       {Math.round(
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_meta.domainConfidence * 100
                                       )}
                                       % conf
@@ -7663,7 +7663,7 @@ if (data.tracerOnly === true) {
                                     <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-rose-300">
                                       M_eng:{" "}
                                       {
-                                        msg.metadata.memoryOS.l2MemorySubsystems
+                                        msg.metadata!.memoryOS!.l2MemorySubsystems
                                           .M_eng.trackedEngines
                                       }{" "}
                                       CPUs
@@ -7672,7 +7672,7 @@ if (data.tracerOnly === true) {
                                   <span className="text-slate-400">
                                     Decay:{" "}
                                     <code className="text-amber-300">
-                                      {msg.metadata.memoryOS.l5WriteBackAndSelfDev
+                                      {msg.metadata!.memoryOS!.l5WriteBackAndSelfDev
                                         ?.decayFormula.equation ||
                                         "S(m,t) = S₀·e^(-λΔt) + α·access + β·importance"}
                                     </code>
