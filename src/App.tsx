@@ -7338,7 +7338,7 @@ if (data.tracerOnly === true) {
                           })()}
 
                           {/* Ultra-Enhanced L0-L5 Memory Operating System Pipeline Telemetry around the Model */}
-                          {msg.metadata?.memoryOS && (
+                          {msg.metadata && msg.metadata.memoryOS && (
                             <div className="p-3 rounded-xl bg-slate-900/95 border border-violet-500/30 space-y-3">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
                                 <div className="flex flex-wrap items-center gap-2">
