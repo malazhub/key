@@ -308,23 +308,25 @@ const lastOutgoingEvent = [...events]
         (event) => event.sourceFile || event.sourceFunction,
       ) ?? events[0];
 
-    lines.push(
+        lines.push(
       "",
       `### Step ${index + 1}: ${group.name}`,
       "",
       `Source file: ${sourceEvent.sourceFile ?? "NOT RECORDED"}`,
       `Function / logic: ${sourceEvent.sourceFunction ?? "NOT RECORDED"}`,
       `Incoming: ${
-  firstIncomingEvent
-    ? formatFlowValue(firstIncomingEvent.incoming)
-    : "NOT RECORDED"
-}`,
-`Outgoing: ${
-  lastOutgoingEvent
-    ? formatFlowValue(lastOutgoingEvent.outgoing)
-    : "NOT RECORDED"
-}`,
-`Status: ${finalStatus}`,
+        firstIncomingEvent
+          ? formatFlowValue(firstIncomingEvent.incoming)
+          : "NOT RECORDED"
+      }`,
+      `Outgoing: ${
+        lastOutgoingEvent
+          ? formatFlowValue(lastOutgoingEvent.outgoing)
+          : "NOT RECORDED"
+      }`,
+      `Status: ${finalStatus}`,
+    );
+
     if (group.isConsensusRound) {
       lines.push("Engine calls and intermediate outputs: Hidden");
     }
