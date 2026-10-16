@@ -282,13 +282,13 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     const events = group.events;
     const last = events[events.length - 1];
 
-    const hasIncoming = events.some(
-      (event) => event.incoming !== undefined,
-    );
+    const firstIncomingEvent = events.find(
+  (event) => event.incoming !== undefined,
+);
 
-    const hasOutgoing = events.some(
-      (event) => event.outgoing !== undefined,
-    );
+const lastOutgoingEvent = [...events]
+  .reverse()
+  .find((event) => event.outgoing !== undefined);
 
     const terminalEvents = events.filter(
       (event) =>
@@ -315,20 +315,16 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       `Source file: ${sourceEvent.sourceFile ?? "NOT RECORDED"}`,
       `Function / logic: ${sourceEvent.sourceFunction ?? "NOT RECORDED"}`,
       `Incoming: ${
-        hasIncoming || group.isConsensusRound
-          ? "Received"
-          : "Not recorded"
-      }`,
-      `Outgoing: ${
-        hasOutgoing
-          ? "Final result produced"
-          : group.isConsensusRound && terminalEvents.length > 0
-            ? "Round processing completed"
-            : "Not recorded"
-      }`,
-      `Status: ${finalStatus}`,
-    );
-
+  firstIncomingEvent
+    ? formatFlowValue(firstIncomingEvent.incoming)
+    : "NOT RECORDED"
+}`,
+`Outgoing: ${
+  lastOutgoingEvent
+    ? formatFlowValue(lastOutgoingEvent.outgoing)
+    : "NOT RECORDED"
+}`,
+`Status: ${finalStatus}`,
     if (group.isConsensusRound) {
       lines.push("Engine calls and intermediate outputs: Hidden");
     }
