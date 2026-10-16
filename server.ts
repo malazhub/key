@@ -3291,6 +3291,8 @@ const wantsFlowTrace =
      flowTraceId = startFlowTrace(effectiveQuestion);
 
       recordFlowStep(flowTraceId, "1. Request received", "ok", {
+          sourceFile: "server.ts",
+  sourceFunction: "request handler — request received",
   incoming: {
     method: req.method,
     path: req.path,
@@ -3309,6 +3311,8 @@ const wantsFlowTrace =
 
         if (flowTraceId) {
           recordFlowStep(flowTraceId, "2. Intent routing", "ok", {
+              sourceFile: "server.ts",
+  sourceFunction: "request handler — routeIntent",
   incoming: { effectiveQuestion },
   outgoing: intent,
   decision: `routeIntent selected intent.type=${intent.type}`,
@@ -3494,6 +3498,8 @@ const wantsFlowTrace =
   "3. Engine selection and validation",
   "ok",
   {
+        sourceFile: "server.ts",
+    sourceFunction: "request handler — engine selection and validation",
     incoming: {
       activeModels,
       requestedTargetAgreement: targetAgreement,
@@ -3570,6 +3576,8 @@ const wantsFlowTrace =
             : JSON.stringify(result);
 
         recordFlowStep(flowTraceId, "6. Consensus processing", "ok", {
+            sourceFile: "server.ts",
+  sourceFunction: "request handler — runSharedConsensusLoop result handling",
   incoming: {
     question: effectiveQuestion,
     models: modelsList,
@@ -3780,6 +3788,8 @@ export const VERSION8_SUPERSEDING_ENGINE = {
   "7. Final response assembly",
   "ok",
   {
+        sourceFile: "server.ts",
+    sourceFunction: "request handler — finalApiPayload assembly",
     incoming: {
       consensusResult: result,
     },
@@ -3795,6 +3805,8 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         res.once("finish", () => {
           if (!flowTraceId) return;
   recordFlowStep(flowTraceId, "8. Response delivery", "ok", {
+        sourceFile: "server.ts",
+    sourceFunction: "request handler — response finish callback",
     incoming: {
       statusCode: res.statusCode,
     },
