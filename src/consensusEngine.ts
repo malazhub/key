@@ -11659,6 +11659,8 @@ export async function runSmartMemoryConsensusLoop(
 
   if (flowTraceId) {
     recordFlowStep(flowTraceId, "Consensus loop entered", "ok", {
+            sourceFile: "src/consensusEngine.ts",
+      sourceFunction: "runSmartMemoryConsensusLoop",
       incoming: {
         question,
         history,
@@ -11684,6 +11686,8 @@ export async function runSmartMemoryConsensusLoop(
 
   if (flowTraceId) {
     recordFlowStep(flowTraceId, "Query context resolution", "ok", {
+            sourceFile: "src/consensusEngine.ts",
+      sourceFunction: "runSmartMemoryConsensusLoop — QueryContextManager.resolveQueryContext",
       incoming: {
         question,
         history,
@@ -12377,6 +12381,8 @@ iterationsRequired: actualRoundsCompleted,
               `Consensus round ${roundNumber} — ${modelName}`,
               "running",
               {
+                                sourceFile: "src/consensusEngine.ts",
+                sourceFunction: "runSmartMemoryConsensusLoop — dispatchEngine",
                 incoming: {
                   engine: modelName,
                   prompt: currentRoundPayload,
@@ -12413,6 +12419,8 @@ iterationsRequired: actualRoundsCompleted,
               `Consensus round ${roundNumber} — ${modelName} response`,
               "ok",
               {
+                                sourceFile: "src/consensusEngine.ts",
+                sourceFunction: "runSmartMemoryConsensusLoop — dispatchEngine",
                 incoming: {
                   engine: modelName,
                   prompt: currentRoundPayload,
