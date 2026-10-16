@@ -7104,22 +7104,22 @@ if (data.tracerOnly === true) {
                                 )}
 
                                 {/* KEY v2.1 — Multi-Engine Orchestration & Adaptive Response Architecture */}
-                                {normalizedRun.adaptiveOrchestrationV21 && (
+                                {normalizedRun.adaptiveOrchestrationV21! && (
                                   <div className="mt-2 p-2.5 rounded-xl bg-slate-950/95 border border-cyan-500/35 space-y-2.5 text-[10px] font-mono">
                                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold">
-                                          {normalizedRun.adaptiveOrchestrationV21.version}
+                                          {normalizedRun.adaptiveOrchestrationV21!.version}
                                         </span>
                                         <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">
-                                          {normalizedRun.adaptiveOrchestrationV21.adaptiveConsensusSynthesis.selectedCase}
+                                          {normalizedRun.adaptiveOrchestrationV21!.adaptiveConsensusSynthesis.selectedCase}
                                         </span>
                                         <span className="px-2 py-0.5 rounded bg-violet-500/20 border border-violet-500/40 text-violet-300">
-                                          Intent Confidence: {normalizedRun.adaptiveOrchestrationV21.intentNormalization.confidence}
+                                          Intent Confidence: {normalizedRun.adaptiveOrchestrationV21!.intentNormalization.confidence}
                                         </span>
                                       </div>
                                       <span className="text-emerald-400 font-bold">
-                                        DoD: {normalizedRun.adaptiveOrchestrationV21.definitionOfDone.completionStatus} ✓
+                                        DoD: {normalizedRun.adaptiveOrchestrationV21!.definitionOfDone.completionStatus} ✓
                                       </span>
                                     </div>
 
@@ -7130,7 +7130,7 @@ if (data.tracerOnly === true) {
                                       </span>
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         {Object.entries(
-                                          normalizedRun.adaptiveOrchestrationV21
+                                          normalizedRun.adaptiveOrchestrationV21!
                                             .adaptiveConsensusSynthesis
                                             .classDistribution
                                         ).map(([cls, count]) => (
@@ -7155,13 +7155,13 @@ if (data.tracerOnly === true) {
                                           Intent Normalization &amp; Routing
                                         </div>
                                         <div className="text-slate-300 truncate">
-                                          Intent: <span className="text-white">{normalizedRun.adaptiveOrchestrationV21.intentNormalization.intent}</span>
+                                          Intent: <span className="text-white">{normalizedRun.adaptiveOrchestrationV21!.intentNormalization.intent}</span>
                                         </div>
                                         <div className="text-slate-400 truncate">
-                                          Task: {normalizedRun.adaptiveOrchestrationV21.intentNormalization.task}
+                                          Task: {normalizedRun.adaptiveOrchestrationV21!.intentNormalization.task}
                                         </div>
                                         <div className="text-slate-400 truncate">
-                                          Ambiguity Flags: {normalizedRun.adaptiveOrchestrationV21.intentNormalization.ambiguityFlags.join(", ")}
+                                          Ambiguity Flags: {normalizedRun.adaptiveOrchestrationV21!.intentNormalization.ambiguityFlags.join(", ")}
                                         </div>
                                       </div>
 
@@ -7170,24 +7170,24 @@ if (data.tracerOnly === true) {
                                           Context Packet Optimization (context_packet)
                                         </div>
                                         <div className="text-slate-300 truncate">
-                                          Objective: <span className="text-white">{normalizedRun.adaptiveOrchestrationV21.contextPacket.user_objective}</span>
+                                          Objective: <span className="text-white">{normalizedRun.adaptiveOrchestrationV21!.contextPacket.user_objective}</span>
                                         </div>
                                         <div className="text-slate-400 truncate">
-                                          History: {normalizedRun.adaptiveOrchestrationV21.contextPacket.relevant_history}
+                                          History: {normalizedRun.adaptiveOrchestrationV21!.contextPacket.relevant_history}
                                         </div>
                                         <div className="text-slate-400 truncate">
-                                          Depth: <span className="text-emerald-300">{normalizedRun.adaptiveOrchestrationV21.contextPacket.requested_depth}</span> · Fallback: {normalizedRun.adaptiveOrchestrationV21.dynamicFallbackRouting.activeNodes} nodes
+                                          Depth: <span className="text-emerald-300">{normalizedRun.adaptiveOrchestrationV21!.contextPacket.requested_depth}</span> · Fallback: {normalizedRun.adaptiveOrchestrationV21!.dynamicFallbackRouting.activeNodes} nodes
                                         </div>
                                       </div>
                                     </div>
 
                                     {/* KEY v2.6 — 2026 OWASP & MITRE ATLAS Security & Resilience Taxonomy (Parts I–IV) */}
-                                    {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026 && (
+                                    {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026 && (
                                       <details className="group rounded-lg bg-slate-900/90 border border-rose-500/30 p-2.5 text-[10px] font-mono">
                                         <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-2 select-none">
                                           <div className="flex flex-wrap items-center gap-1.5">
                                             <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.version}
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.version}
                                             </span>
                                             <span className="text-slate-200 font-bold">
                                               2026 OWASP LLM/Agentic Top 10 &amp; MITRE ATLAS Matrix (Parts I–IV)
@@ -7195,7 +7195,7 @@ if (data.tracerOnly === true) {
                                           </div>
                                           <div className="flex items-center gap-1.5">
                                             <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.activeScanStatus}
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.activeScanStatus}
                                             </span>
                                             <span className="text-slate-400 group-open:rotate-180 transition-transform">
                                               ▼
@@ -7210,7 +7210,7 @@ if (data.tracerOnly === true) {
                                               IV. 5 Core Recommendations Implemented &amp; Verified
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.partIVCoreRecommendations.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIVCoreRecommendations.map(
                                                 (rec) => (
                                                   <div
                                                     key={rec.recNumber}
@@ -7242,7 +7242,7 @@ if (data.tracerOnly === true) {
                                               II. 10 Standardized 2026 Framework Additions (OWASP Agentic Top 10 &amp; MITRE ATLAS AML.0058–0062)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.partIIStandardized2026Additions.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIIStandardized2026Additions.map(
                                                 (item) => (
                                                   <div
                                                     key={item.id}
@@ -7274,7 +7274,7 @@ if (data.tracerOnly === true) {
                                               III. Full Methodology Reclassified by Attack Surface (10 Surfaces)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.partIIIAttackSurfaceMatrix.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIIIAttackSurfaceMatrix.map(
                                                 (surf, sIdx) => (
                                                   <div
                                                     key={sIdx}
@@ -7306,7 +7306,7 @@ if (data.tracerOnly === true) {
                                               I. Retained &amp; Amended Original Report Methods (A.1–A.12 &amp; B.11–B.22 · 25 Vectors)
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-1">
-                                              {normalizedRun.adaptiveOrchestrationV21.securityTaxonomy2026.partIRetainedAndAmended.map(
+                                              {normalizedRun.adaptiveOrchestrationV21!.securityTaxonomy2026.partIRetainedAndAmended.map(
                                                 (m) => (
                                                   <div
                                                     key={m.section}
