@@ -15289,20 +15289,35 @@ export function refinePayload(
   responses: string[],
   basePayload = ""
 ): string {
-  const completeAnswers = responses
-    .filter((answer) => typeof answer === "string" && answer.trim().length > 0)
+  const answerEvidence = responses
+    .filter(
+      (answer) =>
+        typeof answer === "string" &&
+        answer.trim().length > 0
+    )
     .map(
       (answer, index) =>
-        "[ENGINE SLOT " + (index + 1) + " — COMPLETE ANSWER]\n" + answer.trim()
+        `Candidate ${index + 1}:\n${answer.trim()}`
     )
     .join("\n\n");
 
   return [
     basePayload,
-    "[KEY CONSENSUS ROUND FEEDBACK — COMPLETE ENGINE ANSWERS]",
-    completeAnswers,
-    "[KEY RULE] Preserve every selected engine answer in full. Do not truncate, select, discard, or summarize an engine answer.",
-  ].filter(Boolean).join("\n\n").trim();
+    "[CONSENSUS REVIEW — INTERNAL EVIDENCE]",
+    answerEvidence,
+    [
+      "[REQUIRED OUTPUT RULES]",
+      "Answer the user's original question directly.",
+      "Compare the candidate answers and resolve any disagreement.",
+      "Return exactly one final answer, not a list of engine answers.",
+      "Never reproduce candidate labels, engine slots, or the full candidate-answer block.",
+      "Do not describe the consensus process unless the user explicitly asks.",
+      "For a simple factual question, respond with one concise sentence.",
+    ].join("\n"),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
 }
 
 
