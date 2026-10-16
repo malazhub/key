@@ -3361,7 +3361,7 @@ const wantsFlowTrace =
                   requestedRounds: rounds,
                   conformityTarget: 100,
                   candidates: undefined,
-                  deploy: intent.type === "self_upgrade",
+                  deploy: false,
                 },
                 {
                   activeWorkspace: __dirname,
