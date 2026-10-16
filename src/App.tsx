@@ -6866,10 +6866,10 @@ if (data.tracerOnly === true) {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button
+                                                    <button
                             type="button"
                             onClick={() => toggleConsensusDropdown(msg.id)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                            className="hidden px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                           >
                             <Layers className="w-3.5 h-3.5 text-emerald-400" />
                             <span>
@@ -6906,8 +6906,8 @@ if (data.tracerOnly === true) {
                         </div>
                       </div>
 
-                      {/* Collapsible Multi-AI Iterative Loop Details */}
-                      {isExpanded && (
+                                            {/* Keep detailed rounds and individual engine reports out of the chat. */}
+                      {false && isExpanded && (
                         <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-4 space-y-4 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
                             <span className="font-semibold text-slate-200">
@@ -7978,10 +7978,8 @@ if (data.tracerOnly === true) {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                      <span className="font-semibold text-white">
-                        {liveRound === 1
-                          ? `Round 1: Collecting initial answers from ${activeModels.length} AI engines…`
-                          : `Round ${liveRound}: Resending collected answers to ${activeModels.length} AI engines until ≥ ${target}% match…`}
+                                            <span className="font-semibold text-white">
+                        Working toward the target agreement…
                       </span>
                     </div>
                     <span className="font-mono tabular-nums text-amber-400 font-semibold">
