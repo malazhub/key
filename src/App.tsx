@@ -7024,24 +7024,24 @@ if (data.tracerOnly === true) {
                                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] font-bold">
-                                          {normalizedRun.keyEngineeringOS.osVersion}
+                                          {normalizedRun.keyEngineeringOS!.osVersion}
                                         </span>
                                         <span className="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-500/40 text-sky-300 font-mono text-[10px] font-bold">
-                                          GOLDEN v{normalizedRun.keyEngineeringOS.goldenState.version} (@{normalizedRun.keyEngineeringOS.goldenState.commit})
+                                          GOLDEN v{normalizedRun.keyEngineeringOS!.goldenState.version} (@{normalizedRun.keyEngineeringOS!.goldenState.commit})
                                         </span>
                                         <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px]">
-                                          Task: {normalizedRun.keyEngineeringOS.durableState.taskState.queryClass} · Scope: {normalizedRun.keyEngineeringOS.durableState.taskState.scope} · Risk: {normalizedRun.keyEngineeringOS.durableState.taskState.risk}
+                                          Task: {normalizedRun.keyEngineeringOS!.durableState.taskState.queryClass} · Scope: {normalizedRun.keyEngineeringOS!.durableState.taskState.scope} · Risk: {normalizedRun.keyEngineeringOS!.durableState.taskState.risk}
                                         </span>
                                       </div>
                                       <span className="font-mono text-[10px] text-emerald-400 font-bold">
-                                        STATUS: {normalizedRun.keyEngineeringOS.finalResponseContract.status} · Tests: {normalizedRun.keyEngineeringOS.goldenState.tests} · Rollback: v{normalizedRun.keyEngineeringOS.goldenState.rollbackVersion}
+                                        STATUS: {normalizedRun.keyEngineeringOS!.finalResponseContract.status} · Tests: {normalizedRun.keyEngineeringOS!.goldenState.tests} · Rollback: v{normalizedRun.keyEngineeringOS!.goldenState.rollbackVersion}
                                       </span>
                                     </div>
 
                                     {/* 5 Permanent Responsibilities */}
                                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-[9.5px] font-mono">
                                       {Object.entries(
-                                        normalizedRun.keyEngineeringOS.fiveResponsibilities
+                                        normalizedRun.keyEngineeringOS!.fiveResponsibilities
                                       ).map(([k, v]) => (
                                         <div
                                           key={k}
@@ -7060,7 +7060,7 @@ if (data.tracerOnly === true) {
                                     {/* 8 Purpose-Separated Memory Stores */}
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[9.5px] font-mono">
                                       {Object.entries(
-                                        normalizedRun.keyEngineeringOS.eightMemoryStores
+                                        normalizedRun.keyEngineeringOS!.eightMemoryStores
                                       ).map(([storeKey, storeVal]) => (
                                         <div
                                           key={storeKey}
@@ -7080,14 +7080,14 @@ if (data.tracerOnly === true) {
                                     <div className="space-y-1">
                                       <div className="flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-400">
                                         <span className="text-sky-300 font-semibold">
-                                          Immutable 13-Step Execution Journal &amp; Verification Gate ({normalizedRun.keyEngineeringOS.durableState.taskState.patchPolicy}):
+                                          Immutable 13-Step Execution Journal &amp; Verification Gate ({normalizedRun.keyEngineeringOS!.durableState.taskState.patchPolicy}):
                                         </span>
                                         <span>
-                                          Retrieval: {normalizedRun.keyEngineeringOS.taskLevelTelemetry.retrievalLatencyMs}ms · Synthesis: {normalizedRun.keyEngineeringOS.taskLevelTelemetry.synthesisLatencyMs}ms · Verify: {normalizedRun.keyEngineeringOS.taskLevelTelemetry.verificationLatencyMs}ms · Repairs: {normalizedRun.keyEngineeringOS.taskLevelTelemetry.repairCount}/3
+                                          Retrieval: {normalizedRun.keyEngineeringOS!.taskLevelTelemetry.retrievalLatencyMs}ms · Synthesis: {normalizedRun.keyEngineeringOS!.taskLevelTelemetry.synthesisLatencyMs}ms · Verify: {normalizedRun.keyEngineeringOS!.taskLevelTelemetry.verificationLatencyMs}ms · Repairs: {normalizedRun.keyEngineeringOS!.taskLevelTelemetry.repairCount}/3
                                         </span>
                                       </div>
                                       <div className="flex flex-wrap gap-1 text-[9px] font-mono">
-                                        {normalizedRun.keyEngineeringOS.executionJournal.map(
+                                        {normalizedRun.keyEngineeringOS!.executionJournal.map(
                                           (j) => (
                                             <span
                                               key={j.stepNumber}
