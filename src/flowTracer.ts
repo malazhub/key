@@ -14,11 +14,14 @@ function formatFlowValue(value: unknown): string {
     return "[Value could not be serialized]";
   }
 }
+
 export interface FlowEvent {
   id: number;
   step: string;
   status: FlowStatus;
   at: string;
+  sourceFile?: string;
+  sourceFunction?: string;
   durationMs?: number;
   detail?: string;
   incoming?: unknown;
@@ -26,13 +29,18 @@ export interface FlowEvent {
   decision?: string;
 }
 
+
+
 export interface FlowStepData {
+  sourceFile?: string;
+  sourceFunction?: string;
   incoming?: unknown;
   outgoing?: unknown;
   decision?: string;
   detail?: string;
   durationMs?: number;
 }
+
 
 export function recordFlowStep(
   traceId: string,
@@ -46,8 +54,14 @@ export function recordFlowStep(
   trace.events.push({
     id: trace.events.length + 1,
     step,
-    status,
+        status,
     at: new Date().toISOString(),
+    ...(data.sourceFile === undefined
+      ? {}
+      : { sourceFile: data.sourceFile }),
+    ...(data.sourceFunction === undefined
+      ? {}
+      : { sourceFunction: data.sourceFunction }),
     ...(data.durationMs === undefined
       ? {}
       : { durationMs: data.durationMs }),
@@ -288,11 +302,23 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
         ? terminalEvents[terminalEvents.length - 1].status
         : last.status;
 
+    
+    const sourceEvent =
+      [...events].reverse().find(
+        (event) => event.sourceFile || event.sourceFunction,
+      ) ?? events[0];
+
     lines.push(
       "",
       `### Step ${index + 1}: ${group.name}`,
       "",
-      `Incoming: ${hasIncoming || group.isConsensusRound ? "Received" : "Not recorded"}`,
+      `Source file: ${sourceEvent.sourceFile ?? "NOT RECORDED"}`,
+      `Function / logic: ${sourceEvent.sourceFunction ?? "NOT RECORDED"}`,
+      `Incoming: ${
+        hasIncoming || group.isConsensusRound
+          ? "Received"
+          : "Not recorded"
+      }`,
       `Outgoing: ${
         hasOutgoing
           ? "Final result produced"
@@ -306,6 +332,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     if (group.isConsensusRound) {
       lines.push("Engine calls and intermediate outputs: Hidden");
     }
+
   }
 
   lines.push(
