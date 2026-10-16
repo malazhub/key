@@ -7682,10 +7682,9 @@ if (data.tracerOnly === true) {
                             </div>
                           )}
 
-                          {msg.convergenceRounds &&
-                            msg.convergenceRounds.length > 0 && (
+                          {(msg.convergenceRounds ?? []).length > 0 && (
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                {msg.convergenceRounds.map((r) => (
+                                {(msg.convergenceRounds ?? []).map((r) => (
                                   <div
                                     key={r.round}
                                     className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800/90 space-y-1"
@@ -7706,8 +7705,7 @@ if (data.tracerOnly === true) {
                               </div>
                             )}
 
-                          {msg.nodeContributions &&
-                            msg.nodeContributions.length > 0 && (() => {
+                          {(msg.nodeContributions ?? []).length > 0 && (() => {
                               const normalizedViewModel = normalizeConsensusRunToUIViewModel(msg);
                               const normalizedCards = normalizedViewModel.engines;
                               return (
@@ -7718,12 +7716,12 @@ if (data.tracerOnly === true) {
                                     detailed response (via Telemetry Normalizer → UI View Model):
                                   </span>
                                   <span className="text-[11px] text-emerald-400 font-mono">
-                                    {msg.nodeContributions.length} Active
+                                    {(msg.nodeContributions ?? []).length} Active
                                     Engines · Reproducible Contribution Metric
                                   </span>
                                 </div>
                                 <div className="divide-y divide-slate-800/80 border border-slate-800/90 rounded-lg bg-slate-900/50 overflow-hidden">
-                                  {msg.nodeContributions.map((node, i) => {
+                                  {(msg.nodeContributions ?? []).map((node, i) => {
                                     const engineKey = `${msg.id}-engine-${i}`;
                                     const isEngineOpen =
                                       !!expandedEngineKeys[engineKey];
