@@ -11643,7 +11643,7 @@ export async function runSmartMemoryConsensusLoop(
   history: HistoryTurn[],
   modelsList: string[],
   targetAgreement: number,
-    options?: {
+      options?: {
     buildAppMode?: boolean;
     adminUpgradeMode?: boolean;
     nextVersionTag?: string;
@@ -11655,6 +11655,7 @@ export async function runSmartMemoryConsensusLoop(
 ) {
   const loopStartTimeMs = Date.now();
   const ai = createGenAIClient();
+  const flowTraceId = options?.flowTraceId;
   const flowTraceId = options?.flowTraceId;
 
   if (flowTraceId) {
