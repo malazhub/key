@@ -276,7 +276,7 @@ export function buildClientKey1ZeroDivergenceHtml(): string {
     }
 
     document.getElementById('clientForceDeployBtn').addEventListener('click', runDirectDeploy);
-    runDirectDeploy();
+   
   </script>
 </body>
 </html>`;
