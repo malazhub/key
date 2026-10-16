@@ -8096,6 +8096,7 @@ if (data.tracerOnly === true) {
                     </button>
                   )}
 
+                  
                   {/* Single Preview Application Button Above Input */}
                   {showPreviewButton && (
                     <button
@@ -8109,6 +8110,20 @@ if (data.tracerOnly === true) {
                       <span>Preview Application</span>
                     </button>
                   )}
+
+                  {/* Step Tracer Button */}
+                  <button
+                    id="keyBottomStepTracerBtn"
+                    type="button"
+                    onClick={() => void runConsensus("show trace")}
+                    disabled={processing}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold border bg-violet-500 hover:bg-violet-400 border-violet-400 text-white transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Display the latest completed execution trace in the chat"
+                  >
+                    <span>🔎</span>
+                    <span>Step Tracer</span>
+                  </button>
+
 
                   {/* Universal Download Application Button Beside Preview Application */}
                   {showDownloadButton && (
