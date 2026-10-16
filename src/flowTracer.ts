@@ -43,8 +43,7 @@ function formatFlowValue(value: unknown): string {
       .join("; ");
   }
 
-  return "Data processed";
-}
+    return "Data processed";
 }
 
 export interface FlowEvent {
@@ -340,7 +339,7 @@ const lastOutgoingEvent = [...events]
         (event) => event.sourceFile || event.sourceFunction,
       ) ?? events[0];
 
-            lines.push(
+                lines.push(
       "",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       `### Step ${index + 1}: ${group.name}`,
@@ -348,24 +347,21 @@ const lastOutgoingEvent = [...events]
       `📄 Source file: ${sourceEvent.sourceFile ?? "Not recorded"}`,
       `⚙️ Function / logic: ${sourceEvent.sourceFunction ?? "Not recorded"}`,
       `🔵 Incoming: ${
-        firstIncomingEvent
-          ? formatFlowValue(firstIncomingEvent.incoming)
-          : "Not recorded"
+        group.isConsensusRound
+          ? "Query sent for evaluation; full prompt hidden."
+          : firstIncomingEvent
+            ? formatFlowValue(firstIncomingEvent.incoming)
+            : "Not recorded"
       }`,
       `🟢 Outgoing: ${
-        lastOutgoingEvent
-          ? formatFlowValue(lastOutgoingEvent.outgoing)
-          : "Not recorded"
+        group.isConsensusRound
+          ? "Evaluation result processed; internal response hidden."
+          : lastOutgoingEvent
+            ? formatFlowValue(lastOutgoingEvent.outgoing)
+            : "Not recorded"
       }`,
       `Status: ${finalStatus}`,
     );
-
-        if (group.isConsensusRound) {
-      lines.push(
-        "Incoming: Query sent for evaluation; full prompt hidden.",
-        "Outgoing: Evaluation result received; internal response hidden.",
-      );
-    }
 
   }
 
