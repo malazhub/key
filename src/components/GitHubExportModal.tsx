@@ -787,7 +787,7 @@ function buildStandaloneGitHubPagesHtml(): string {
 
       const aiCard = document.createElement("div");
       aiCard.className = "w-full rounded-2xl bg-slate-900/60 border border-slate-800/90 p-5 sm:p-6 space-y-5 chat-turn-node current-turn-node";
-      const nodes = Array.isArray(data.nodeContributions) ? data.nodeContributions : [];
+      const nodes: any[] = [];
       const hasPreview = Boolean(data.hasAppPreview || data.generatedAppHtml);
       const previewHtmlContent = data.generatedAppHtml || "";
 
@@ -823,7 +823,7 @@ function buildStandaloneGitHubPagesHtml(): string {
             <span class="text-slate-400 font-mono">Desired ≥ \${targetAgreement}% (\${activeModels.length} AI Engines)</span>
           </div>
           <div class="flex items-center gap-2">
-            <button type="button" class="toggle-loop-btn px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 cursor-pointer">
+            <button type="button" class="hidden toggle-loop-btn px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 cursor-pointer">
               View Engine Loop ▼
             </button>
           </div>
