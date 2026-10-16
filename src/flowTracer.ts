@@ -149,49 +149,125 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     ].join("\n");
   }
 
+  const finalEvent = [...trace.events]
+    .reverse()
+    .find((event) => /final response assembly/i.test(event.step));
+
+  const rawOutgoing =
+    finalEvent?.outgoing &&
+    typeof finalEvent.outgoing === "object"
+      ? (finalEvent.outgoing as Record<string, unknown>)
+      : {};
+
+  const nested =
+    rawOutgoing.consensusResult &&
+    typeof rawOutgoing.consensusResult === "object"
+      ? (rawOutgoing.consensusResult as Record<string, unknown>)
+      : undefined;
+
+  const payload: Record<string, unknown> = {
+    ...(nested ?? {}),
+    ...rawOutgoing,
+    answer:
+      typeof nested?.finalAnswer === "string"
+        ? nested.finalAnswer
+        : typeof nested?.answer === "string"
+          ? nested.answer
+          : typeof rawOutgoing.answer === "string"
+            ? rawOutgoing.answer
+            : undefined,
+  };
+
+  const getString = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
+  const getNumber = (...keys: string[]): number | undefined => {
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+    }
+    return undefined;
+  };
+
+  const answer = getString("answer", "finalAnswer");
+  const achieved = getNumber("achievedAgreement", "actualAgreement");
+  const target = getNumber("targetAgreement", "safeTarget");
+  const rounds = getNumber("iterationsRequired");
+  const summary = getString("consensusSummary");
+
+  const contributions = Array.isArray(payload.nodeContributions)
+    ? payload.nodeContributions
+    : [];
+
+  const engines = contributions.flatMap((item): string[] => {
+    if (!item || typeof item !== "object") return [];
+
+    const node = item as Record<string, unknown>;
+    const name =
+      typeof node.modelName === "string"
+        ? node.modelName
+        : typeof node.engine === "string"
+          ? node.engine
+          : undefined;
+
+    if (!name) return [];
+
+    const score =
+      typeof node.agreementScore === "number"
+        ? ` — ${node.agreementScore}% match`
+        : "";
+
+    return [`- ${name}${score}`];
+  });
+
   const lines = [
     "# Query-to-response trace",
     "",
     "## Original user query",
     "",
     "~~~text",
-    trace.question || "NOT RECORDED",
+    trace.question,
     "~~~",
-    "",
-    "> Each step displays only its name, incoming value, and outgoing value. Values marked NOT RECORDED were not captured.",
-    "",
   ];
 
-  function jsonBlock(value: unknown): string[] {
-    if (value === undefined) return ["NOT RECORDED"];
-    if (value === null) return ["null"];
-
-    let serialized: string;
-    try {
-      serialized = JSON.stringify(value, null, 2) ?? String(value);
-    } catch {
-      return ["[Value could not be serialized]"];
-    }
-
-    return ["~~~json", serialized, "~~~"];
+  if (answer) {
+    lines.push("", "## Final answer", "", answer);
   }
 
-  trace.events.forEach((event, index) => {
-    const title =
-      event.step.trim().replace(/^\d+\s*[.):\-]\s*/, "") ||
-      "Unnamed step";
+  if (achieved !== undefined) {
+    lines.push(
+      "",
+      `Achieved agreement: ${achieved}%` +
+        (target !== undefined ? ` | Target: ${target}%` : ""),
+    );
+  } else if (target !== undefined) {
+    lines.push("", `Target agreement: ${target}%`);
+  }
 
-    lines.push("## Step " + (index + 1) + " — " + title);
-    lines.push("");
-    lines.push("**Incoming**");
-    lines.push("");
-    lines.push(...jsonBlock(event.incoming));
-    lines.push("");
-    lines.push("**Outgoing**");
-    lines.push("");
-    lines.push(...jsonBlock(event.outgoing));
-    lines.push("");
-  });
+  if (rounds !== undefined) {
+    lines.push(`Rounds completed: ${rounds}`);
+  }
+
+  if (summary) {
+    lines.push("", `Consensus summary: ${summary}`);
+  }
+
+  if (engines.length > 0) {
+    lines.push(
+      "",
+      "## Engines responding in the final round",
+      ...engines,
+    );
+  }
 
   return lines.join("\n");
 }
