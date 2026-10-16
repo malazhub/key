@@ -11656,7 +11656,6 @@ export async function runSmartMemoryConsensusLoop(
   const loopStartTimeMs = Date.now();
   const ai = createGenAIClient();
   const flowTraceId = options?.flowTraceId;
-  const flowTraceId = options?.flowTraceId;
 
   if (flowTraceId) {
     recordFlowStep(flowTraceId, "Consensus loop entered", "ok", {
