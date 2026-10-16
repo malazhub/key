@@ -4,15 +4,47 @@ import { randomUUID } from "node:crypto";
 export type FlowStatus = "running" | "ok" | "error" | "skipped";
 
 function formatFlowValue(value: unknown): string {
-  if (value === undefined) return "NOT RECORDED";
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
+  if (value === undefined) return "Not recorded";
+  if (value === null) return "No data";
 
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return "[Value could not be serialized]";
+  if (typeof value === "string") {
+    const text = value.replace(/\s+/g, " ").trim();
+    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
   }
+
+  if (Array.isArray(value)) {
+    return `${value.length} item(s) received`;
+  }
+
+  if (typeof value === "object") {
+    const data = value as Record<string, unknown>;
+    const keys = Object.keys(data).filter(
+      (key) =>
+        !/prompt|systeminstruction|history|raw|implementation|harmony|sanitizer|response|answer|engine|modelid/i.test(key),
+    );
+
+    if (keys.length === 0) {
+      return "Data processed; internal details hidden";
+    }
+
+    return keys
+      .slice(0, 3)
+      .map((key) => {
+        const item = data[key];
+        if (Array.isArray(item)) {
+          return `${key}: ${item.length} item(s)`;
+        }
+        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+          const text = String(item).replace(/\s+/g, " ").trim();
+          return `${key}: ${text.length > 60 ? `${text.slice(0, 57)}...` : text}`;
+        }
+        return `${key}: processed`;
+      })
+      .join("; ");
+  }
+
+  return "Data processed";
+}
 }
 
 export interface FlowEvent {
@@ -308,27 +340,31 @@ const lastOutgoingEvent = [...events]
         (event) => event.sourceFile || event.sourceFunction,
       ) ?? events[0];
 
-        lines.push(
+            lines.push(
       "",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       `### Step ${index + 1}: ${group.name}`,
       "",
-      `Source file: ${sourceEvent.sourceFile ?? "NOT RECORDED"}`,
-      `Function / logic: ${sourceEvent.sourceFunction ?? "NOT RECORDED"}`,
-      `Incoming: ${
+      `📄 Source file: ${sourceEvent.sourceFile ?? "Not recorded"}`,
+      `⚙️ Function / logic: ${sourceEvent.sourceFunction ?? "Not recorded"}`,
+      `🔵 Incoming: ${
         firstIncomingEvent
           ? formatFlowValue(firstIncomingEvent.incoming)
-          : "NOT RECORDED"
+          : "Not recorded"
       }`,
-      `Outgoing: ${
+      `🟢 Outgoing: ${
         lastOutgoingEvent
           ? formatFlowValue(lastOutgoingEvent.outgoing)
-          : "NOT RECORDED"
+          : "Not recorded"
       }`,
       `Status: ${finalStatus}`,
     );
 
-    if (group.isConsensusRound) {
-      lines.push("Engine calls and intermediate outputs: Hidden");
+        if (group.isConsensusRound) {
+      lines.push(
+        "Incoming: Query sent for evaluation; full prompt hidden.",
+        "Outgoing: Evaluation result received; internal response hidden.",
+      );
     }
 
   }
