@@ -6703,6 +6703,27 @@ if (data.tracerOnly === true) {
                       <div>
                         <MarkdownRenderer content={msg.content} />
                       </div>
+                      {/* Compact Consensus Summary */}
+                      <section className="rounded-xl border border-slate-700 p-4 space-y-1">
+                        <h3 className="font-semibold">Consensus Summary</h3>
+                      
+                        {typeof msg.achievedAgreement === "number" && (
+                          <p>
+                            Agreement: {msg.achievedAgreement}%
+                            {typeof msg.targetAgreement === "number" &&
+                              ` (target ${msg.targetAgreement}%)`}
+                          </p>
+                        )}
+                      
+                        {typeof msg.iterationsRequired === "number" && (
+                          <p>Rounds: {msg.iterationsRequired}</p>
+                        )}
+                      
+                        {typeof msg.consensusSummary === "string" &&
+                          msg.consensusSummary.trim() !== "" && (
+                            <p>{msg.consensusSummary}</p>
+                          )}
+                      </section>
 
                       {/* Option 4: Live Google Search Grounding Sources (when applicable) */}
                       {msg.groundingSources &&
@@ -6906,9 +6927,12 @@ if (data.tracerOnly === true) {
                         </div>
                       </div>
 
-                                            {/* Keep detailed rounds and individual engine reports out of the chat. */}
-                      {false && isExpanded && (
-                        <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-4 space-y-4 text-xs">
+                                            {/* Advanced report remains available on demand. */}
+<details className="rounded-xl border border-slate-700 p-4">
+  <summary className="cursor-pointer select-none font-semibold">
+    Engine &amp; Telemetry Details
+  </summary>
+  <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-4 space-y-4 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
                             <span className="font-semibold text-slate-200">
                               Iterative Multi-AI Loop (
@@ -7959,9 +7983,9 @@ if (data.tracerOnly === true) {
                                 </div>
                               </div>
                               );
-                            })()}
+                                                        })()}
                         </div>
-                      )}
+                      </details>
                     </div>
                   </div>
                 );
