@@ -204,53 +204,94 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   const rounds = getNumber("iterationsRequired");
   const summary = getString("consensusSummary");
 
-  const contributions = Array.isArray(payload.nodeContributions)
-    ? payload.nodeContributions
-    : [];
+  type LogicalStep = {
+    name: string;
+    events: FlowEvent[];
+  };
 
-  const engines = contributions.flatMap((item): string[] => {
-    if (!item || typeof item !== "object") return [];
+  const groups: LogicalStep[] = [];
 
-    const node = item as Record<string, unknown>;
-    const name =
-      typeof node.modelName === "string"
-        ? node.modelName
-        : typeof node.engine === "string"
-          ? node.engine
-          : undefined;
+  for (const event of trace.events) {
+    const normalized = event.step
+      .toLowerCase()
+      .replace(/\b(round|iteration|attempt)\s*#?\d+\b/g, "$1")
+      .replace(/\b(engine|node|worker)\s*#?\d+\b/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
 
-    if (!name) return [];
+    const existing = groups.find(
+      (group) =>
+        group.name.toLowerCase().replace(/\s+/g, " ").trim() === normalized,
+    );
 
-    const score =
-      typeof node.agreementScore === "number"
-        ? ` — ${node.agreementScore}% match`
-        : "";
-
-    return [`- ${name}${score}`];
-  });
+    if (existing) {
+      existing.events.push(event);
+    } else {
+      groups.push({
+        name: event.step,
+        events: [event],
+      });
+    }
+  }
 
   const lines = [
     "# Query-to-response trace",
     "",
     "## Original user query",
     "",
-    "~~~text",
     trace.question,
-    "~~~",
+    "",
+    "## Processing tree",
+    "",
+    "Each step shows its incoming and final outgoing result only.",
+    "Repeated rounds, loops, and engine calls are grouped; intermediate results and internal details are hidden.",
   ];
 
-  if (answer) {
-    lines.push("", "## Final answer", "", answer);
+  for (const [index, group] of groups.entries()) {
+    const events = group.events;
+    const first = events[0];
+    const last = events[events.length - 1];
+
+    const incomingRecorded = events.some(
+      (event) => event.incoming !== undefined,
+    );
+    const outgoingRecorded = events.some(
+      (event) => event.outgoing !== undefined,
+    );
+
+    const finalStatus = last.status;
+    const repetitions = events.length;
+
+    lines.push(
+      "",
+      `### Step ${index + 1}: ${group.name}`,
+      "",
+      `Incoming: ${incomingRecorded ? "Received" : "Not recorded"}`,
+      `Outgoing: ${outgoingRecorded ? "Final result produced" : "Not recorded"}`,
+      `Status: ${finalStatus}`,
+    );
+
+    if (repetitions > 1) {
+      lines.push(
+        `Executions grouped: ${repetitions}`,
+        "Intermediate outputs: Hidden",
+      );
+    }
   }
+
+  lines.push(
+    "",
+    "## Final agreed response",
+    "",
+    answer ?? "No final answer was recorded.",
+  );
 
   if (achieved !== undefined) {
     lines.push(
       "",
-      `Achieved agreement: ${achieved}%` +
-        (target !== undefined ? ` | Target: ${target}%` : ""),
+      `Agreement: ${achieved}%` +
+        (target !== undefined ? ` (target ${target}%)` : ""),
     );
-  } else if (target !== undefined) {
-    lines.push("", `Target agreement: ${target}%`);
   }
 
   if (rounds !== undefined) {
@@ -258,15 +299,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   }
 
   if (summary) {
-    lines.push("", `Consensus summary: ${summary}`);
-  }
-
-  if (engines.length > 0) {
-    lines.push(
-      "",
-      "## Engines responding in the final round",
-      ...engines,
-    );
+    lines.push("", `Consensus: ${summary}`);
   }
 
   return lines.join("\n");
