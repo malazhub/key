@@ -3525,12 +3525,14 @@ const wantsFlowTrace =
           effectiveQuestion
         );
 
-      if (flowTraceId) {
+            if (flowTraceId) {
         recordFlowStep(
           flowTraceId,
           "4. Context preparation",
           "ok",
           {
+            sourceFile: "server.ts",
+            sourceFunction: "request handler: context preparation",
             incoming: {
               effectiveQuestion,
               cleanHistory,
