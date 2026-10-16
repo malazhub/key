@@ -1780,11 +1780,11 @@ STEP 1 — MATHEMATICAL CONTEXT ROUTING & WORKING MEMORY LEDGER (PRE-VERIFIED):
       : `Mathematical proof confirmed NO relation between the current query and previous history. Therefore, ONLY the current query ("${question}") is sent to the engines ("NEW_QUERY_ONLY").`
   }
 
-STEP 2 — MULTI-AI ITERATIVE CONSENSUS LOOP ON "payloadSentToEngines" (DETAILED PER-ENGINE REPLIES REQUIRED):
+STEP 2 — MULTI-AI ITERATIVE CONSENSUS LOOP ON "payloadSentToEngines" (INTERNAL EXECUTION; CONSOLIDATED REPORT ONLY):
 - Open a new session on each selected AI engine (${modelsList.join(", ")}) and send the exact query payload.
 - Round 1: Collect each engine's initial answer and compute their initial similarity score.
 - Iterative Loop: Collect the initial answers and resend them back to the selected engines until their similarity score reaches >= ${safeTarget}% (between ${safeTarget}% and 100%).
-- CRITICAL FOR "nodeContributions": You MUST include one entry for each of the ${modelsList.length} selected engines (${modelsList.join(", ")}). Each engine's "initialReply" and "finalMatchedReply" MUST be a detailed, substantive 2-3 sentence summary of that specific engine's technical response to the CURRENT query — NEVER use short 3-word placeholders or identical copy-pasted text across engines!
+- CRITICAL FOR "nodeContributions": Keep the individual engine responses available internally for consensus processing, but do not display them in "finalAnswer". - FINAL REPORT RULE: "finalAnswer" must contain one user-facing answer selected from the final completed round. Never concatenate or label individual engine outputs, and never include round-by-round logs, engine names, engine numbers, or individual engine responses in "finalAnswer". Keep individual engine data in "nodeContributions" for internal processing only.
 
 STEP 3 — LIVE INTERACTIVE APPLICATION / BUTTON / PORTAL PREVIEW GENERATION:
 ${
@@ -2196,34 +2196,30 @@ Mode: ${
     if (finalSuccessfulResults.length > 0) {
       const groundingSources = await groundingPromise;
       
-      const completeFinalAnswer = [
-        finalSuccessfulResults
-          .map((result, index) =>
-            `[ENGINE SLOT ${index + 1}]\n${String(
-              result.finalAnswer || ""
-            ).trim()}`
-          )
-          .join("\n\n--- ENGINE ANSWER ---\n\n"),
+            const finalRoundAnswers = finalSuccessfulResults
+        .map((result) => String(result.finalAnswer || "").trim())
+        .filter(Boolean);
 
-        "### User-Request Fulfillment Check",
-        `**Status:** ${
-          fulfillmentVerification.status === "pass"
-            ? "PASS — the verifier found the stated requirements addressed."
-            : fulfillmentVerification.status === "needs_revision"
-            ? "NOT PASSED — one or more requirements remain unmet."
-            : "UNVERIFIED — fulfillment could not be confirmed."
-        }`,
-        `**Verifier feedback:** ${fulfillmentVerification.feedback}`,
-        ...(fulfillmentVerification.missingRequirements.length > 0
-          ? [
-              "**Requirements needing attention:**",
-              ...fulfillmentVerification.missingRequirements.map(
-                (item) => `- ${item}`
-              ),
-            ]
-          : []),
-        "**Note:** This is an AI-based content check, not proof that external actions ran successfully.",
-      ].join("\n\n");
+      let completeFinalAnswer = finalRoundAnswers[0] || "";
+      let bestRepresentativeScore = -Infinity;
+
+      for (let i = 0; i < finalRoundAnswers.length; i += 1) {
+        let representativeScore = 0;
+
+        for (let j = 0; j < finalRoundAnswers.length; j += 1) {
+          if (i === j) continue;
+
+          representativeScore += computeCosineSimilarity(
+            extractSemanticTokens(finalRoundAnswers[i]),
+            extractSemanticTokens(finalRoundAnswers[j])
+          );
+        }
+
+        if (representativeScore > bestRepresentativeScore) {
+          bestRepresentativeScore = representativeScore;
+          completeFinalAnswer = finalRoundAnswers[i];
+        }
+      }
 
 
       const enriched = sanitizeAndEnrichConsensusResult(
