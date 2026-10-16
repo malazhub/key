@@ -3551,7 +3551,7 @@ const wantsFlowTrace =
 
      
 
-            const result = await runSharedConsensusLoop(
+                        const result = await runSharedConsensusLoop(
         effectiveQuestion,
         cleanHistory,
         modelsList,
@@ -3562,9 +3562,9 @@ const wantsFlowTrace =
           nextVersionTag: String(nextVersionTag || "keyv1"),
           attachments: safeAttachments,
           liveStructureContext,
+          flowTraceId,
         }
       );
-
             if (flowTraceId) {
         const resultSummary =
           typeof result === "string"
