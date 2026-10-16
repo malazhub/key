@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { recordFlowStep } from "./flowTracer";
 export * from "./upgrades/version8Harness";
 
 type ConvergenceRound = { round: number; similarityScore: number; note: string };
@@ -11642,26 +11643,61 @@ export async function runSmartMemoryConsensusLoop(
   history: HistoryTurn[],
   modelsList: string[],
   targetAgreement: number,
-  options?: {
+    options?: {
     buildAppMode?: boolean;
     adminUpgradeMode?: boolean;
     nextVersionTag?: string;
     attachments?: IncomingAttachment[];
     strictQueryPriority?: boolean;
     liveStructureContext?: string;
+    flowTraceId?: string;
   }
 ) {
   const loopStartTimeMs = Date.now();
   const ai = createGenAIClient();
+  const flowTraceId = options?.flowTraceId;
+
+  if (flowTraceId) {
+    recordFlowStep(flowTraceId, "Consensus loop entered", "ok", {
+      incoming: {
+        question,
+        history,
+        models: modelsList,
+        targetAgreement,
+      },
+      outgoing: {
+        question,
+        selectedModels: modelsList,
+        targetAgreement,
+      },
+    });
+  }
 
   // Resolve query isolation, contextMode, history purging, and current-over-saved priority via explicit QueryContextManager
-  const resolvedContext = QueryContextManager.resolveQueryContext(
+    const resolvedContext = QueryContextManager.resolveQueryContext(
     question,
     history,
     {
       strictQueryPriority: options?.strictQueryPriority,
     }
   );
+
+  if (flowTraceId) {
+    recordFlowStep(flowTraceId, "Query context resolution", "ok", {
+      incoming: {
+        question,
+        history,
+        strictQueryPriority: options?.strictQueryPriority,
+      },
+      outgoing: {
+        cleanQuestion: resolvedContext.cleanQuestion,
+        payloadSentToEngines: resolvedContext.payloadSentToEngines,
+        contextMode: resolvedContext.contextMode,
+        strictQueryPriority: resolvedContext.strictQueryPriority,
+        historyMatchScore: resolvedContext.relation.historyMatchScore,
+      },
+    });
+  }
 
   const {
     cleanQuestion,
@@ -12335,6 +12371,27 @@ iterationsRequired: actualRoundsCompleted,
     const settledResults = await Promise.all(
       eligibleModels.map(async (modelName) => {
         try {
+                    if (flowTraceId) {
+            recordFlowStep(
+              flowTraceId,
+              `Consensus round ${roundNumber} — ${modelName}`,
+              "running",
+              {
+                incoming: {
+                  engine: modelName,
+                  prompt: currentRoundPayload,
+                  systemInstruction,
+                  responseSchema: shouldGenerateAppPreview
+                    ? responseSchemaConfig
+                    : undefined,
+                },
+                outgoing: {
+                  status: "Dispatch started; response not yet received",
+                },
+              }
+            );
+          }
+
           const dispatched = await withStrictTimeout(
             dispatchEngine({
               engine: modelName,
@@ -12349,6 +12406,26 @@ iterationsRequired: actualRoundsCompleted,
           );
 
           const answer = dispatched.answer.trim();
+
+          if (flowTraceId) {
+            recordFlowStep(
+              flowTraceId,
+              `Consensus round ${roundNumber} — ${modelName} response`,
+              "ok",
+              {
+                incoming: {
+                  engine: modelName,
+                  prompt: currentRoundPayload,
+                },
+                outgoing: {
+                  engine: modelName,
+                  provider: dispatched.provider,
+                  modelId: dispatched.modelId,
+                  answer,
+                },
+              }
+            );
+          }
 
           if (!answer) {
             throw new Error(
