@@ -1,4 +1,5 @@
 import express from "express";
+import { defendQuery } from "./src/security/defenderRuntime";
 import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
 import {
   evaluateCompletionClaim,
@@ -3076,6 +3077,15 @@ async function startServer() {
         buildAppMode = false,
       } = req.body || {};
 
+      // MANDATORY DEFENDER GATE — before context building, search, or engines.
+      if (typeof question !== "string" || !defendQuery(question)) {
+        res.status(400).json({
+          ok: false,
+          error: "DEFENDER_BLOCKED: query rejected by defender.",
+        });
+        return;
+      }
+
       const liveStructureContext =
         await buildLiveServerStructureAndCachedStateContext(String(question || ""));
 
@@ -3256,7 +3266,8 @@ Treat the current follow-up as a recovery signal and produce the complete answer
               .join(", ")} and provide a clear, well-structured response.`
           : "";
 
-            if (!effectiveQuestion) {
+            // --- NEW CODE ---
+      if (!effectiveQuestion) {
         res
           .status(400)
           .json({
@@ -3266,8 +3277,20 @@ Treat the current follow-up as a recovery signal and produce the complete answer
         return;
       }
 
+      // MANDATORY DEFENDER GATE — before trace handling or intent routing.
+      if (
+        typeof effectiveQuestion !== "string" ||
+        !defendQuery(effectiveQuestion)
+      ) {
+        res.status(400).json({
+          ok: false,
+          error: "DEFENDER_BLOCKED: query rejected by defender.",
+        });
+        return;
+      }
+
       // Show the previous completed trace only when the user explicitly asks.
-           const traceRequestText = requestedQuestion.trim();
+      const traceRequestText = requestedQuestion.trim();
 
 const wantsFlowTrace =
   /\b(show|display|print|view|inspect|explain|walk me through)\b[\s\S]{0,120}\b(trace|execution flow|logic steps|processing steps|inputs and outputs)\b/i.test(
