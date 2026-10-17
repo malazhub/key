@@ -73,7 +73,34 @@ import {
   type CapabilityTest,
   type UpgradeStore,
 } from "./src/upgrades/upgradeTransaction";
+function assessCombinedResult(answer: string): {
+  rejected: boolean;
+  reason: string;
+} {
+  const refusal = analyzeRefusal(answer);
 
+  const rejectionPattern =
+    /\b(?:denied|rejected|refused|not permitted|cannot comply|can't comply|unable to comply|must decline|access denied)\b/i;
+
+  if (refusal.refused) {
+    return {
+      rejected: true,
+      reason: `Refusal detected: ${refusal.categories.join(", ")}`,
+    };
+  }
+
+  if (rejectionPattern.test(answer)) {
+    return {
+      rejected: true,
+      reason: "Rejection or denial detected in the combined result.",
+    };
+  }
+
+  return {
+    rejected: false,
+    reason: "No refusal or rejection detected in the combined result.",
+  };
+}
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
