@@ -2251,15 +2251,13 @@ const response = await ai.models.generateContent({
           )
           .filter((value): value is string => Boolean(value));
 
-        if (round === 1) {
-          throw new Error(
-            `No live AI engine returned a usable response for "${question}". ` +
-              (failures.length > 0
-                ? `Provider diagnostics: ${failures.join(" | ")}`
-                : "No provider error details were returned.")
-          );
-        }
-        break;
+        console.warn(
+  `Consensus round ${round}/50 produced no usable responses. ` +
+    "Continuing to the next round.",
+  failures
+);
+
+continue;
       }
 
       finalSuccessfulResults = successfulResults;
@@ -2287,12 +2285,25 @@ const response = await ai.models.generateContent({
       const verifierModel =
         parallelCandidates[parallelCandidates.length - 1];
 
-            fulfillmentVerification =
-        await verifyUserRequestFulfillment(
-          question,
-          candidateAnswer,
-          verifierModel
-        );
+            try {
+  fulfillmentVerification =
+    await verifyUserRequestFulfillment(
+      question,
+      candidateAnswer,
+      verifierModel
+    );
+} catch (error) {
+  fulfillmentVerification = {
+    status: "unverified",
+    feedback:
+      `Fulfillment verification failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    missingRequirements: [
+      "Fulfillment verification did not complete successfully.",
+    ],
+  };
+}
 
       const combinedAssessment =
   assessCombinedResult(candidateAnswer);
