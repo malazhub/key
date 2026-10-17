@@ -135,6 +135,17 @@ export function assertDefendedQuery(
   query: unknown,
 ): asserts query is string {
   if (typeof query !== "string" || query.trim().length === 0) {
+    throw new Error("DEFENDER_BLOCKED: query rejected by defender.");
+  }
+  if (!defendQuery(query)) {
+    throw new Error("DEFENDER_BLOCKED: query rejected by defender.");
+  }
+}
+
+export function assertDefendedQuery(
+  query: unknown,
+): asserts query is string {
+  if (typeof query !== "string" || query.trim().length === 0) {
     throw new Error(
       "DEFENDER_BLOCKED: query rejected by defender.",
     );
