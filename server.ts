@@ -3267,6 +3267,10 @@ Treat the current follow-up as a recovery signal and produce the complete answer
           : "";
 
             // --- NEW CODE ---
+      import { defendQuery } from "./src/security/defenderRuntime";
+
+// ... inside app.post("/api/consensus-chat", ...) ...
+
       if (!effectiveQuestion) {
         res
           .status(400)
