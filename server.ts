@@ -3937,6 +3937,10 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
 assertDefendedQuery(healthPrompt);
 
+const healthPrompt = "Reply with exactly HEALTH_OK.";
+
+assertDefendedQuery(healthPrompt);
+
 const response = await ai.models.generateContent({
   model: modelName,
   contents: healthPrompt,
