@@ -23,7 +23,7 @@ import {
   type IncomingAttachment,
   type MemoryOSPipelineTrace,
 } from "./consensusEngine";
-import { defendQuery } from "./security/defenderRuntime";
+import { assertDefendedQuery } from "./security/defenderRuntime";
 
 export interface SearchAndEnginePushRequest {
   question: string;
@@ -74,10 +74,9 @@ export async function executeKeySearchPipeline(
   webSearchSources: GroundingSource[];
   memorySearchTrace: MemoryOSPipelineTrace;
 }> {
+  assertDefendedQuery(question);
+  
   const cleanQuestion = String(question || "").trim();
-  if (!defendQuery(cleanQuestion)) {
-    throw new Error("DEFENDER_BLOCKED: query rejected by defender.");
-  }
 
   const memorySearchTrace = runMemoryOperatingSystemPipeline(
     cleanQuestion,
