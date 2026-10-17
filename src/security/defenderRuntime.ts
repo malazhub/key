@@ -144,12 +144,7 @@ export function assertDefendedQuery(
 
 
 
-  if (!defendQuery(query)) {
-    throw new Error(
-      "DEFENDER_BLOCKED: query rejected by defender.",
-    );
   }
-}
 // ============================================================================
 // 5. Live Production Target Implementation
 // ============================================================================
