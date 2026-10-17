@@ -1839,15 +1839,10 @@ async function runSmartMemoryConsensusLoop(
     attachments.length === 0 &&
     !options?.adminUpgradeMode
   ) {
-    const cached = consensusResponseCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) {
-      return {
-        ...cached.payload,
-        cacheHit: true,
-        cumulativeSavedPairsCount: allPairsCount + 1,
-        droppedOldestCount,
-      };
-    }
+    
+    // Do not return cached answers before the current request completes
+    // the live consensus and conformity-verification loop.
+
   }
 
   // Launch Option 4 (Google Search Grounding) in parallel when applicable
@@ -2375,10 +2370,13 @@ continue;
         consensusSummary: failureMessage,
         convergenceRounds,
         nodeContributions: [],
-        groundingSources: [],
+                groundingSources: [],
         workingMemoryFacts: relation.workingMemoryFacts || [],
         cumulativeSavedPairsCount: allPairsCount + 1,
         droppedOldestCount,
+        conformityReached: false,
+        fulfillmentVerification,
+        stopReason: "CONFORMITY_NOT_REACHED",
       };
     }
     if (finalSuccessfulResults.length > 0) {
@@ -2435,7 +2433,7 @@ continue;
         cumulativeSpec
       );
 
-      return {
+            return {
         ...enriched,
         groundingSources,
         workingMemoryFacts: relation.workingMemoryFacts || [],
@@ -2445,20 +2443,21 @@ continue;
         payloadSentToEngines: relation.payloadSentToEngines,
         cumulativeSavedPairsCount: allPairsCount + 1,
         droppedOldestCount,
+        conformityReached: true,
+        fulfillmentVerification,
+        stopReason: "CONFORMITY_REACHED",
       };
     }
   }
 
  
 
+  
   throw new Error(
-    `No live AI engine returned a usable response for "${question}". ` +
-      `Provider diagnostics: all configured Gemini candidates were unavailable or rejected the request.`
+    `CONFORMITY NOT REACHED: No usable live AI engine response was returned ` +
+      `for "${question}". No unverified answer is being returned as success.`
   );
 
-  throw new Error(
-    `No live AI engine returned a usable response for "${question}".`
-  );
 
   // Context-Aware Natural Synthesis Fallback (if all upstream API endpoints are temporarily unreachable)
   const achievedFallback = 0;
@@ -3770,7 +3769,8 @@ const wantsFlowTrace =
      
 
           
-      const result = await runSharedConsensusLoop(
+      
+      const result = (await runSharedConsensusLoop(
         effectiveQuestion,
         cleanHistory,
         modelsList,
@@ -3783,7 +3783,16 @@ const wantsFlowTrace =
           liveStructureContext,
           flowTraceId,
         }
-      );
+      )) as Awaited<ReturnType<typeof runSharedConsensusLoop>> & {
+        conformityReached?: boolean;
+        stopReason?: string;
+        fulfillmentVerification?: {
+          status: string;
+          feedback: string;
+          missingRequirements: string[];
+        };
+      };
+
 
       // CHANGE 3: Never treat a result as successful unless the
       // independent conformity verifier explicitly passed.
