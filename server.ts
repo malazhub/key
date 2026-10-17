@@ -2294,15 +2294,7 @@ continue;
       const verifierModel =
         parallelCandidates[parallelCandidates.length - 1];
 
-            try {
-  fulfillmentVerification =
-    await verifyUserRequestFulfillment(
-      question,
-      candidateAnswer,
-      verifierModel
-    );
-} catch (error) {
-        try {
+                 try {
         fulfillmentVerification =
           await verifyUserRequestFulfillment(
             question,
@@ -2321,7 +2313,6 @@ continue;
           ],
         };
       }
-
       const combinedAssessment =
         assessCombinedResult(candidateAnswer);
 
