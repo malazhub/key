@@ -9895,6 +9895,9 @@ export async function fetchGoogleSearchGrounding(
 
   for (const model of availableModels) {
     try {
+            // Gate the query before sending it to the grounding model.
+      assertDefendedQuery(question);
+
       const resp = await withStrictTimeout(
         ai.models.generateContent({
           model,
@@ -11876,9 +11879,12 @@ export async function runSmartMemoryConsensusLoop(
     getOrderedCandidateModels()[0] ||
     "gemini-2.5-flash";
 
-  const plannerModelInvoker = async (
+    const plannerModelInvoker = async (
     plannerPrompt: string
   ): Promise<unknown> => {
+    // Gate every planner request before it reaches Gemini.
+    assertDefendedQuery(plannerPrompt);
+
     const plannerResponse = await withStrictTimeout(
       ai.models.generateContent({
         model: plannerModel,
@@ -12202,8 +12208,11 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
         required: ["finalAnswer"],
       };
 
-  async function callModelFast(modelName: string, timeoutMs = 15000) {
+    async function callModelFast(modelName: string, timeoutMs = 15000) {
     try {
+      // Gate the actual payload sent to the model.
+      assertDefendedQuery(promptToText(multimodalContents));
+
       if (!shouldGenerateAppPreview) {
         const response = await withStrictTimeout(
           ai.models.generateContent({
@@ -12244,6 +12253,12 @@ iterationsRequired: actualRoundsCompleted,
           nodeContributions: [],
         };
       }
+
+            // Gate the structured-response request independently.
+      assertDefendedQuery(promptToText(multimodalContents));
+
+            // Gate the structured-response request independently.
+      assertDefendedQuery(promptToText(multimodalContents));
 
       const response = await withStrictTimeout(
         ai.models.generateContent({
@@ -12402,6 +12417,9 @@ iterationsRequired: actualRoundsCompleted,
               }
             );
           }
+
+                    // Re-check the exact payload for every engine and every round.
+          assertDefendedQuery(promptToText(currentRoundPayload));
 
           const dispatched = await withStrictTimeout(
             dispatchEngine({
@@ -14775,13 +14793,16 @@ export async function dispatchEngine(
     defaultModel,
   } = registryEntry;
 
-  const systemInstruction =
+    const systemInstruction =
     `${request.systemInstruction || ""}${schemaInstruction(
       request.responseSchema
     )}`.trim();
 
   const promptText =
     promptToText(request.prompt);
+
+  // MANDATORY DEFENDER GATE: before provider/model dispatch.
+  assertDefendedQuery(promptText);
 
   const finish = (
     answer: string,
