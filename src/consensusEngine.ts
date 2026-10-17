@@ -9881,6 +9881,9 @@ export function sanitizeAndEnrichConsensusResult(
 export async function fetchGoogleSearchGrounding(
   question: string
 ): Promise<GroundingSource[]> {
+  // Enforce the gate regardless of which caller invokes search.
+  assertDefendedQuery(question);
+
   if (!shouldUseGoogleSearchGrounding(question)) {
     return [];
   }
@@ -14798,8 +14801,11 @@ export async function dispatchEngine(
       request.responseSchema
     )}`.trim();
 
-  const promptText =
-    promptToText(request.prompt);
+  const promptText = promptToText(request.prompt);
+
+// Mandatory gate immediately before any provider dispatch.
+// Covers each consensus-round prompt and other callers of dispatchEngine.
+assertDefendedQuery(promptText);
 
   // MANDATORY DEFENDER GATE: before provider/model dispatch.
   assertDefendedQuery(promptText);
