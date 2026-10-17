@@ -1,5 +1,5 @@
 import express from "express";
-import { defendQuery } from "./src/security/defenderRuntime";
+import {   assertDefendedQuery,   defendQuery, } from "./src/security/defenderRuntime";
 import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
 import {
   evaluateCompletionClaim,
@@ -4026,8 +4026,11 @@ Return ONLY JSON in this exact shape:
     if (availableModels.length === 0) throw new Error("No AI model is currently available for self-upgrade generation.");
 
     let lastError = "";
-    for (const model of availableModels) {
+        for (const model of availableModels) {
       try {
+        // Gate this round's complete generated prompt before model execution.
+        assertDefendedQuery(prompt);
+
         const response = await ai.models.generateContent({
           model,
           contents: prompt,
