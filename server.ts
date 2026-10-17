@@ -1590,26 +1590,31 @@ async function verifyUserRequestFulfillment(
   candidateAnswer: string,
   verifierModel: string
 ): Promise<FulfillmentVerification> {
-  try {
+    try {
+    const verifierPrompt = [
+      "Evaluate whether the candidate answer fulfills the user's current request.",
+      "Return JSON only, using the required schema.",
+      "Identify concrete requirements and check each against the candidate answer.",
+      "PASS only if every material requirement is addressed with adequate evidence in the answer.",
+      "If any requirement is missing or only partly addressed, return needs_revision.",
+      "If you cannot reliably determine fulfillment, return unverified.",
+      "Do not treat claims that an external action occurred as proof that it occurred.",
+      "If the request requires an action such as running code, opening a UI, saving a file, or deploying, require actual execution evidence. If none is provided, mark that requirement missing or unverified.",
+      "Do not judge success based on answer length, confidence, or engine agreement percentage.",
+      "",
+      "USER REQUEST:",
+      question,
+      "",
+      "CANDIDATE ANSWER:",
+      candidateAnswer,
+    ].join("\n");
+
+    // Check the complete verifier prompt before sending it to Gemini.
+    assertDefendedQuery(verifierPrompt);
+
     const response = await ai.models.generateContent({
       model: verifierModel,
-      contents: [
-        "Evaluate whether the candidate answer fulfills the user's current request.",
-        "Return JSON only, using the required schema.",
-        "Identify concrete requirements and check each against the candidate answer.",
-        "PASS only if every material requirement is addressed with adequate evidence in the answer.",
-        "If any requirement is missing or only partly addressed, return needs_revision.",
-        "If you cannot reliably determine fulfillment, return unverified.",
-        "Do not treat claims that an external action occurred as proof that it occurred.",
-        "If the request requires an action such as running code, opening a UI, saving a file, or deploying, require actual execution evidence. If none is provided, mark that requirement missing or unverified.",
-        "Do not judge success based on answer length, confidence, or engine agreement percentage.",
-        "",
-        "USER REQUEST:",
-        question,
-        "",
-        "CANDIDATE ANSWER:",
-        candidateAnswer,
-      ].join("\n"),
+      contents: verifierPrompt,
       config: {
         temperature: 0,
         responseMimeType: "application/json",
