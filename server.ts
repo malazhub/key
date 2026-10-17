@@ -3935,7 +3935,6 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         try {
           const healthPrompt = "Reply with exactly HEALTH_OK.";
 
-assertDefendedQuery(healthPrompt);
 
 const healthPrompt = "Reply with exactly HEALTH_OK.";
 
