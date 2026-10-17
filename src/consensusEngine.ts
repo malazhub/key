@@ -11639,9 +11639,7 @@ export async function inspectLiveKeyStructureAndCachedState(
   return sections.join("\n\n");
 }
 
-import { assertDefendedQuery } from "./security/defenderRuntime";
 
-import { assertDefendedQuery } from "./security/defenderRuntime";
 
 export async function runSmartMemoryConsensusLoop(
   question: string,
