@@ -1,11 +1,10 @@
 import express from "express";
-import {   assertDefendedQuery,   defendQuery, } from "./src/security/defenderRuntime";
-import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
 import {
   analyzeRefusal,
   assertDefendedQuery,
   defendQuery,
 } from "./src/security/defenderRuntime";
+import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
 import {
   evaluateCompletionClaim,
   type GateProfile,
