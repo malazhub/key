@@ -2202,18 +2202,23 @@ const response = await ai.models.generateContent({
       : 0;
   }
 
-  if (parallelCandidates.length > 0) {
+    if (parallelCandidates.length > 0) {
     let priorAnswers: string[] = [];
     let finalSuccessfulResults: any[] = [];
     let achievedAgreement = 0;
     let iterationsRequired = 0;
-        let fulfillmentVerification: FulfillmentVerification = {
+
+    // Remains false until every conformity requirement passes.
+    let conformityReached = false;
+
+    let fulfillmentVerification: FulfillmentVerification = {
       status: "unverified",
       feedback: "No successful verification round has completed.",
       missingRequirements: [
         "Fulfillment has not yet been confirmed.",
       ],
     };
+
     const convergenceRounds: Array<{
       round: number;
       similarityScore: number;
@@ -2278,9 +2283,13 @@ continue;
       });
 
       
-      const candidateAnswer = answers.join(
-        "\n\n--- ENGINE ANSWER ---\n\n"
-      );
+      const candidateAnswer = successfulResults
+  .map(
+    (result) =>
+      `ENGINE: ${String(result.modelName || "unknown")}\n` +
+      `RESPONSE:\n${String(result.finalAnswer).trim()}`
+  )
+  .join("\n\n--- ENGINE BATCH RESPONSE ---\n\n");
 
       const verifierModel =
         parallelCandidates[parallelCandidates.length - 1];
@@ -2293,56 +2302,94 @@ continue;
       verifierModel
     );
 } catch (error) {
-  fulfillmentVerification = {
-    status: "unverified",
-    feedback:
-      `Fulfillment verification failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    missingRequirements: [
-      "Fulfillment verification did not complete successfully.",
-    ],
-  };
-}
+        try {
+        fulfillmentVerification =
+          await verifyUserRequestFulfillment(
+            question,
+            candidateAnswer,
+            verifierModel
+          );
+      } catch (error) {
+        fulfillmentVerification = {
+          status: "unverified",
+          feedback:
+            `Fulfillment verification failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          missingRequirements: [
+            "Fulfillment verification did not complete successfully.",
+          ],
+        };
+      }
 
       const combinedAssessment =
-  assessCombinedResult(candidateAnswer);
+        assessCombinedResult(candidateAnswer);
 
-const conformityReached =
-  achievedAgreement >= safeTarget &&
-  fulfillmentVerification.status === "pass" &&
-  !combinedAssessment.rejected;
+      // All required checks must pass in the same round.
+      conformityReached =
+        achievedAgreement >= safeTarget &&
+        fulfillmentVerification.status === "pass" &&
+        !combinedAssessment.rejected;
 
-priorAnswers = [
-  ...answers,
-  [
-    "COMBINED-RESULT CONFORMITY CHECK:",
-    `Round: ${round} of 50`,
-    `Agreement: ${achievedAgreement}%`,
-    `Target agreement: ${safeTarget}%`,
-    `Combined result rejected: ${combinedAssessment.rejected}`,
-    `Assessment reason: ${combinedAssessment.reason}`,
-    `Fulfillment status: ${fulfillmentVerification.status}`,
-    `Fulfillment feedback: ${fulfillmentVerification.feedback}`,
-    "Requirements not yet confirmed:",
-    ...fulfillmentVerification.missingRequirements.map(
-      (item) => `- ${item}`
-    ),
-    conformityReached
-      ? "Conformity reached. No additional revision is required."
-      : "Revise the shared interpretation and combined answer for the next round.",
-    "Preserve the user's intended meaning.",
-    "Do not bypass safety, privacy, authorization, or access controls.",
-    "Return one direct, complete answer to the user's request.",
-  ].join("\n"),
-];
+      // Carry the batch and its concrete verification feedback forward.
+      // The next engine round can use this to revise its response.
+      priorAnswers = [
+        ...answers,
+        [
+          "COMBINED-RESULT CONFORMITY CHECK:",
+          `Round: ${round} of 50`,
+          `Agreement: ${achievedAgreement}%`,
+          `Target agreement: ${safeTarget}%`,
+          `Combined result rejected: ${combinedAssessment.rejected}`,
+          `Assessment reason: ${combinedAssessment.reason}`,
+          `Fulfillment status: ${fulfillmentVerification.status}`,
+          `Fulfillment feedback: ${fulfillmentVerification.feedback}`,
+          "Requirements not yet confirmed:",
+          ...fulfillmentVerification.missingRequirements.map(
+            (item) => `- ${item}`
+          ),
+          conformityReached
+            ? "Conformity reached. No additional revision is required."
+            : "Conformity has NOT been reached. Revise the shared interpretation and combined answer in the next round.",
+          "Address every missing requirement explicitly.",
+          "Preserve the user's intended meaning.",
+          "Do not bypass safety, privacy, authorization, or access controls.",
+          "Do not present an unverified answer as verified.",
+          "Return one direct, complete answer to the user's request.",
+        ].join("\n"),
+      ];
 
-if (conformityReached) {
-  break;
-}
+      if (conformityReached) {
+        break;
+      }
 
     }
+        if (!conformityReached) {
+      const failureMessage =
+        "CONFORMITY NOT REACHED: The system did not satisfy all required " +
+        "conformity checks within 50 rounds. No unverified engine answer " +
+        "is being returned as a successful result.";
 
+      return {
+        contextMode: relation.contextMode,
+        historyMatchScore: relation.historyMatchScore,
+        matchedPairIndices: relation.matchedPairIndices,
+        payloadSentToEngines: relation.payloadSentToEngines,
+        finalAnswer: failureMessage,
+        hasAppPreview: false,
+        appTitle: "",
+        generatedAppHtml: "",
+        achievedAgreement,
+        iterationsRequired,
+        consensusSummary: failureMessage,
+        convergenceRounds,
+        nodeContributions: [],
+        groundingSources: [],
+        workingMemoryFacts: relation.workingMemoryFacts || [],
+        cumulativeSavedPairsCount: allPairsCount + 1,
+        droppedOldestCount,
+      };
+    }
     if (finalSuccessfulResults.length > 0) {
       const groundingSources = await groundingPromise;
       
@@ -2411,69 +2458,7 @@ if (conformityReached) {
     }
   }
 
-  // If structured consensus cannot be produced, still return a real live
-  // answer when one is available. Its agreement remains 0 because no
-  // consensus was measured; nothing is fabricated.
-  for (const modelName of parallelCandidates) {
-    if (!isModelAvailable(modelName)) continue;
-
-    try {
-      assertDefendedQuery(
-  JSON.stringify({
-    systemInstruction:
-      "Reply directly, naturally, and accurately to the current user query using the conversation history in context. Never repeat a robotic template.",
-    contents: multimodalContents,
-  })
-);
-
-const plainResp = await ai.models.generateContent({
-  model: modelName,
-  contents: multimodalContents,
-        config: {
-          systemInstruction:
-            "Reply directly, naturally, and accurately to the current user query using the conversation history in context. Never repeat a robotic template.",
-        },
-      });
-
-      const text = plainResp.text?.trim();
-      if (!text) continue;
-
-      const groundingSources = await groundingPromise;
-
-      return {
-        contextMode: relation.contextMode,
-        historyMatchScore: relation.historyMatchScore,
-        matchedPairIndices: relation.matchedPairIndices,
-        payloadSentToEngines: relation.payloadSentToEngines,
-        finalAnswer: text,
-        hasAppPreview: shouldGenerateAppPreview,
-        appTitle: shouldGenerateAppPreview
-          ? `Interactive Application Preview (${nextVer})`
-          : "",
-        generatedAppHtml: "",
-        achievedAgreement: 0,
-        iterationsRequired: 1,
-        consensusSummary:
-          `A real live engine answered, but the selected ${safeTarget}% consensus target was not reached. No synthetic agreement was reported.`,
-        convergenceRounds: [],
-        nodeContributions: [
-          {
-            modelName,
-            initialReply: text,
-            finalMatchedReply: text,
-            detailedResponse: text,
-            agreementScore: 0,
-          },
-        ],
-        groundingSources,
-        workingMemoryFacts: relation.workingMemoryFacts || [],
-        cumulativeSavedPairsCount: allPairsCount + 1,
-        droppedOldestCount,
-      };
-    } catch (err) {
-      if (isQuotaOrRateLimitError(err)) markModelCooldown(modelName, err);
-    }
-  }
+ 
 
   throw new Error(
     `No live AI engine returned a usable response for "${question}". ` +
