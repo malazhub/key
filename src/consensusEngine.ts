@@ -11641,12 +11641,14 @@ export async function inspectLiveKeyStructureAndCachedState(
 
 import { assertDefendedQuery } from "./security/defenderRuntime";
 
+import { assertDefendedQuery } from "./security/defenderRuntime";
+
 export async function runSmartMemoryConsensusLoop(
   question: string,
   history: HistoryTurn[],
   modelsList: string[],
   targetAgreement: number,
-      options?: {
+  options?: {
     buildAppMode?: boolean;
     adminUpgradeMode?: boolean;
     nextVersionTag?: string;
