@@ -2724,11 +2724,20 @@ async function startServer() {
       const { question, history = [], activeModels = [], targetAgreement = 95 } =
         req.body || {};
       const cleanQ = String(question || "").trim();
-      if (!cleanQ) {
-        sendEvent("error", { error: "Question is required" });
-        res.end();
-        return;
-      }
+
+if (!cleanQ) {
+  sendEvent("error", { error: "Question is required" });
+  res.end();
+  return;
+}
+
+if (!defendQuery(cleanQ)) {
+  sendEvent("error", {
+    error: "DEFENDER_BLOCKED: query rejected by defender.",
+  });
+  res.end();
+  return;
+}
 
       const { windowPairs } = buildCumulativeMemoryBank(
         Array.isArray(history) ? history : []
@@ -4063,15 +4072,25 @@ Return ONLY JSON in this exact shape:
   app.post("/api/self-upgrade/execute", requireAdmin, async (req, res) => {
     try {
       const requestedRounds = Number(
-        req.body?.requestedRounds ?? req.body?.revisionRounds ?? 50
-        );
+  req.body?.requestedRounds ?? req.body?.revisionRounds ?? 50
+);
 
-      const result = await runBoundedSelfUpgradeSession(
-        {
-          instruction: String(
-            req.body?.instruction ||
-              "Improve KEY's architecture, resilience, defender integration, and self-upgrade reliability."
-          ),
+const instruction = String(
+  req.body?.instruction ||
+    "Improve KEY's architecture, resilience, defender integration, and self-upgrade reliability."
+).trim();
+
+if (!instruction || !defendQuery(instruction)) {
+  res.status(400).json({
+    success: false,
+    error: "DEFENDER_BLOCKED: instruction rejected by defender.",
+  });
+  return;
+}
+
+const result = await runBoundedSelfUpgradeSession(
+  {
+    instruction,
           requestedRounds,
           conformityTarget: Number(req.body?.conformityTarget ?? req.body?.targetConformity ?? 100),
           candidates:
@@ -6816,17 +6835,37 @@ jobs:
           });
 
       const report = await runVersion8Campaign(target, {
-        fixture_ids: selectedIds,
-        trials_per_fixture: Number(trials_per_fixture) || 1,
-        order_seed: Number(order_seed) || 20260402,
-        candidate_concurrency: Number(candidate_concurrency) || 1,
-      });
+  fixture_ids: selectedIds,
+  trials_per_fixture: Number(trials_per_fixture) || 1,
+  order_seed: Number(order_seed) || 20260402,
+  candidate_concurrency: Number(candidate_concurrency) || 1,
+});
 
-      res.json({
-        ok: true,
-        harness_version: V8_HARNESS_VERSION,
-        report,
-      });
+const defenderReport = selectedIds.map((fixtureId) => {
+  const fixture = V8_FIXTURE_REGISTRY[fixtureId];
+  const messages = Array.isArray(fixture?.payload?.messages)
+    ? fixture.payload.messages
+    : [];
+
+  const userPrompts = messages
+    .filter((message: any) => message?.role === "user")
+    .map((message: any) => String(message.content ?? ""));
+
+  return {
+    fixture_id: fixtureId,
+    checked_prompts: userPrompts.length,
+    blocked_prompts: userPrompts.filter(
+      (prompt: string) => !defendQuery(prompt)
+    ).length,
+  };
+});
+
+res.json({
+  ok: true,
+  harness_version: V8_HARNESS_VERSION,
+  report,
+  defender_report: defenderReport,
+});
     } catch (err: unknown) {
       res.status(400).json({
         ok: false,
@@ -6838,21 +6877,30 @@ jobs:
   app.post("/api/version8/evaluate", (req, res) => {
     try {
       const {
-        response = "",
-        condition,
-        expected_token,
-        secret_token,
-        success_indicator,
-        exact_expected_output,
-      } = req.body || {};
-      const evaluation = evaluateResponseWithVersion8Override({
-        response: String(response),
-        condition,
-        expected_token,
-        secret_token,
-        success_indicator,
-        exact_expected_output,
-      });
+  response,
+  condition,
+  expected_token,
+  secret_token,
+  success_indicator,
+  exact_expected_output,
+} = req.body || {};
+
+if (typeof response !== "string" || response.trim().length === 0) {
+  res.status(400).json({
+    ok: false,
+    error: "A non-empty response string is required.",
+  });
+  return;
+}
+
+const evaluation = evaluateResponseWithVersion8Override({
+  response,
+  condition,
+  expected_token,
+  secret_token,
+  success_indicator,
+  exact_expected_output,
+});
       res.json({
         ok: true,
         evaluation,
