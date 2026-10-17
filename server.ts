@@ -3933,11 +3933,15 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       CANDIDATE_MODELS.map(async (modelName) => {
         const modelStarted = Date.now();
         try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: "Reply with exactly HEALTH_OK.",
-            config: { temperature: 0 },
-          });
+          const healthPrompt = "Reply with exactly HEALTH_OK.";
+
+assertDefendedQuery(healthPrompt);
+
+const response = await ai.models.generateContent({
+  model: modelName,
+  contents: healthPrompt,
+  config: { temperature: 0 },
+});
           const text = String(response.text || "").trim();
           return {
             model: modelName,
