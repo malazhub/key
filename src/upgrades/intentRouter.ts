@@ -9,7 +9,7 @@ export type Intent =
 const DEFAULT_UPGRADE_INSTRUCTION =
   "Inspect the codebase, identify the highest-priority reproducible bug or improvement, make a focused and safe change, run relevant tests and the production build, and deploy only if all required checks pass. Verify results using actual evidence. Never claim success without evidence. Do not modify unrelated files.";
 
-export function routeIntent(message: string) {
+export function routeIntent(message: string): Intent {
   assertDefendedQuery(message);
 
   const text = message.trim();
