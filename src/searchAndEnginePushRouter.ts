@@ -131,13 +131,8 @@ export async function pushQueryToEnginesAndConverge(
   request: SearchAndEnginePushRequest
 ): Promise<Record<string, any>> {
   const effectiveQuestion = String(request.question || "").trim();
-   if (!defendQuery(effectiveQuestion)) {
-    return {
-      blocked: true,
-      blockedBy: "DEFENDER",
-      reason: "Query rejected by defender.",
-    };
-  }
+  assertDefendedQuery(effectiveQuestion);
+
   const modelsList = Array.isArray(request.activeModels)
     ? request.activeModels.map((model) => String(model || "").trim()).filter(Boolean)
     : [];
