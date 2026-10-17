@@ -14805,10 +14805,12 @@ export async function dispatchEngine(
 
 // Mandatory gate immediately before any provider dispatch.
 // Covers each consensus-round prompt and other callers of dispatchEngine.
-assertDefendedQuery(promptText);
-
-  // MANDATORY DEFENDER GATE: before provider/model dispatch.
-  assertDefendedQuery(promptText);
+assertDefendedQuery(
+  JSON.stringify({
+    systemInstruction,
+    prompt: promptText,
+  })
+);
 
   const finish = (
     answer: string,
