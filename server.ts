@@ -1542,6 +1542,8 @@ function sanitizeAndEnrichConsensusResult(
 async function fetchGoogleSearchGrounding(
   question: string
 ): Promise<GroundingSource[]> {
+  assertDefendedQuery(question);
+
   if (!shouldUseGoogleSearchGrounding(question)) {
     return [];
   }
@@ -1993,10 +1995,22 @@ Mode: ${
                 .join("\n\n")}\n\nAnswer the user's query accurately. Use the prior answers as evidence, but do not claim agreement unless it is actually supported.`
             : "";
 
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents:
-            typeof multimodalContents === "string"
+        // Validate the complete prompt, including accumulated round context.
+assertDefendedQuery(
+  typeof multimodalContents === "string"
+    ? multimodalContents + roundContext
+    : JSON.stringify({
+        parts: [
+          ...multimodalContents.parts,
+          { text: roundContext },
+        ],
+      })
+);
+
+const response = await ai.models.generateContent({
+  model: modelName,
+  contents:
+    typeof multimodalContents === "string"
               ? multimodalContents + roundContext
               : {
                   parts: [
@@ -2269,9 +2283,15 @@ Mode: ${
     if (!isModelAvailable(modelName)) continue;
 
     try {
-      const plainResp = await ai.models.generateContent({
-        model: modelName,
-        contents: multimodalContents,
+      assertDefendedQuery(
+  typeof multimodalContents === "string"
+    ? multimodalContents
+    : JSON.stringify(multimodalContents)
+);
+
+const plainResp = await ai.models.generateContent({
+  model: modelName,
+  contents: multimodalContents,
         config: {
           systemInstruction:
             "Reply directly, naturally, and accurately to the current user query using the conversation history in context. Never repeat a robotic template.",
@@ -2760,7 +2780,7 @@ if (!defendQuery(cleanQ)) {
 
       const availableModels = getOrderedCandidateModels().filter(isModelAvailable);
       if (availableModels.length > 0) {
-        const streamResp = await ai.models.generateContentStream({
+        assertDefendedQuery(   relation.hasRelation     ? relation.payloadSentToEngines     : cleanQ );  const streamResp = await ai.models.generateContentStream({
           model: availableModels[0],
           contents: relation.hasRelation
             ? relation.payloadSentToEngines
