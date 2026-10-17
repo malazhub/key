@@ -2,6 +2,11 @@ import express from "express";
 import {   assertDefendedQuery,   defendQuery, } from "./src/security/defenderRuntime";
 import { routeIntent, type Intent } from "./src/upgrades/intentRouter";
 import {
+  analyzeRefusal,
+  assertDefendedQuery,
+  defendQuery,
+} from "./src/security/defenderRuntime";
+import {
   evaluateCompletionClaim,
   type GateProfile,
 } from "./src/upgrades/evidenceGuard";import { recordLesson, formatLessonsForPrompt } from "./src/upgrades/failureMemory";
@@ -77,7 +82,34 @@ const __dirname = path.dirname(__filename);
 const CLOUD_DB_FILE = path.join(__dirname, "cloud_users_db.json");
 const ADMIN_VERSIONS_FILE = path.join(__dirname, "admin_versions_db.json");
 const DEFAULT_USER_QUOTA_BYTES = 50 * 1024; // 50 KB per user cloud history space (triggers 80% notification at 40 KB)
+function assessCombinedResult(answer: string): {
+  rejected: boolean;
+  reason: string;
+} {
+  const refusal = analyzeRefusal(answer);
 
+  const rejectionPattern =
+    /\b(?:denied|rejected|refused|not permitted|cannot comply|can't comply|unable to comply|must decline|access denied)\b/i;
+
+  if (refusal.refused) {
+    return {
+      rejected: true,
+      reason: `Refusal detected: ${refusal.categories.join(", ")}`,
+    };
+  }
+
+  if (rejectionPattern.test(answer)) {
+    return {
+      rejected: true,
+      reason: "Rejection or denial detected in the combined result.",
+    };
+  }
+
+  return {
+    rejected: false,
+    reason: "No refusal or rejection detected in the combined result.",
+  };
+}
 interface CloudUserRecord {
   email: string;
   threads: unknown[];
@@ -2191,30 +2223,33 @@ const response = await ai.models.generateContent({
           verifierModel
         );
 
-      priorAnswers =
-        fulfillmentVerification.status === "pass"
-          ? answers
-          : [
-              ...answers,
-              [
-                "FULFILLMENT VERIFICATION FEEDBACK:",
-                fulfillmentVerification.feedback,
-                "Requirements not yet confirmed:",
-                ...fulfillmentVerification.missingRequirements.map(
-                  (item) => `- ${item}`
-                ),
-                "Revise the answer to address these gaps. Do not claim external actions occurred without evidence.",
-              ].join("\n"),
-            ];
+      const combinedAssessment =
+  assessCombinedResult(candidateAnswer);
 
-      // Agreement is necessary for consensus, but is not proof of fulfillment.
-      // Continue the bounded loop if the request has not passed verification.
-      if (
-        achievedAgreement >= safeTarget &&
-        fulfillmentVerification.status === "pass"
-      ) {
-        break;
-      }
+priorAnswers = [
+  ...answers,
+  [
+    "COMBINED-RESULT CONFORMITY CHECK:",
+    `Rejected: ${combinedAssessment.rejected}`,
+    `Reason: ${combinedAssessment.reason}`,
+    `Fulfillment status: ${fulfillmentVerification.status}`,
+    `Fulfillment feedback: ${fulfillmentVerification.feedback}`,
+    "Requirements not yet confirmed:",
+    ...fulfillmentVerification.missingRequirements.map(
+      (item) => `- ${item}`
+    ),
+    "Revise the shared request interpretation and combined answer for the next round.",
+    "Preserve the user's intended meaning. Do not bypass safety, privacy, authorization, or access controls.",
+  ].join("\n"),
+];
+
+if (
+  achievedAgreement >= safeTarget &&
+  fulfillmentVerification.status === "pass" &&
+  !combinedAssessment.rejected
+) {
+  break;
+}
 
     }
 
