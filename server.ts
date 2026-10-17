@@ -3769,7 +3769,8 @@ const wantsFlowTrace =
 
      
 
-                        const result = await runSharedConsensusLoop(
+          
+      const result = await runSharedConsensusLoop(
         effectiveQuestion,
         cleanHistory,
         modelsList,
@@ -3783,6 +3784,47 @@ const wantsFlowTrace =
           flowTraceId,
         }
       );
+
+      // CHANGE 3: Never treat a result as successful unless the
+      // independent conformity verifier explicitly passed.
+      //
+      // This gate must run before auto-deployment, upgrade handling,
+      // or the normal successful API response.
+      if (result.conformityReached !== true) {
+        const failurePayload = executeConsensusApiPayload(
+          {
+            ...result,
+            conformityReached: false,
+            stopReason:
+              result.stopReason || "CONFORMITY_NOT_REACHED",
+            fulfillmentVerification:
+              result.fulfillmentVerification || {
+                status: "unverified",
+                feedback:
+                  "The request did not receive a successful conformity verification.",
+                missingRequirements: [
+                  "An independent conformity verification must pass.",
+                ],
+              },
+          },
+          effectiveQuestion,
+          modelsList,
+          safeTarget,
+          null
+        );
+
+        // Do not run success-only side effects for an unverified result.
+        res.status(502).json({
+          ...failurePayload,
+          success: false,
+          conformityReached: false,
+          stopReason: "CONFORMITY_NOT_REACHED",
+          error:
+            "Conformity was not reached. The answer has not been verified and must not be treated as a successful result.",
+        });
+        return;
+      }
+
             if (flowTraceId) {
         const resultSummary =
           typeof result === "string"
