@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { assertDefendedQuery } from "./security/defenderRuntime";
 import { recordFlowStep } from "./flowTracer";
 export * from "./upgrades/version8Harness";
 
@@ -11638,6 +11639,8 @@ export async function inspectLiveKeyStructureAndCachedState(
   return sections.join("\n\n");
 }
 
+import { assertDefendedQuery } from "./security/defenderRuntime";
+
 export async function runSmartMemoryConsensusLoop(
   question: string,
   history: HistoryTurn[],
@@ -11653,6 +11656,8 @@ export async function runSmartMemoryConsensusLoop(
     flowTraceId?: string;
   }
 ) {
+  assertDefendedQuery(question);
+
   const loopStartTimeMs = Date.now();
   const ai = createGenAIClient();
   const flowTraceId = options?.flowTraceId;
