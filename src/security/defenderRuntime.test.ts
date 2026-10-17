@@ -1,40 +1,33 @@
-import { describe, expect, it } from "vitest";
+
+import assert from "node:assert/strict";
 import {
   assertDefendedQuery,
   defendQuery,
 } from "./defenderRuntime";
 
-describe("defendQuery", () => {
-  it("accepts a non-empty query", () => {
-    expect(defendQuery("Explain gravity")).toBe(true);
-  });
+assert.equal(defendQuery("Explain gravity"), true);
+assert.equal(defendQuery(""), false);
+assert.equal(defendQuery("   "), false);
 
-  it("rejects an empty query", () => {
-    expect(defendQuery("")).toBe(false);
-  });
-
-  it("rejects whitespace-only input", () => {
-    expect(defendQuery("   ")).toBe(false);
-  });
+assert.doesNotThrow(() => {
+  assertDefendedQuery("Explain gravity");
 });
 
-describe("assertDefendedQuery", () => {
-  it("accepts a non-empty string", () => {
-    expect(() => {
-      assertDefendedQuery("Explain gravity");
-    }).not.toThrow();
-  });
+const invalidInputs: unknown[] = [
+  "",
+  "   ",
+  null,
+  undefined,
+  123,
+  {},
+];
 
-  it.each([
-    "",
-    "   ",
-    null,
-    undefined,
-    123,
-    {},
-  ])("rejects invalid input: %j", (input) => {
-    expect(() => {
-      assertDefendedQuery(input);
-    }).toThrow("DEFENDER_BLOCKED");
-  });
-});
+for (const input of invalidInputs) {
+  assert.throws(
+    () => assertDefendedQuery(input),
+    /DEFENDER_BLOCKED/,
+    `Expected invalid input to be rejected: ${String(input)}`,
+  );
+}
+
+console.log("defenderRuntime tests passed");
