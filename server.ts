@@ -2002,14 +2002,19 @@ Mode: ${
 
         // Validate the complete prompt, including accumulated round context.
 assertDefendedQuery(
-  typeof multimodalContents === "string"
-    ? multimodalContents + roundContext
-    : JSON.stringify({
-        parts: [
-          ...multimodalContents.parts,
-          { text: roundContext },
-        ],
-      })
+  JSON.stringify({
+    systemInstruction,
+    contents:
+      typeof multimodalContents === "string"
+        ? multimodalContents + roundContext
+        : {
+            parts: [
+              ...multimodalContents.parts,
+              { text: roundContext },
+            ],
+          },
+    responseSchema: responseSchemaConfig,
+  })
 );
 
 const response = await ai.models.generateContent({
@@ -2289,9 +2294,11 @@ const response = await ai.models.generateContent({
 
     try {
       assertDefendedQuery(
-  typeof multimodalContents === "string"
-    ? multimodalContents
-    : JSON.stringify(multimodalContents)
+  JSON.stringify({
+    systemInstruction:
+      "Reply directly, naturally, and accurately to the current user query using the conversation history in context. Never repeat a robotic template.",
+    contents: multimodalContents,
+  })
 );
 
 const plainResp = await ai.models.generateContent({
@@ -2785,7 +2792,15 @@ if (!defendQuery(cleanQ)) {
 
       const availableModels = getOrderedCandidateModels().filter(isModelAvailable);
       if (availableModels.length > 0) {
-        assertDefendedQuery(   relation.hasRelation     ? relation.payloadSentToEngines     : cleanQ );  const streamResp = await ai.models.generateContentStream({
+        assertDefendedQuery(
+  JSON.stringify({
+    systemInstruction:
+      "Provide a clear, well-structured Markdown answer to the current user query using ### Bold Headings and numbered points.",
+    contents: relation.hasRelation
+      ? relation.payloadSentToEngines
+      : cleanQ,
+  })
+);  const streamResp = await ai.models.generateContentStream({
           model: availableModels[0],
           contents: relation.hasRelation
             ? relation.payloadSentToEngines
