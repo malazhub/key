@@ -3933,7 +3933,6 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       CANDIDATE_MODELS.map(async (modelName) => {
         const modelStarted = Date.now();
         try {
-          const healthPrompt = "Reply with exactly HEALTH_OK.";
 
 
 const healthPrompt = "Reply with exactly HEALTH_OK.";
