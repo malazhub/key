@@ -2649,12 +2649,9 @@ export function buildKeyConversationMemoryInspectorPortalHtml(
             historyPayload.push({ role: 'assistant', content: p.agreedAnswer });
           });
           var r = await fetch('/api/history/audit', {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  signal: request.signal,
-  body: JSON.stringify({ history: historyPayload })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history: historyPayload })
           });
           var d = await r.json();
           banner.textContent = '✓ LIVE /api/history/audit VERIFIED: totalIndexedTurns=' + d.totalIndexedTurns + ', activeWindowTurns=' + d.activeWindowTurns + ', coverage=' + d.coveragePercent + '% (Global State Sync Active).';
@@ -3466,12 +3463,9 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
 
         try {
           var res = await fetch('/api/self-upgrade/execute', {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  signal: request.signal,
-  body: JSON.stringify({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               instruction: instr,
               requestedRounds: 1,
               deploy: false
@@ -3552,12 +3546,11 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
         statusBar.textContent = '⏳ Writing ' + currentPath + ' directly to disk (/api/fs/write)...';
         try {
           var res = await fetch('/api/fs/write', {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  signal: request.signal,
-  body: JSON.stringify({ path: currentPath, content: editor.value })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: currentPath, content: editor.value })
+          });
+          tringify({ path: currentPath, content: editor.value })
           });
           var data = await res.json();
           if (data && data.ok) {
@@ -3693,19 +3686,16 @@ export function resolveSelfUpgradeCapabilityQuestionReply(
       }
       if (typeof window.fetch === "function") {
         window
-          .fetch("/api/self-upgrade/execute",{
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  signal: request.signal,
-  body: JSON.stringify({
-              instruction: clean.slice(0, 240) || "Autonomous Key Self-Upgrade & Tree Sync",
-              targetThreshold: 99,
-              revisionRounds: 50,
-            }),
-          })
-          .catch(() => {});
+        .fetch("/api/self-upgrade/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instruction: clean.slice(0, 240) || "Autonomous Key Self-Upgrade & Tree Sync",
+            targetThreshold: 99,
+            revisionRounds: 50,
+          }),
+        })
+        .catch(() => {});
       }
     } catch {
       // ignore storage quota errors
@@ -15903,12 +15893,9 @@ export function buildVersion8SelfUpgradedPortalHtml(): string {
         badge.textContent = '⟳ Executing 11-Fixture Campaign...';
         try {
           var r = await fetch('/api/version8/campaign', {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  signal: request.signal,
-  body: JSON.stringify({ trials_per_fixture: 2, order_seed: 20260402 })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trials_per_fixture: 2, order_seed: 20260402 })
           });
           var d = await r.json();
           badge.textContent = '✓ Campaign Complete (22 Trials)';
