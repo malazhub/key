@@ -3874,12 +3874,12 @@ const wantsFlowTrace =
     targetAgreement: safeTarget,
     engineResults: result.nodeContributions,
   },
-  outgoing: {
-  finalAnswer: result.answer,
-  achievedAgreement: result.consensus.achievedAgreement,
-  targetAgreement: result.consensus.targetAgreement,
-  iterationsRequired: result.consensus.iterationsRequired,
-},
+    outgoing: {
+    finalAnswer: result.finalAnswer,
+    achievedAgreement: result.achievedAgreement,
+    targetAgreement: result.targetAgreement,
+    iterationsRequired: result.iterationsRequired,
+  },
   decision: "Consensus returned its result. Individual comparison and retry decisions must be recorded inside the consensus loop.",
 });
       }
