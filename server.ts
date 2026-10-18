@@ -3803,7 +3803,7 @@ const wantsFlowTrace =
 
           
       
-      const result = (await runSharedConsensusLoop(
+            const result = await runSharedConsensusLoop(
         effectiveQuestion,
         cleanHistory,
         modelsList,
@@ -3816,15 +3816,7 @@ const wantsFlowTrace =
           liveStructureContext,
           flowTraceId,
         }
-      )) as Awaited<ReturnType<typeof runSharedConsensusLoop>> & {
-        conformityReached?: boolean;
-        stopReason?: string;
-        fulfillmentVerification?: {
-          status: string;
-          feedback: string;
-          missingRequirements: string[];
-        };
-      };
+      );
 
 
       // CHANGE 3: Never treat a result as successful unless the
@@ -3832,7 +3824,7 @@ const wantsFlowTrace =
       //
       // This gate must run before auto-deployment, upgrade handling,
       // or the normal successful API response.
-      if (result.conformityReached !== true) {
+            if (         result.conformityReached !== true ||         result.stopReason !== "CONFORMITY_REACHED" ||         result.fulfillmentVerification?.status !== "pass"       ) {
         const failurePayload = executeConsensusApiPayload(
           {
             ...result,
