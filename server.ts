@@ -3981,12 +3981,13 @@ const wantsFlowTrace =
               "src/upgrades/activeSelfUpgradeModule.ts",
               "key_self_upgrade_state.json",
             ],
-            verificationGate: {
+                        verificationGate: {
               syntax: "NOT_RUN",
               typecheck: "NOT_RUN",
               build: "NOT_RUN",
               tests: "NOT_RUN",
             },
+          };
 
           const registryPayload = {
             active: true,
