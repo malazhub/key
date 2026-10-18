@@ -836,12 +836,11 @@ function buildStandaloneGitHubPagesHtml(): string {
       }
 
       const verified =
-        data.success === true &&
-        data.conformityReached === true &&
-        data.stopReason === "CONFORMITY_REACHED" &&
-        data.fulfillmentVerification &&
-        data.fulfillmentVerification.status === "pass";
-
+  data.success === true &&
+  data.conformityReached === true &&
+  data.stopReason === "CONFORMITY_REACHED" &&
+  data.fulfillmentVerification &&
+  data.fulfillmentVerification.status === "pass";
       if (!verified) {
         const reason =
           typeof data.error === "string"
