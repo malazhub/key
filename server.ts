@@ -3877,7 +3877,7 @@ const wantsFlowTrace =
     outgoing: {
     finalAnswer: result.finalAnswer,
     achievedAgreement: result.achievedAgreement,
-    targetAgreement: result.targetAgreement,
+    targetAgreement: safeTarget,
     iterationsRequired: result.iterationsRequired,
   },
   decision: "Consensus returned its result. Individual comparison and retry decisions must be recorded inside the consensus loop.",
