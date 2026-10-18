@@ -647,6 +647,7 @@ function buildStandaloneGitHubPagesHtml(): string {
     }
 
     
+
 async function callLiveBackend(payload) {
   const failures: string[] = [];
 
@@ -697,6 +698,7 @@ async function callLiveBackend(payload) {
     `All configured backends failed. ${failures.join(" | ")}`
   );
 }
+
 
     async function sendQuery() {
       const q = questionTextarea.value.trim();
