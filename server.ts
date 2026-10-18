@@ -2258,14 +2258,14 @@ const response = await ai.models.generateContent({
               : null
           )
           .filter((value): value is string => Boolean(value));
-
-        console.warn(
-  `Consensus round ${round}/50 produced no usable responses. ` +
-    "Continuing to the next round.",
-  failures
-);
-
-continue;
+      
+        console.error(
+          `Consensus round ${round}/50 produced no usable responses. ` +
+            "Stopping because every model call failed.",
+          failures
+        );
+      
+        break;
       }
 
       finalSuccessfulResults = successfulResults;
