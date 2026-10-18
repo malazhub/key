@@ -12634,7 +12634,7 @@ signal: AbortSignal.timeout(15000),
 
       const verifierResponse = await withStrictTimeout(
         ai.models.generateContent({
-          model: selectedModels[selectedModels.length - 1],
+          model:   getServerEnv("CONSENSUS_VERIFIER_MODEL") ||   getServerEnv("GEMINI_MODEL") ||   "gemini-3.8-flash",
           contents: verifierPrompt,
           config: {
             temperature: 0,
