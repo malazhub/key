@@ -77,28 +77,43 @@ function assessCombinedResult(answer: string): {
   rejected: boolean;
   reason: string;
 } {
-  const refusal = analyzeRefusal(answer);
+  const responses = answer
+    .split(/\n\s*--- ENGINE BATCH RESPONSE ---\s*\n/)
+    .map((part) => {
+      const match = part.match(
+        /RESPONSE:\s*([\s\S]*)/i
+      );
+      return match?.[1]?.trim() ?? part.trim();
+    })
+    .filter(Boolean);
 
-  const rejectionPattern =
-    /\b(?:denied|rejected|refused|not permitted|cannot comply|can't comply|unable to comply|must decline|access denied)\b/i;
-
-  if (refusal.refused) {
+  if (responses.length === 0) {
     return {
       rejected: true,
-      reason: `Refusal detected: ${refusal.categories.join(", ")}`,
+      reason: "No usable engine responses to assess.",
     };
   }
 
-  if (rejectionPattern.test(answer)) {
+  const assessments = responses.map((response) =>
+    analyzeRefusal(response)
+  );
+
+  const refusalCount = assessments.filter(
+    (assessment) => assessment.refused
+  ).length;
+
+  if (refusalCount === responses.length) {
     return {
       rejected: true,
-      reason: "Rejection or denial detected in the combined result.",
+      reason: "All engine responses refused.",
     };
   }
 
   return {
     rejected: false,
-    reason: "No refusal or rejection detected in the combined result.",
+    reason:
+      `${refusalCount} of ${responses.length} engines refused; ` +
+      "overall fulfillment verification remains required.",
   };
 }
 dotenv.config();
