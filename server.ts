@@ -2453,10 +2453,43 @@ continue;
  
 
   
-  throw new Error(
-    `CONFORMITY NOT REACHED: No usable live AI engine response was returned ` +
-      `for "${question}". No unverified answer is being returned as success.`
-  );
+  
+  const noUsableResponseMessage =
+    "CONFORMITY NOT REACHED: No usable live AI engine response was returned " +
+    "within the 50-round limit, or no AI engines were available. " +
+    "No unverified answer is being returned as success.";
+
+  return {
+    contextMode: relation.contextMode,
+    historyMatchScore: relation.historyMatchScore,
+    matchedPairIndices: relation.matchedPairIndices,
+    payloadSentToEngines: relation.payloadSentToEngines,
+    finalAnswer: noUsableResponseMessage,
+    hasAppPreview: false,
+    appTitle: "",
+    generatedAppHtml: "",
+    achievedAgreement: 0,
+    iterationsRequired: 0,
+    consensusSummary: noUsableResponseMessage,
+    convergenceRounds: [],
+    nodeContributions: [],
+    groundingSources: [],
+    workingMemoryFacts: relation.workingMemoryFacts || [],
+    cumulativeSavedPairsCount: allPairsCount + 1,
+    droppedOldestCount,
+    conformityReached: false,
+    fulfillmentVerification: {
+      status: "unverified",
+      feedback:
+        "Verification could not pass because no usable live engine response was available.",
+      missingRequirements: [
+        "At least one usable live engine response is required.",
+        "The combined result must pass conformity verification.",
+      ],
+    },
+    stopReason: "CONFORMITY_NOT_REACHED",
+  };
+
 
 
   // Context-Aware Natural Synthesis Fallback (if all upstream API endpoints are temporarily unreachable)
