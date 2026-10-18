@@ -4135,13 +4135,30 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       }
 
       console.error("Consensus API Error:", error);
-      const message =
+            const message =
         error instanceof Error
           ? error.message
           : "Failed to run multi-AI consensus loop.";
+
       if (!res.headersSent) {
-  res.status(500).json({ error: message });
-}
+        res.status(502).json({
+          success: false,
+          conformityReached: false,
+          stopReason: "CONFORMITY_NOT_REACHED",
+          fulfillmentVerification: {
+            status: "unverified",
+            feedback:
+              "The request failed before conformity could be confirmed: " +
+              message,
+            missingRequirements: [
+              "The request must produce a usable result.",
+              "The exact final answer must pass conformity verification.",
+            ],
+          },
+          error:
+            "Conformity was not reached. The result must not be treated as successful.",
+        });
+      }
     }
   });
     
