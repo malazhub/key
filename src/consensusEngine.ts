@@ -39,6 +39,7 @@ export interface EngineDispatchRequest {
   prompt: unknown;
   systemInstruction: string;
   responseSchema?: unknown;
+  signal?: AbortSignal;
 }
 
 export interface EngineDispatchResult {
@@ -2648,9 +2649,12 @@ export function buildKeyConversationMemoryInspectorPortalHtml(
             historyPayload.push({ role: 'assistant', content: p.agreedAnswer });
           });
           var r = await fetch('/api/history/audit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: historyPayload })
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({ history: historyPayload })
           });
           var d = await r.json();
           banner.textContent = '✓ LIVE /api/history/audit VERIFIED: totalIndexedTurns=' + d.totalIndexedTurns + ', activeWindowTurns=' + d.activeWindowTurns + ', coverage=' + d.coveragePercent + '% (Global State Sync Active).';
@@ -3462,9 +3466,12 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
 
         try {
           var res = await fetch('/api/self-upgrade/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({
               instruction: instr,
               requestedRounds: 1,
               deploy: false
@@ -3545,9 +3552,12 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
         statusBar.textContent = '⏳ Writing ' + currentPath + ' directly to disk (/api/fs/write)...';
         try {
           var res = await fetch('/api/fs/write', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentPath, content: editor.value })
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({ path: currentPath, content: editor.value })
           });
           var data = await res.json();
           if (data && data.ok) {
@@ -3683,10 +3693,13 @@ export function resolveSelfUpgradeCapabilityQuestionReply(
       }
       if (typeof window.fetch === "function") {
         window
-          .fetch("/api/self-upgrade/execute", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          .fetch("/api/self-upgrade/execute",{
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({
               instruction: clean.slice(0, 240) || "Autonomous Key Self-Upgrade & Tree Sync",
               targetThreshold: 99,
               revisionRounds: 50,
@@ -12330,10 +12343,8 @@ iterationsRequired: actualRoundsCompleted,
         .filter(Boolean)
     )
     );
-      // Track timed-out engines for this consensus run only.
-    // A timed-out engine is excluded from all subsequent rounds in this run.
-    const timedOutModels = new Set<string>();
-
+      // Keep the complete selected engine set eligible throughout all rounds.
+// Record failures per round; never permanently exclude an engine.
     if (selectedModels.length === 0) {
     const message =
       "CONFORMITY NOT REACHED: No AI engine was selected. " +
@@ -12460,9 +12471,7 @@ iterationsRequired: actualRoundsCompleted,
   ) {
     actualRoundsCompleted = roundNumber;
 
-    const eligibleModels = selectedModels.filter(
-      (modelName) => !timedOutModels.has(modelName)
-    );
+    const eligibleModels = selectedModels;
 
     if (eligibleModels.length === 0) {
       lastVerification = {
@@ -12509,11 +12518,12 @@ iterationsRequired: actualRoundsCompleted,
                 "Do not claim that verification passed unless the independent " +
                 "verifier passes.",
               responseSchema: shouldGenerateAppPreview
-                ? responseSchemaConfig
-                : undefined,
-            }),
-            15000,
-            `ConsensusRound${roundNumber}(${modelName})`
+  ? responseSchemaConfig
+  : undefined,
+signal: AbortSignal.timeout(15000),
+}),
+15000,
+`ConsensusRound${roundNumber}(${modelName})`
           );
 
           const answer = dispatched.answer.trim();
@@ -12532,9 +12542,8 @@ iterationsRequired: actualRoundsCompleted,
               ? error.message
               : String(error);
 
-          if (/timed out after \d+ms/i.test(errorMessage)) {
-            timedOutModels.add(modelName);
-          }
+          // Preserve the timeout in this round's failure diagnostics.
+// Do not exclude this engine from subsequent rounds.
 
           liveDispatchFailures.push({
             modelName,
@@ -15105,12 +15114,12 @@ assertDefendedQuery(
             credential
           )}`,
           {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({
               systemInstruction: {
                 parts: [
                   {
@@ -15390,12 +15399,16 @@ assertDefendedQuery(
           }
         );
       } catch (error) {
-        lastError = error;
+  if (request.signal?.aborted) {
+    throw error;
+  }
 
-        const decision =
-          classifyProviderFailure(
-            error
-          );
+  lastError = error;
+
+  const decision =
+    classifyProviderFailure(
+      error
+    );
 
         if (
           decision.failureClass ===
@@ -15890,9 +15903,12 @@ export function buildVersion8SelfUpgradedPortalHtml(): string {
         badge.textContent = '⟳ Executing 11-Fixture Campaign...';
         try {
           var r = await fetch('/api/version8/campaign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trials_per_fixture: 2, order_seed: 20260402 })
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  signal: request.signal,
+  body: JSON.stringify({ trials_per_fixture: 2, order_seed: 20260402 })
           });
           var d = await r.json();
           badge.textContent = '✓ Campaign Complete (22 Trials)';
