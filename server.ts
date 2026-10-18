@@ -3973,7 +3973,7 @@ const wantsFlowTrace =
             consensusStrengthThreshold: 99,
             maxRevisionRounds: 50,
             zeroRefrainZeroObstruction: true,
-            mutatedFiles: [
+                        mutatedFiles: [
               "src/consensusEngine.ts",
               "src/App.tsx",
               "server.ts",
@@ -3981,7 +3981,7 @@ const wantsFlowTrace =
               "src/upgrades/activeSelfUpgradeModule.ts",
               "key_self_upgrade_state.json",
             ],
-                        verificationGate: {
+            verificationGate: {
               syntax: "NOT_RUN",
               typecheck: "NOT_RUN",
               build: "NOT_RUN",
