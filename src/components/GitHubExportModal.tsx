@@ -693,6 +693,7 @@ const timeoutMs = 90000;
         );
       }
 
+      
       if (!response.ok) {
         const detail =
           data && typeof data.error === "string"
@@ -703,47 +704,26 @@ const timeoutMs = 90000;
           base + ": HTTP " + response.status + ": " + detail;
 
         const hasConsensusOutcome =
-  data &&
-  typeof data === "object" &&
-  (
-    typeof data.conformityReached === "boolean" ||
-    typeof data.stopReason === "string" ||
-    Boolean(data.fulfillmentVerification)
-  );
+          data &&
+          typeof data === "object" &&
+          (
+            typeof data.conformityReached === "boolean" ||
+            typeof data.stopReason === "string" ||
+            Boolean(data.fulfillmentVerification)
+          );
 
-if (
-  hasConsensusOutcome &&
-  (response.status === 502 ||
-   response.status === 503 ||
-   response.status === 504)
-) {
-  lastConsensusOutcome = data;
-  failures.push(message);
-  continue;
-}
+        if ([502, 503, 504].includes(response.status)) {
+          if (hasConsensusOutcome) {
+            lastConsensusOutcome = data;
+          }
 
-if (
-  response.status === 502 ||
-  response.status === 503 ||
-  response.status === 504
-) {
-  failures.push(message);
-  continue;
-} {
-  return data;
-}
-
-if (
-  response.status === 502 ||
-  response.status === 503 ||
-  response.status === 504
-) {
-  failures.push(message);
-  continue;
-}
+          failures.push(message);
+          continue;
+        }
 
         throw new Error(message);
       }
+
 
       if (!data || typeof data !== "object" || Array.isArray(data)) {
         throw new Error(
