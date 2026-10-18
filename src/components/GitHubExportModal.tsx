@@ -647,52 +647,105 @@ function buildStandaloneGitHubPagesHtml(): string {
         }
 
     async function callLiveBackend(payload) {
-      const failures = [];
+  const failures = [];
+  const timeoutMs = 90000;
 
   for (const base of BACKEND_URLS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function () {
+      controller.abort();
+    }, timeoutMs);
+
     try {
-      const r = await fetch(base + "/api/consensus-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const response = await fetch(
+        base + "/api/consensus-chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        }
+      );
 
-      const body = await r.text();
-
-      if (!r.ok) {
-        failures.push(
-          base + ": HTTP " + r.status + " " + body.slice(0, 1500)
-        );
-        continue;
-      }
-
-      let data;
+      const body = await response.text();
+      let data = null;
 
       try {
         data = JSON.parse(body);
       } catch (err) {
         failures.push(
-          base + ": Invalid JSON response: " + body.slice(0, 500)
+          base + ": backend returned invalid JSON"
         );
-        continue;
+
+        if (
+          response.status === 502 ||
+          response.status === 503 ||
+          response.status === 504
+        ) {
+          continue;
+        }
+
+        throw new Error(
+          "Backend returned HTTP " + response.status +
+          " with an invalid JSON response."
+        );
       }
 
-      if (!data || typeof data !== "object") {
-        failures.push(base + ": Response was not a JSON object");
-        continue;
+      if (!response.ok) {
+        const detail =
+          data && typeof data.error === "string"
+            ? data.error.slice(0, 500)
+            : "No error detail supplied.";
+
+        const message =
+          base + ": HTTP " + response.status + ": " + detail;
+
+        if (
+          response.status === 502 ||
+          response.status === 503 ||
+          response.status === 504
+        ) {
+          failures.push(message);
+          continue;
+        }
+
+        throw new Error(message);
+      }
+
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error(
+          base + ": backend response was not a JSON object."
+        );
       }
 
       return data;
     } catch (err) {
-      failures.push(
-        base + ": " +
-        (err && err.message ? err.message : String(err))
-      );
+      const message =
+        err && err.name === "AbortError"
+          ? "request timed out after " + timeoutMs + " ms"
+          : err && err.message
+            ? err.message
+            : String(err);
+
+      failures.push(base + ": " + message);
+
+      if (
+        err &&
+        err.name !== "AbortError" &&
+        /HTTP 400|HTTP 401|HTTP 403|HTTP 404|HTTP 422/.test(message)
+      ) {
+        throw err;
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
   throw new Error(
-    "All configured backends failed. " + failures.join(" | ")
+    "No backend returned a usable response. " +
+    failures.join(" | ")
   );
 }
 
@@ -776,14 +829,42 @@ function buildStandaloneGitHubPagesHtml(): string {
         return;
       }
 
+            if (!data || typeof data !== "object") {
+        showBanner("The backend returned an invalid response.");
+        sendBtnLabel.textContent = "Send";
+        return;
+      }
+
+      const verified =
+        data.success === true &&
+        data.conformityReached === true &&
+        data.stopReason === "CONFORMITY_REACHED" &&
+        data.fulfillmentVerification &&
+        data.fulfillmentVerification.status === "pass";
+
+      if (!verified) {
+        const reason =
+          typeof data.error === "string"
+            ? data.error
+            : "Consensus or independent verification did not pass.";
+
+        showBanner(
+          "No verified answer was produced. " +
+          reason.slice(0, 500) +
+          " The request has not been marked successful."
+        );
+
+        sendBtnLabel.textContent = "Send";
+        return;
+      }
+
       if (
-        !data ||
         typeof data.finalAnswer !== "string" ||
         data.finalAnswer.trim().length === 0
       ) {
         showBanner(
-          "The backend returned no usable final answer. " +
-          "No consensus or requirement fulfillment is being claimed."
+          "The backend reported verification without a usable answer. " +
+          "This is an inconsistent response and must be investigated."
         );
 
         sendBtnLabel.textContent = "Send";
