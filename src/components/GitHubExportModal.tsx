@@ -702,14 +702,34 @@ function buildStandaloneGitHubPagesHtml(): string {
         const message =
           base + ": HTTP " + response.status + ": " + detail;
 
-        if (
-          response.status === 502 ||
-          response.status === 503 ||
-          response.status === 504
-        ) {
-          failures.push(message);
-          continue;
-        }
+        const hasConsensusOutcome =
+  data &&
+  typeof data === "object" &&
+  (
+    typeof data.conformityReached === "boolean" ||
+    typeof data.stopReason === "string" ||
+    Boolean(data.fulfillmentVerification)
+  );
+
+if (
+  hasConsensusOutcome &&
+  (
+    response.status === 502 ||
+    response.status === 503 ||
+    response.status === 504
+  )
+) {
+  return data;
+}
+
+if (
+  response.status === 502 ||
+  response.status === 503 ||
+  response.status === 504
+) {
+  failures.push(message);
+  continue;
+}
 
         throw new Error(message);
       }
@@ -842,17 +862,30 @@ function buildStandaloneGitHubPagesHtml(): string {
   data.fulfillmentVerification &&
   data.fulfillmentVerification.status === "pass";
       if (!verified) {
-        const reason =
-          typeof data.error === "string"
-            ? data.error
-            : "Consensus or independent verification did not pass.";
+  const apiError =
+    typeof data.error === "string"
+      ? data.error.trim()
+      : "";
 
-        showBanner(
-          "No verified answer was produced. " +
-          reason.slice(0, 500) +
-          " The request has not been marked successful."
-        );
+  const verificationFeedback =
+    data.fulfillmentVerification &&
+    typeof data.fulfillmentVerification.feedback === "string"
+      ? data.fulfillmentVerification.feedback.trim()
+      : "";
 
+  const reason = [
+    apiError,
+    verificationFeedback,
+  ]
+    .filter(Boolean)
+    .join(" Details: ") ||
+    "Consensus or independent verification did not pass.";
+
+  showBanner(
+    "No verified answer was produced. " +
+    reason.slice(0, 500) +
+    " The request has not been marked successful."
+  );
         sendBtnLabel.textContent = "Send";
         return;
       }
