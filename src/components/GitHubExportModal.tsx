@@ -646,19 +646,57 @@ function buildStandaloneGitHubPagesHtml(): string {
         .replace(/\\n\\n/g, '<div class="h-3"></div>');
     }
 
-    async function callLiveBackend(payload) {
-      for (const base of BACKEND_URLS) {
-        try {
-          const r = await fetch(base + "/api/consensus-chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          });
-          if (r.ok) return await r.json();
-        } catch (err) {}
+    
+async function callLiveBackend(payload) {
+  const failures: string[] = [];
+
+  for (const base of BACKEND_URLS) {
+    try {
+      const r = await fetch(base + "/api/consensus-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const body = await r.text();
+
+      if (!r.ok) {
+        failures.push(
+          `${base}: HTTP ${r.status} ${body.slice(0, 1500)}`
+        );
+        continue;
       }
-      throw new Error("Could not reach live backend");
+
+      let data: unknown;
+
+      try {
+        data = JSON.parse(body);
+      } catch {
+        failures.push(
+          `${base}: Invalid JSON response: ${body.slice(0, 500)}`
+        );
+        continue;
+      }
+
+      if (!data || typeof data !== "object") {
+        failures.push(`${base}: Response was not a JSON object`);
+        continue;
+      }
+
+      return data;
+    } catch (err) {
+      failures.push(
+        `${base}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     }
+  }
+
+  throw new Error(
+    `All configured backends failed. ${failures.join(" | ")}`
+  );
+}
 
     async function sendQuery() {
       const q = questionTextarea.value.trim();
