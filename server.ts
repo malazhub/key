@@ -3974,12 +3974,11 @@ const wantsFlowTrace =
               "key_self_upgrade_state.json",
             ],
             verificationGate: {
-              syntax: "PASS",
-              typecheck: "PASS",
-              build: "PASS",
-              tests: "312/312 PASS",
+              syntax: "NOT_RUN",
+              typecheck: "NOT_RUN",
+              build: "NOT_RUN",
+              tests: "NOT_RUN",
             },
-          };
 
           const registryPayload = {
             active: true,
