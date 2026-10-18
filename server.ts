@@ -144,21 +144,29 @@ async function normalizeIncomingQuery(
   try {
     assertDefendedQuery(normalizationPrompt);
 
-    const response = await ai.models.generateContent({
-      model: availableModels[0],
-      contents: normalizationPrompt,
-      config: {
-        temperature: 0,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            normalizedQuery: { type: Type.STRING },
-          },
-          required: ["normalizedQuery"],
+    const response = await Promise.race([
+  ai.models.generateContent({
+    model: availableModels[0],
+    contents: normalizationPrompt,
+    config: {
+      temperature: 0,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          normalizedQuery: { type: Type.STRING },
         },
+        required: ["normalizedQuery"],
       },
-    });
+    },
+  }),
+  new Promise<never>((_, reject) => {
+    setTimeout(
+      () => reject(new Error("Query normalization timed out")),
+      5000
+    );
+  }),
+]);
 
     const parsed = JSON.parse(response.text || "{}");
     const normalizedQuery = parsed?.normalizedQuery;
