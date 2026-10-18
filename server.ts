@@ -4853,13 +4853,12 @@ const result = await runBoundedSelfUpgradeSession(
     return volatileKeyRuntimeState;
   }
 
-  app.get("/api/mirrored-state", requireAdmin, (_req, res) => {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.json({
-      ...readMirroredKeyState(),
-      volatileRuntimeHydrated: true,
-    });
-  });
+  app.post("/api/mirrored-state", (req, res) => {
+  const incoming =
+    req.body && typeof req.body === "object" ? req.body : {};
+  const saved = writeMirroredKeyState(incoming);
+  res.json({ success: true, mirroredState: saved });
+});
 
   app.get("/api/runtime-state", requireAdmin, (_req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
