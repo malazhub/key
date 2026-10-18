@@ -12601,13 +12601,16 @@ signal: AbortSignal.timeout(15000),
           : `Batch agreement is ${actualAgreement}%, below the required ${safeTarget}%.`,
     });
 
-    const combinedBatch = successfulResults
-      .map(
-        (result) =>
-          `ENGINE: ${result.engine}\n` +
-          `RESPONSE:\n${result.answer.trim()}`
-      )
-      // Classify the combined engine batch using the existing defender module.
+    
+const combinedBatch = successfulResults
+  .map(
+    (result) =>
+      `ENGINE: ${result.engine}\n` +
+      `RESPONSE:\n${result.answer.trim()}`
+  )
+  .join("\n\n--- ENGINE BATCH RESPONSE ---\n\n");
+
+// Classify the combined engine batch using the existing defender module.
 // Treat it as a batch refusal only when every usable engine response refuses.
 const refusalAssessments = successfulResults.map((result) =>
   analyzeRefusal(result.answer)
@@ -12627,7 +12630,7 @@ const combinedRefusalFeedback = combinedResultRefused
       "Do not override a justified safety refusal.",
     ].join("\n")
   : "";
-      .join("\n\n--- ENGINE BATCH RESPONSE ---\n\n");
+
 
     // Independently verify the complete batch against the user's request.
     // A malformed response, timeout, or exception can never count as a pass.
