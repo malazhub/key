@@ -12558,11 +12558,25 @@ iterationsRequired: actualRoundsCompleted,
         "Where appropriate, a justified safety refusal with a safe alternative can satisfy the applicable safety requirements.",
         'Return JSON with exactly these fields: {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"]}.',
         "",
-        "USER REQUEST:",
-        cleanQuestion,
-        "",
-        "COMPLETE ENGINE RESPONSE BATCH:",
-        combinedBatch,
+            let bestAnswerIndex = 0;
+    let bestAnswerScore = -Infinity;
+
+    for (let i = 0; i < answers.length; i += 1) {
+      let score = 0;
+
+      for (let j = 0; j < answers.length; j += 1) {
+        if (i === j) continue;
+
+        score += calculateSimilarity([answers[i], answers[j]]);
+      }
+
+      if (score > bestAnswerScore) {
+        bestAnswerScore = score;
+        bestAnswerIndex = i;
+      }
+    }
+
+    const candidateFinalAnswer = answers[bestAnswerIndex];
       ].join("\n");
 
       assertDefendedQuery(verifierPrompt);
