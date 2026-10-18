@@ -12334,10 +12334,40 @@ iterationsRequired: actualRoundsCompleted,
     // A timed-out engine is excluded from all subsequent rounds in this run.
     const timedOutModels = new Set<string>();
 
-  if (selectedModels.length === 0) {
-    throw new Error(
-      "No AI engine was selected. Select at least one engine slot."
-    );
+    if (selectedModels.length === 0) {
+    const message =
+      "CONFORMITY NOT REACHED: No AI engine was selected. " +
+      "No unverified answer is being returned as success.";
+
+    return {
+      contextMode: relation.contextMode,
+      historyMatchScore: relation.historyMatchScore,
+      matchedPairIndices: relation.matchedPairIndices,
+      payloadSentToEngines: relation.payloadSentToEngines,
+      finalAnswer: message,
+      hasAppPreview: false,
+      appTitle: "",
+      generatedAppHtml: "",
+      achievedAgreement: 0,
+      iterationsRequired: 0,
+      consensusSummary: message,
+      convergenceRounds: [],
+      nodeContributions: [],
+      groundingSources: [],
+      workingMemoryFacts: relation.workingMemoryFacts || [],
+      cumulativeSavedPairsCount: allPairsCount + 1,
+      droppedOldestCount,
+      conformityReached: false,
+      fulfillmentVerification: {
+        status: "unverified",
+        feedback: message,
+        missingRequirements: [
+          "At least one configured AI engine is required.",
+          "The final answer must pass conformity verification.",
+        ],
+      },
+      stopReason: "CONFORMITY_NOT_REACHED",
+    };
   }
 
   const unknownModels = selectedModels.filter(
@@ -12345,9 +12375,40 @@ iterationsRequired: actualRoundsCompleted,
   );
 
   if (unknownModels.length > 0) {
-    throw new Error(
-      `No provider mapping exists for engine(s): ${unknownModels.join(", ")}.`
-    );
+    const message =
+      "CONFORMITY NOT REACHED: No provider mapping exists for: " +
+      unknownModels.join(", ") +
+      ". No unverified answer is being returned as success.";
+
+    return {
+      contextMode: relation.contextMode,
+      historyMatchScore: relation.historyMatchScore,
+      matchedPairIndices: relation.matchedPairIndices,
+      payloadSentToEngines: relation.payloadSentToEngines,
+      finalAnswer: message,
+      hasAppPreview: false,
+      appTitle: "",
+      generatedAppHtml: "",
+      achievedAgreement: 0,
+      iterationsRequired: 0,
+      consensusSummary: message,
+      convergenceRounds: [],
+      nodeContributions: [],
+      groundingSources: [],
+      workingMemoryFacts: relation.workingMemoryFacts || [],
+      cumulativeSavedPairsCount: allPairsCount + 1,
+      droppedOldestCount,
+      conformityReached: false,
+      fulfillmentVerification: {
+        status: "unverified",
+        feedback: message,
+        missingRequirements: [
+          "Every selected engine must have a valid provider mapping.",
+          "The final answer must pass conformity verification.",
+        ],
+      },
+      stopReason: "CONFORMITY_NOT_REACHED",
+    };
   }
 
   const safeTarget = Math.max(
