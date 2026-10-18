@@ -646,9 +646,9 @@ function buildStandaloneGitHubPagesHtml(): string {
         .replace(/\\n\\n/g, '<div class="h-3"></div>');
         }
 
-    async function callLiveBackend(payload) {
-  const failures = [];
-  const timeoutMs = 90000;
+    const failures = [];
+let lastConsensusOutcome = null;
+const timeoutMs = 90000;
 
   for (const base of BACKEND_URLS) {
     const controller = new AbortController();
@@ -713,12 +713,23 @@ function buildStandaloneGitHubPagesHtml(): string {
 
 if (
   hasConsensusOutcome &&
-  (
-    response.status === 502 ||
-    response.status === 503 ||
-    response.status === 504
-  )
+  (response.status === 502 ||
+   response.status === 503 ||
+   response.status === 504)
 ) {
+  lastConsensusOutcome = data;
+  failures.push(message);
+  continue;
+}
+
+if (
+  response.status === 502 ||
+  response.status === 503 ||
+  response.status === 504
+) {
+  failures.push(message);
+  continue;
+} {
   return data;
 }
 
@@ -763,10 +774,14 @@ if (
     }
   }
 
-  throw new Error(
-    "No backend returned a usable response. " +
-    failures.join(" | ")
-  );
+  if (lastConsensusOutcome !== null) {
+  return lastConsensusOutcome;
+}
+
+throw new Error(
+  "No backend returned a usable response. " +
+  failures.join(" | ")
+);
 }
 
 
