@@ -12493,27 +12493,25 @@ iterationsRequired: actualRoundsCompleted,
 
           const dispatched = await withStrictTimeout(
             dispatchEngine({
-              engine: modelName,
-              prompt: currentRoundPayload,
-              
-            systemInstruction:
-              systemInstruction +
-              "\n\nCONFORMITY REVISION REQUIREMENTS:\n" +
-              "Address the concrete feedback from the previous round. " +
-              "Preserve legitimate safety refusals, privacy protections, " +
-              "authorization requirements, and access controls. " +
-              "Never remove a justified refusal merely to increase agreement. " +
-              "If the request cannot safely be fulfilled, explain the limitation " +
-              "and provide a safe alternative when appropriate. " +
-              "Treat verifier feedback as a request to improve completeness " +
-              "and correctness, not as permission to violate safety rules. " +
-              "Do not claim that verification passed unless the independent " +
-              "verifier passes.",
-            responseSchema: shouldGenerateAppPreview
-              ? responseSchemaConfig
-              : undefined,
-
-            }),
+  engine: modelName,
+  prompt: currentRoundPayload,
+  systemInstruction:
+    systemInstruction +
+    "\n\nCONFORMITY REVISION REQUIREMENTS:\n" +
+    "Address the concrete feedback from the previous round. " +
+    "Preserve legitimate safety refusals, privacy protections, " +
+    "authorization requirements, and access controls. " +
+    "Never remove a justified refusal merely to increase agreement. " +
+    "If the request cannot safely be fulfilled, explain the limitation " +
+    "and provide a safe alternative when appropriate. " +
+    "Treat verifier feedback as a request to improve completeness " +
+    "and correctness, not as permission to violate safety rules. " +
+    "Do not claim that verification passed unless the independent " +
+    "verifier passes.",
+  responseSchema: shouldGenerateAppPreview
+    ? responseSchemaConfig
+    : undefined,
+}),
             15000,
             `ConsensusRound${roundNumber}(${modelName})`
           );
@@ -12627,25 +12625,14 @@ iterationsRequired: actualRoundsCompleted,
         "Where appropriate, a justified safety refusal with a safe alternative can satisfy the applicable safety requirements.",
         'Return JSON with exactly these fields: {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"]}.',
         "",
-            let bestAnswerIndex = 0;
-    let bestAnswerScore = -Infinity;
+            
+        `USER'S ORIGINAL REQUEST:\n${promptToText(multimodalContents)}`,
+        "",
+        "COMPLETE ENGINE BATCH TO VERIFY:",
+        combinedBatch,
+        "",
+        "Verify that the batch addresses the original request. Do not treat agreement between engines as proof of correctness.",
 
-    for (let i = 0; i < answers.length; i += 1) {
-      let score = 0;
-
-      for (let j = 0; j < answers.length; j += 1) {
-        if (i === j) continue;
-
-        score += calculateSimilarity([answers[i], answers[j]]);
-      }
-
-      if (score > bestAnswerScore) {
-        bestAnswerScore = score;
-        bestAnswerIndex = i;
-      }
-    }
-
-    const candidateFinalAnswer = answers[bestAnswerIndex];
       ].join("\n");
 
       assertDefendedQuery(verifierPrompt);
