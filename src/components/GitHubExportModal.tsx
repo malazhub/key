@@ -648,8 +648,8 @@ function buildStandaloneGitHubPagesHtml(): string {
 
     
 
-async function callLiveBackend(payload) {
-  const failures: string[] = [];
+aasync function callLiveBackend(payload) {
+  const failures = [];
 
   for (const base of BACKEND_URLS) {
     try {
@@ -663,39 +663,38 @@ async function callLiveBackend(payload) {
 
       if (!r.ok) {
         failures.push(
-          `${base}: HTTP ${r.status} ${body.slice(0, 1500)}`
+          base + ": HTTP " + r.status + " " + body.slice(0, 1500)
         );
         continue;
       }
 
-      let data: unknown;
+      let data;
 
       try {
         data = JSON.parse(body);
-      } catch {
+      } catch (err) {
         failures.push(
-          `${base}: Invalid JSON response: ${body.slice(0, 500)}`
+          base + ": Invalid JSON response: " + body.slice(0, 500)
         );
         continue;
       }
 
       if (!data || typeof data !== "object") {
-        failures.push(`${base}: Response was not a JSON object`);
+        failures.push(base + ": Response was not a JSON object");
         continue;
       }
 
       return data;
     } catch (err) {
       failures.push(
-        `${base}: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        base + ": " +
+        (err && err.message ? err.message : String(err))
       );
     }
   }
 
   throw new Error(
-    `All configured backends failed. ${failures.join(" | ")}`
+    "All configured backends failed. " + failures.join(" | ")
   );
 }
 
