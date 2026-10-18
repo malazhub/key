@@ -12496,12 +12496,19 @@ iterationsRequired: actualRoundsCompleted,
               engine: modelName,
               prompt: currentRoundPayload,
               systemInstruction:
+                              systemInstruction:
                 systemInstruction +
                 "\n\nCONFORMITY REVISION REQUIREMENTS:\n" +
                 "Address the concrete feedback from the previous round. " +
-                "Preserve legitimate safety refusals and all privacy, " +
-                "authorization, and access controls. Do not claim that " +
-                "verification passed unless the independent verifier passes.",
+                "Preserve legitimate safety refusals, privacy protections, " +
+                "authorization requirements, and access controls. " +
+                "Never remove a justified refusal merely to increase agreement. " +
+                "If the request cannot safely be fulfilled, explain the limitation " +
+                "and provide a safe alternative when appropriate. " +
+                "Treat verifier feedback as a request to improve completeness " +
+                "and correctness, not as permission to violate safety rules. " +
+                "Do not claim that verification passed unless the independent " +
+                "verifier passes.",
               responseSchema: shouldGenerateAppPreview
                 ? responseSchemaConfig
                 : undefined,
