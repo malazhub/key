@@ -644,12 +644,10 @@ function buildStandaloneGitHubPagesHtml(): string {
         .replace(/^(\\d+)\\.\\s+(.+)$/gm, '<div class="flex items-start gap-2.5 my-1.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold shrink-0">$1</span><div class="flex-1">$2</div></div>')
         .replace(/^[-*]\\s+(.+)$/gm, '<div class="flex items-start gap-2 my-1 pl-2"><span class="text-emerald-400">•</span><div class="flex-1">$1</div></div>')
         .replace(/\\n\\n/g, '<div class="h-3"></div>');
-    }
+        }
 
-    
-
-aasync function callLiveBackend(payload) {
-  const failures = [];
+    async function callLiveBackend(payload) {
+      const failures = [];
 
   for (const base of BACKEND_URLS) {
     try {
