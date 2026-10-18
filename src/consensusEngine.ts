@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { assertDefendedQuery } from "./security/defenderRuntime";
+import {   assertDefendedQuery,   analyzeRefusal, } from "./security/defenderRuntime";
 import { recordFlowStep } from "./flowTracer";
 export * from "./upgrades/version8Harness";
 
@@ -12607,6 +12607,26 @@ signal: AbortSignal.timeout(15000),
           `ENGINE: ${result.engine}\n` +
           `RESPONSE:\n${result.answer.trim()}`
       )
+      // Classify the combined engine batch using the existing defender module.
+// Treat it as a batch refusal only when every usable engine response refuses.
+const refusalAssessments = successfulResults.map((result) =>
+  analyzeRefusal(result.answer)
+);
+
+const combinedResultRefused =
+  refusalAssessments.length > 0 &&
+  refusalAssessments.every((assessment) => assessment.refused);
+
+const combinedRefusalFeedback = combinedResultRefused
+  ? [
+      "COMBINED ENGINE RESULT REFUSED.",
+      "The combined refusal has been classified by defenderRuntime.",
+      "Reassess whether the original request can be fulfilled safely.",
+      "If the refusal is erroneous and another attempt is permitted,",
+      "provide a substantive answer while preserving all security boundaries.",
+      "Do not override a justified safety refusal.",
+    ].join("\n")
+  : "";
       .join("\n\n--- ENGINE BATCH RESPONSE ---\n\n");
 
     // Independently verify the complete batch against the user's request.
@@ -12791,23 +12811,31 @@ signal: AbortSignal.timeout(15000),
     // the next round. Never treat a failed check as a successful result.
     if (roundNumber < MAX_ROUNDS) {
       const revisionFeedback = [
-        `CONFORMITY CHECK FAILED — ROUND ${roundNumber}/${MAX_ROUNDS}`,
-        `Measured batch agreement: ${actualAgreement}%`,
-        `Required agreement: ${safeTarget}%`,
-        `Fulfillment verification status: ${lastVerification.status}`,
-        `Verifier feedback: ${lastVerification.feedback}`,
-        "Missing or unconfirmed requirements:",
-        ...(
-          lastVerification.missingRequirements.length > 0
-            ? lastVerification.missingRequirements.map(
-                (item) => `- ${item}`
-              )
-            : ["- The verifier did not confirm all requirements."]
-        ),
-        "Revise the response to address every item above.",
-        "Do not bypass legitimate safety refusals, privacy, authorization, or access controls.",
-        "Do not claim conformity unless all required checks pass.",
-      ].join("\n");
+  `CONFORMITY CHECK FAILED — ROUND ${roundNumber}/${MAX_ROUNDS}`,
+  `Measured batch agreement: ${actualAgreement}%`,
+  `Required agreement: ${safeTarget}%`,
+  `Fulfillment verification status: ${lastVerification.status}`,
+  `Verifier feedback: ${lastVerification.feedback}`,
+
+  ...(combinedRefusalFeedback
+    ? [combinedRefusalFeedback]
+    : []),
+
+  "Missing or unconfirmed requirements:",
+  ...(
+    lastVerification.missingRequirements.length > 0
+      ? lastVerification.missingRequirements.map(
+          (item) => `- ${item}`
+        )
+      : ["- The verifier did not confirm all requirements."]
+  ),
+
+  "Revise the response to address every item above.",
+  "Re-evaluate an apparent refusal against the original request.",
+  "Retry only if the request is permitted and the refusal is erroneous.",
+  "Preserve legitimate safety refusals, privacy, authorization, and access controls.",
+  "Do not claim conformity unless all required checks pass.",
+].join("\n");
 
       currentRoundPayload = refinePayload(
         [...answers, revisionFeedback],
