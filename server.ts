@@ -4115,7 +4115,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
       }
 
-      res.json(finalApiPayload);
+      res.json({   success: true,   ...finalApiPayload, });
     } catch (error: unknown) {
       if (flowTraceId) {
                 recordFlowStep(flowTraceId, "Request failed", "error", {
