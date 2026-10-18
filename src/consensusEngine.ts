@@ -3545,12 +3545,10 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
       document.getElementById('saveFileBtn').addEventListener('click', async function() {
         statusBar.textContent = '⏳ Writing ' + currentPath + ' directly to disk (/api/fs/write)...';
         try {
-          var res = await fetch('/api/fs/write', {
+                    var res = await fetch('/api/fs/write', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: currentPath, content: editor.value })
-          });
-          tringify({ path: currentPath, content: editor.value })
           });
           var data = await res.json();
           if (data && data.ok) {
