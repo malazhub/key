@@ -5,7 +5,7 @@
  * Key — Live Web Search, 5-Channel Memory Search & Multi-Engine Query Push Router
  * File: src/searchAndEnginePushRouter.ts
  */
-
+import { assertDefendedQuery } from "./security/queryGuard";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   CANDIDATE_MODELS,
