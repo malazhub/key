@@ -341,97 +341,84 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   const rounds = getNumber("iterationsRequired");
   const summary = getString("consensusSummary");
 
-  type LogicalStep = {
-    key: string;
-    name: string;
-    events: FlowEvent[];
-    isConsensusRound: boolean;
-  };
-
-  const groups: LogicalStep[] = [];
-  const groupsByKey = new Map<string, LogicalStep>();
-
-  for (const event of trace.events) {
-    const roundMatch = event.step.match(
-      /\bconsensus\s+round\s*#?\s*(\d+)\b/i,
-    );
-
-    let key: string;
-    let name: string;
-    let isConsensusRound = false;
-
-    if (roundMatch) {
-      const roundNumber = Number(roundMatch[1]);
-
-      key = `consensus-round-${roundNumber}`;
-      name = `Consensus round ${roundNumber}`;
-      isConsensusRound = true;
-    } else {
-      key = `event-${event.id}`;
-      name = event.step;
-    }
-
-    let group = groupsByKey.get(key);
-
-    if (!group) {
-      group = {
-        key,
-        name,
-        events: [],
-        isConsensusRound,
-      };
-
-      groupsByKey.set(key, group);
-      groups.push(group);
-    }
-
-    group.events.push(event);
-  }
-
-  const lines = [
+    const lines = [
     "# Query-to-response trace",
     "",
     "## Original user query",
     "",
     trace.question,
     "",
-    "## Processing tree",
+    "## Processing events",
     "",
-    "Each logical step shows only its incoming and final outgoing status.",
-    "All engine calls and intermediate responses within a consensus round are hidden.",
+    "Events are listed in chronological order.",
+    "Payload contents are summarized to keep the trace readable.",
   ];
 
-  for (const [index, group] of groups.entries()) {
-    const events = group.events;
-    const last = events[events.length - 1];
-
-    const firstIncomingEvent = events.find(
-  (event) => event.incoming !== undefined,
-);
-
-const lastOutgoingEvent = [...events]
-  .reverse()
-  .find((event) => event.outgoing !== undefined);
-
-    const terminalEvents = events.filter(
-      (event) =>
-        event.status === "ok" ||
-        event.status === "error" ||
-        event.status === "skipped",
+  for (const event of trace.events) {
+    lines.push(
+      "",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      `### Step ${event.id}: ${event.step}`,
+      "",
+      `📄 Source file: ${event.sourceFile ?? "Not recorded"}`,
+      `⚙️ Function / logic: ${event.sourceFunction ?? "Not recorded"}`,
+      `🔵 Incoming: ${
+        event.incoming !== undefined
+          ? formatFlowValue(event.incoming)
+          : "Not recorded"
+      }`,
+      `🟢 Outgoing: ${
+        event.outgoing !== undefined
+          ? formatFlowValue(event.outgoing)
+          : "Not recorded"
+      }`,
+      `Status: ${event.status}`,
     );
 
-    const finalStatus =
-      terminalEvents.length > 0
-        ? terminalEvents[terminalEvents.length - 1].status
-        : last.status;
+    if (event.stage) {
+      lines.push(`Stage: ${event.stage}`);
+    }
 
-    
-    const sourceEvent =
-      [...events].reverse().find(
-        (event) => event.sourceFile || event.sourceFunction,
-      ) ?? events[0];
+    if (event.engine) {
+      lines.push(`Engine: ${event.engine}`);
+    }
 
-                lines.push(
+    if (event.round !== undefined) {
+      lines.push(`Round: ${event.round}`);
+    }
+
+    if (event.attempt !== undefined) {
+      lines.push(`Attempt: ${event.attempt}`);
+    }
+
+    if (event.reasonCode) {
+      lines.push(`Reason code: ${event.reasonCode}`);
+    }
+
+    if (event.refusalDetected !== undefined) {
+      lines.push(`Refusal detected: ${event.refusalDetected}`);
+    }
+
+    if (event.inputChars !== undefined) {
+      lines.push(`Input characters: ${event.inputChars}`);
+    }
+
+    if (event.outputChars !== undefined) {
+      lines.push(`Output characters: ${event.outputChars}`);
+    }
+
+    if (event.durationMs !== undefined) {
+      lines.push(`Duration: ${event.durationMs} ms`);
+    }
+
+    if (event.decision) {
+      lines.push(`Decision: ${event.decision}`);
+    }
+
+    if (event.detail) {
+      lines.push(`Detail: ${event.detail}`);
+    }
+  }
       "",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       `### Step ${index + 1}: ${group.name}`,
