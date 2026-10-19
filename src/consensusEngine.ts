@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import {   assertDefendedQuery,   analyzeRefusal, } from "./security/defenderRuntime";
-import { recordFlowStep } from "./flowTracer";
+import {
+  assertDefendedQuery,
+  analyzeRefusal,
+} from "./security/defenderCore";import { recordFlowStep } from "./flowTracer";
 export * from "./upgrades/version8Harness";
 
 type ConvergenceRound = { round: number; similarityScore: number; note: string };
