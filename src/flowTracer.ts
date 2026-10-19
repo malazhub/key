@@ -3,21 +3,56 @@ import { randomUUID } from "node:crypto";
 
 export type FlowStatus = "running" | "ok" | "error" | "skipped";
 
+const SAFE_FIELDS = new Set([
+  "engine",
+  "provider",
+  "model",
+  "modelId",
+  "status",
+  "httpStatus",
+  "round",
+  "attempt",
+  "latencyMs",
+  "durationMs",
+  "inputChars",
+  "outputChars",
+  "refusalDetected",
+  "blocked",
+  "retryable",
+  "reasonCode",
+  "finishReason",
+]);
+
 function formatFlowValue(value: unknown): string {
   if (value === undefined) return "Not recorded";
   if (value === null) return "No data";
 
   if (typeof value === "string") {
-    const text = value.replace(/\s+/g, " ").trim();
-    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+    return `Text payload: ${value.length} chars; content collapsed`;
   }
 
   if (Array.isArray(value)) {
-    return `${value.length} item(s) received`;
+    return `Array payload: ${value.length} item(s); content collapsed`;
   }
 
-  if (typeof value === "object") {
-    const data = value as Record<string, unknown>;
+  if (typeof value !== "object") {
+    return String(value).slice(0, 100);
+  }
+
+  const data = value as Record<string, unknown>;
+  const details = Object.entries(data)
+    .filter(([key, item]) =>
+      SAFE_FIELDS.has(key) &&
+      (typeof item === "string" ||
+        typeof item === "number" ||
+        typeof item === "boolean"),
+    )
+    .map(([key, item]) => `${key}=${String(item).slice(0, 80)}`);
+
+  return details.length > 0
+    ? `${details.join("; ")}; other payload fields collapsed`
+    : `Structured payload: ${Object.keys(data).length} field(s); content collapsed`;
+}
     
 const SAFE_FIELDS = [
   "engine",
