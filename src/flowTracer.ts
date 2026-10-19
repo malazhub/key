@@ -54,79 +54,6 @@ function formatFlowValue(value: unknown): string {
     : `Structured payload: ${Object.keys(data).length} field(s); content collapsed`;
 }
     
-const SAFE_FIELDS = [
-  "engine",
-  "provider",
-  "model",
-  "modelId",
-  "status",
-  "httpStatus",
-  "round",
-  "attempt",
-  "latencyMs",
-  "durationMs",
-  "inputChars",
-  "outputChars",
-  "refusalDetected",
-  "blocked",
-  "retryable",
-  "reasonCode",
-  "finishReason",
-];
-
-function summarizeFlowValue(value: unknown): string {
-  if (value === undefined) return "Not recorded";
-  if (value === null) return "Null";
-
-  if (typeof value === "string") {
-    return `Text payload: ${value.length} chars; content collapsed`;
-  }
-
-  if (Array.isArray(value)) {
-    return `Array payload: ${value.length} items; content collapsed`;
-  }
-
-  if (typeof value !== "object") {
-    return String(value).slice(0, 100);
-  }
-
-  const data = value as Record<string, unknown>;
-  const details = SAFE_FIELDS
-    .filter((key) => data[key] !== undefined)
-    .filter((key) => {
-      const item = data[key];
-      return (
-        typeof item === "string" ||
-        typeof item === "number" ||
-        typeof item === "boolean"
-      );
-    })
-    .map((key) => `${key}=${String(data[key]).slice(0, 80)}`);
-
-  return details.length
-    ? details.join("; ")
-    : `Structured payload: ${Object.keys(data).length} fields; content collapsed`;
-}
-
-
-    return keys
-      .slice(0, 3)
-      .map((key) => {
-        const item = data[key];
-        if (Array.isArray(item)) {
-          return `${key}: ${item.length} item(s)`;
-        }
-        if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-          const text = String(item).replace(/\s+/g, " ").trim();
-          return `${key}: ${text.length > 60 ? `${text.slice(0, 57)}...` : text}`;
-        }
-        return `${key}: processed`;
-      })
-      .join("; ");
-  }
-
-    return "Data processed";
-}
 
 export interface FlowEvent {
   id: number;
@@ -182,10 +109,10 @@ export function recordFlowStep(
   const trace = traces.get(traceId);
   if (!trace) return;
 
-  trace.events.push({
+    trace.events.push({
     id: trace.events.length + 1,
     step,
-        status,
+    status,
     at: new Date().toISOString(),
     ...(data.sourceFile === undefined
       ? {}
@@ -203,7 +130,7 @@ export function recordFlowStep(
     ...(data.outgoing === undefined
       ? {}
       : { outgoing: structuredClone(data.outgoing) }),
-        ...(data.decision === undefined
+    ...(data.decision === undefined
       ? {}
       : { decision: data.decision }),
     ...(data.stage === undefined ? {} : { stage: data.stage }),
@@ -365,7 +292,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   const rounds = getNumber("iterationsRequired");
   const summary = getString("consensusSummary");
 
-    const lines = [
+      const lines = [
     "# Query-to-response trace",
     "",
     "## Original user query",
@@ -443,30 +370,12 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       lines.push(`Detail: ${event.detail}`);
     }
   }
-      "",
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      `### Step ${index + 1}: ${group.name}`,
-      "",
-      `📄 Source file: ${sourceEvent.sourceFile ?? "Not recorded"}`,
-      `⚙️ Function / logic: ${sourceEvent.sourceFunction ?? "Not recorded"}`,
-      `🔵 Incoming: ${
-        group.isConsensusRound
-          ? "Query sent for evaluation; full prompt hidden."
-          : firstIncomingEvent
-            ? formatFlowValue(firstIncomingEvent.incoming)
-            : "Not recorded"
-      }`,
-      `🟢 Outgoing: ${
-        group.isConsensusRound
-          ? "Evaluation result processed; internal response hidden."
-          : lastOutgoingEvent
-            ? formatFlowValue(lastOutgoingEvent.outgoing)
-            : "Not recorded"
-      }`,
-      `Status: ${finalStatus}`,
-    );
-
-  }
+        lines.push(
+    "",
+    "## Final agreed response",
+    "",
+    answer ?? "No final answer was recorded.",
+  );
 
   lines.push(
     "",
