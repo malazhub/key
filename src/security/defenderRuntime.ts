@@ -3,7 +3,24 @@
 // WARNING: For use ONLY on systems you own or have explicit written 
 // authorization to test. 
 // ============================================================================
+import {
+  analyzeRefusal,
+  defendQuery,
+  assertDefendedQuery,
+} from "./defenderCore";
 
+import type { RefusalAnalysis } from "./defenderCore";
+
+export {
+  analyzeRefusal,
+  defendQuery,
+  assertDefendedQuery,
+} from "./defenderCore";
+
+export type {
+  RefusalCategory,
+  RefusalAnalysis,
+} from "./defenderCore";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
