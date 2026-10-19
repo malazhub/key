@@ -141,7 +141,6 @@ export interface FlowEvent {
   outgoing?: unknown;
   decision?: string;
 
-  // Safe, structured diagnostics
   stage?: string;
   engine?: string;
   round?: number;
@@ -162,6 +161,15 @@ export interface FlowStepData {
   decision?: string;
   detail?: string;
   durationMs?: number;
+
+  stage?: string;
+  engine?: string;
+  round?: number;
+  attempt?: number;
+  reasonCode?: string;
+  refusalDetected?: boolean;
+  inputChars?: number;
+  outputChars?: number;
 }
 
 
@@ -195,9 +203,25 @@ export function recordFlowStep(
     ...(data.outgoing === undefined
       ? {}
       : { outgoing: structuredClone(data.outgoing) }),
-    ...(data.decision === undefined
+        ...(data.decision === undefined
       ? {}
       : { decision: data.decision }),
+    ...(data.stage === undefined ? {} : { stage: data.stage }),
+    ...(data.engine === undefined ? {} : { engine: data.engine }),
+    ...(data.round === undefined ? {} : { round: data.round }),
+    ...(data.attempt === undefined ? {} : { attempt: data.attempt }),
+    ...(data.reasonCode === undefined
+      ? {}
+      : { reasonCode: data.reasonCode }),
+    ...(data.refusalDetected === undefined
+      ? {}
+      : { refusalDetected: data.refusalDetected }),
+    ...(data.inputChars === undefined
+      ? {}
+      : { inputChars: data.inputChars }),
+    ...(data.outputChars === undefined
+      ? {}
+      : { outputChars: data.outputChars }),
   });
 }
 
