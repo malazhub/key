@@ -1,5 +1,6 @@
 // src/upgrades/intentRouter.ts
 import { assertDefendedQuery } from "../security/defenderRuntime";
+import { assertDefendedQuery } from "../security/queryGuard";
 export type Intent =
   | { type: "question"; text: string }
   | { type: "chat"; text: string }
