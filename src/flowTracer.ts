@@ -18,14 +18,61 @@ function formatFlowValue(value: unknown): string {
 
   if (typeof value === "object") {
     const data = value as Record<string, unknown>;
-    const keys = Object.keys(data).filter(
-      (key) =>
-        !/prompt|systeminstruction|history|raw|implementation|harmony|sanitizer|response|answer|engine|modelid/i.test(key),
-    );
+    
+const SAFE_FIELDS = [
+  "engine",
+  "provider",
+  "model",
+  "modelId",
+  "status",
+  "httpStatus",
+  "round",
+  "attempt",
+  "latencyMs",
+  "durationMs",
+  "inputChars",
+  "outputChars",
+  "refusalDetected",
+  "blocked",
+  "retryable",
+  "reasonCode",
+  "finishReason",
+];
 
-    if (keys.length === 0) {
-      return "Data processed; internal details hidden";
-    }
+function summarizeFlowValue(value: unknown): string {
+  if (value === undefined) return "Not recorded";
+  if (value === null) return "Null";
+
+  if (typeof value === "string") {
+    return `Text payload: ${value.length} chars; content collapsed`;
+  }
+
+  if (Array.isArray(value)) {
+    return `Array payload: ${value.length} items; content collapsed`;
+  }
+
+  if (typeof value !== "object") {
+    return String(value).slice(0, 100);
+  }
+
+  const data = value as Record<string, unknown>;
+  const details = SAFE_FIELDS
+    .filter((key) => data[key] !== undefined)
+    .filter((key) => {
+      const item = data[key];
+      return (
+        typeof item === "string" ||
+        typeof item === "number" ||
+        typeof item === "boolean"
+      );
+    })
+    .map((key) => `${key}=${String(data[key]).slice(0, 80)}`);
+
+  return details.length
+    ? details.join("; ")
+    : `Structured payload: ${Object.keys(data).length} fields; content collapsed`;
+}
+
 
     return keys
       .slice(0, 3)
@@ -58,6 +105,16 @@ export interface FlowEvent {
   incoming?: unknown;
   outgoing?: unknown;
   decision?: string;
+
+  // Safe, structured diagnostics
+  stage?: string;
+  engine?: string;
+  round?: number;
+  attempt?: number;
+  reasonCode?: string;
+  refusalDetected?: boolean;
+  inputChars?: number;
+  outputChars?: number;
 }
 
 
