@@ -4397,8 +4397,8 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         finishFlowTrace(flowTraceId, "error");
       }
 
-           console.error("Consensus API Error:", error);
-            const message =
+                console.error("Consensus API Error:", error);
+      const message =
         error instanceof Error
           ? error.message
           : "Failed to run multi-AI consensus loop.";
@@ -4407,22 +4407,17 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         res.status(502).json({
           success: false,
           step: "BACKEND_FAILURE",
-          error: message, // This forces the trace to show the exact error
+          error: message,
           conformityReached: false,
           stopReason: "BACKEND_HUNG_OR_FAILED",
           fulfillmentVerification: {
             status: "unverified",
-            feedback: message,
-            feedback:
-              "The request failed before conformity could be confirmed: " +
-              message,
+            feedback: "The request failed before conformity could be confirmed: " + message,
             missingRequirements: [
               "The request must produce a usable result.",
               "The exact final answer must pass conformity verification.",
             ],
           },
-          error:
-            "Conformity was not reached. The result must not be treated as successful.",
         });
       }
     }
