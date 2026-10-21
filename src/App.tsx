@@ -2315,27 +2315,28 @@ if (
 
 export default function App() {
   // 10 AI Engine Slots (Left Sidebar) — Zero-Divergence Cloning + Isolated Session Persistence
-    const [models, setModels] = useState<string[]>(() => {
+      const [models, setModels] = useState<string[]>(() => {
     try {
       const savedIsolated = localStorage.getItem(ENGINE_SLOTS_STORAGE_KEY);
       if (savedIsolated) {
         const parsed = JSON.parse(savedIsolated);
-        // If it has 10 slots and at least one real engine string, use it.
-        if (Array.isArray(parsed) && parsed.length === 10 && parsed.some((m: string) => m && m.trim().length > 0)) {
-          return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length === 10) return parsed;
       }
     } catch {
       // ignore
     }
-    // PERMANENT FIX: If it's empty or broken, force-populate default engines so you aren't blocked!
+    // The REAL 10 Key engines
     return [
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-      "gemini-3.6-flash",
-      "gemini-3.5-flash-lite",
-      "gemini-2.5-flash",
-      "", "", "", "", ""
+      "ChatGPT 4o",
+      "Claude 3.5 Sonnet",
+      "DeepSeek V3",
+      "Gemini 2.5",
+      "Qwen 2.5",
+      "Llama 3.3 70B",
+      "Grok 2",
+      "Mistral Large 2",
+      "Perplexity Pro",
+      "Command R+"
     ];
   });
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
