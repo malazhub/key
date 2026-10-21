@@ -15,7 +15,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
-import { exec, spawn } from "child_process";
+import { exec, execFile, spawn } from "child_process"; import { promisify } from "util";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -4185,14 +4185,8 @@ export const VERSION8_SUPERSEDING_ENGINE = {
               }>)
             : [];
 
-        if (__patchBlocks.length > 0) {
-          const __execFileAsync = (
-            await import("node:child_process")
-          ).exec
-            ? (await import("node:util")).promisify(
-                (await import("node:child_process")).execFile
-              )
-            : null;
+                if (__patchBlocks.length > 0) {
+          const __execFileAsync = promisify(execFile);
 
           for (const __block of __patchBlocks) {
             const __abs = path.resolve(
@@ -4237,7 +4231,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
               __error = `write: ${(err as Error).message}`;
             }
 
-            if (__written && __execFileAsync) {
+            if (__written) {
               try {
                 await __execFileAsync(
                   "git",
