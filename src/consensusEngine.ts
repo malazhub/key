@@ -10627,6 +10627,21 @@ export class QueryContextManager {
       ? []
       : sanitizedInputHistory;
 
+        // HONESTY GUARD — Step 6 must never claim MERGED_WITH_SAVED when
+    // there is no real saved context to merge with. If the caller asked
+    // for merged history but there are zero saved pairs, refuse.
+    if (
+      !strictQueryPriority &&
+      priorityGate.maintainHistory &&
+      rawWindowPairs.length === 0
+    ) {
+      throw new Error(
+        "Step6: priorityGate.maintainHistory=true but rawWindowPairs.length===0. " +
+          "Refusing to fabricate MERGED_WITH_SAVED with zero saved files. " +
+          "Fix REPO_ROOT / context loader or set strictQueryPriority=true explicitly."
+      );
+    }
+
     const relation: MathematicalRelationResult = strictQueryPriority
       ? {
           hasRelation: false,
