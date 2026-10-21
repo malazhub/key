@@ -3829,10 +3829,10 @@ const wantsFlowTrace =
 
         if (__foundFiles.length === 0) {
           // HALT — do NOT let Step 6 pretend MERGED_WITH_SAVED with 0 files
-          recordFlowStep(
+                    recordFlowStep(
             flowTraceId,
             "4. Context preparation",
-            "failed",
+            "error",
             {
               sourceFile: "server.ts",
               sourceFunction:
@@ -4296,10 +4296,10 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
           // HALT — never allow "processed" placeholders or fake success
           if (__persistence !== "complete") {
-            recordFlowStep(
+                        recordFlowStep(
               flowTraceId,
               "7. Final response assembly",
-              "failed",
+              "error",
               {
                 sourceFile: "server.ts",
                 sourceFunction:
