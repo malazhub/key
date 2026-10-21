@@ -12058,10 +12058,46 @@ return correctiveCandidates;
   }
     );
     const plannerExecutionContext = compileExecutionContext(
-        cleanQuestion,
-        queryExecutionPlan,
-        adaptiveRetrievalResult.selected
-        );
+  cleanQuestion,
+  queryExecutionPlan,
+  adaptiveRetrievalResult.selected
+);
+
+if (flowTraceId) {
+  recordFlowStep(
+    flowTraceId,
+    "Search, memory and query planning",
+    "ok",
+    {
+      sourceFile: "src/consensusEngine.ts",
+      sourceFunction:
+        "runSmartMemoryConsensusLoop — retrieval and planning",
+      stage: "context_and_retrieval",
+      incoming: {
+        historyTurnCount: Array.isArray(history)
+          ? history.length
+          : 0,
+        attachmentCount: attachments.length,
+      },
+      outgoing: {
+        queryPlanBuilt: Boolean(queryExecutionPlan),
+        groundingSourceCount: groundingSources.length,
+        liveStructureContextUsed:
+          Boolean(liveStructureGrounding.trim()),
+        plannerCandidateCount: plannerCandidates.length,
+        selectedEvidenceCount:
+          adaptiveRetrievalResult.selected.length,
+        executionContextAvailable:
+          Boolean(plannerExecutionContext.trim()),
+        contextMode,
+        strictQueryPriority,
+      },
+      decision: isGreetingTarget
+        ? "Greeting path; live web grounding is skipped."
+        : "Query planning and evidence selection completed.",
+    }
+  );
+}
 
   const activeConversationPairs =
     rawHistoryMemory.windowPairs.length > 0
@@ -12470,13 +12506,14 @@ iterationsRequired: actualRoundsCompleted,
   // Every round is assessed as a complete batch.
   // Agreement alone is never sufficient to declare success.
   for (
-    let roundNumber = 1;
-    roundNumber <= MAX_ROUNDS;
-    roundNumber += 1
-  ) {
-    actualRoundsCompleted = roundNumber;
+  let roundNumber = 1;
+  roundNumber <= MAX_ROUNDS;
+  roundNumber += 1
+) {
+  const roundStartedAt = Date.now();
+  actualRoundsCompleted = roundNumber;
 
-    const eligibleModels = selectedModels;
+  const eligibleModels = selectedModels;
 
     if (eligibleModels.length === 0) {
       lastVerification = {
@@ -12563,13 +12600,45 @@ signal: AbortSignal.timeout(60000), // Increased to 60s so it doesn't abort
     );
 
     const successfulResults = settledResults.filter(
-      (result): result is EngineDispatchResult =>
-        result !== null &&
-        typeof result.answer === "string" &&
-        result.answer.trim().length > 0
-    );
+  (result): result is EngineDispatchResult =>
+    result !== null &&
+    typeof result.answer === "string" &&
+    result.answer.trim().length > 0
+);
 
-    if (successfulResults.length === 0) {
+if (flowTraceId) {
+  const roundFailureCount = liveDispatchFailures.filter(
+    (failure) => failure.round === roundNumber
+  ).length;
+
+  recordFlowStep(
+    flowTraceId,
+    `Consensus round ${roundNumber}: combined engine batch`,
+    successfulResults.length > 0 ? "ok" : "error",
+    {
+      sourceFile: "src/consensusEngine.ts",
+      sourceFunction:
+        "runSmartMemoryConsensusLoop — parallel engine batch",
+      stage: "consensus_round",
+      round: roundNumber,
+      incoming: {
+        selectedEngineCount: eligibleModels.length,
+      },
+      outgoing: {
+        successfulEngineResponses: successfulResults.length,
+        failedEngineResponses: roundFailureCount,
+        batchProduced: successfulResults.length > 0,
+      },
+      decision:
+        successfulResults.length > 0
+          ? "Combined engine batch is available for agreement scoring."
+          : "No usable engine responses; this round cannot produce a verified answer.",
+      durationMs: Date.now() - roundStartedAt,
+    }
+  );
+}
+
+if (successfulResults.length === 0) {
       const roundFailures = liveDispatchFailures
         .filter((failure) => failure.round === roundNumber)
         .map(
@@ -12761,9 +12830,43 @@ const combinedRefusalFeedback = combinedResultRefused
       };
     }
 
-    conformityReached =
-      actualAgreement >= safeTarget &&
-      lastVerification.status === "pass";
+    const agreementTargetMet = actualAgreement >= safeTarget;
+const verificationPassed = lastVerification.status === "pass";
+
+conformityReached =
+  agreementTargetMet && verificationPassed;
+
+if (flowTraceId) {
+  recordFlowStep(
+    flowTraceId,
+    `Consensus round ${roundNumber}: agreement and verification`,
+    conformityReached ? "ok" : "running",
+    {
+      sourceFile: "src/consensusEngine.ts",
+      sourceFunction:
+        "runSmartMemoryConsensusLoop — conformity gate",
+      stage: "conformity_verification",
+      round: roundNumber,
+      incoming: {
+        batchAgreement: actualAgreement,
+        targetAgreement: safeTarget,
+        verificationStatus: lastVerification.status,
+      },
+      outgoing: {
+        agreementTargetMet,
+        independentVerificationPassed: verificationPassed,
+        conformityReached,
+        missingRequirementCount:
+          lastVerification.missingRequirements.length,
+      },
+      decision: conformityReached
+        ? "Agreement and independent verification passed; finalize the combined answer."
+        : "Conformity is not reached; revise the combined batch if another round is available.",
+      detail: lastVerification.feedback.slice(0, 240),
+      durationMs: Date.now() - roundStartedAt,
+    }
+  );
+}
 
     if (conformityReached) {
       let bestIndex = 0;
