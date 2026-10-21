@@ -8,6 +8,11 @@
 import { assertDefendedQuery } from "./security/queryGuard";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
+  startFlowTrace,
+  recordFlowStep,
+  finishFlowTrace,
+} from "./flowTracer";
+import {
   CANDIDATE_MODELS,
   getAvailableCandidateModels,
   markModelCooldown,
@@ -150,28 +155,101 @@ export async function pushQueryToEnginesAndConverge(
     )
   );
 
-  const loopResult = await runSmartMemoryConsensusLoop(
-    effectiveQuestion,
-    request.history || [],
-    modelsList,
-    safeTarget,
-    {
-      buildAppMode: Boolean(request.buildAppMode),
-      adminUpgradeMode: Boolean(request.adminUpgradeMode),
-      nextVersionTag: request.nextVersionTag || "key",
-      attachments: request.attachments || [],
-      strictQueryPriority: request.strictQueryPriority,
-      liveStructureContext: request.liveStructureContext,
-    }
-  );
+  // One trace ID follows the query through retrieval, all consensus rounds,
+  // the final API payload, and any failure path.
+  const flowTraceId = startFlowTrace(effectiveQuestion);
+  const traceStart = Date.now();
+  recordFlowStep(flowTraceId, "Query accepted by engine router", "ok", {
+    sourceFile: "src/searchAndEnginePushRouter.ts",
+    sourceFunction: "pushQueryToEnginesAndConverge",
+    stage: "request",
+    incoming: {
+      questionChars: effectiveQuestion.length,
+      selectedEngineCount: modelsList.length,
+      targetAgreement: safeTarget,
+    },
+    outgoing: {
+      selectedEngineCount: modelsList.length,
+      targetAgreement: safeTarget,
+    },
+  });
 
-  return executeConsensusApiPayload(
-    loopResult,
-    effectiveQuestion,
-    modelsList,
-    safeTarget,
-    null
-  );
+  try {
+    const loopResult = await runSmartMemoryConsensusLoop(
+      effectiveQuestion,
+      request.history || [],
+      modelsList,
+      safeTarget,
+      {
+        buildAppMode: Boolean(request.buildAppMode),
+        adminUpgradeMode: Boolean(request.adminUpgradeMode),
+        nextVersionTag: request.nextVersionTag || "key",
+        attachments: request.attachments || [],
+        strictQueryPriority: request.strictQueryPriority,
+        liveStructureContext: request.liveStructureContext,
+        flowTraceId,
+      }
+    );
+
+    const apiPayload = executeConsensusApiPayload(
+      loopResult,
+      effectiveQuestion,
+      modelsList,
+      safeTarget,
+      null
+    );
+    const payload = apiPayload as Record<string, any>;
+    const finalAnswer =
+      typeof payload.finalAnswer === "string"
+        ? payload.finalAnswer
+        : typeof payload.answer === "string"
+          ? payload.answer
+          : "";
+
+    recordFlowStep(flowTraceId, "Final response assembly", "ok", {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      stage: "final_response",
+      incoming: {
+        consensusLoopCompleted: true,
+        selectedEngineCount: modelsList.length,
+      },
+      outgoing: {
+        answerChars: finalAnswer.length,
+        achievedAgreement: payload.achievedAgreement,
+        targetAgreement: safeTarget,
+        iterationsRequired: payload.iterationsRequired,
+        activeModelCount: Array.isArray(payload.activeModels)
+          ? payload.activeModels.length
+          : modelsList.length,
+        consensusSummary:
+          typeof payload.consensusSummary === "string"
+            ? payload.consensusSummary.slice(0, 240)
+            : undefined,
+        answer: finalAnswer,
+      },
+      durationMs: Date.now() - traceStart,
+    });
+    finishFlowTrace(flowTraceId, "ok");
+    return payload;
+  } catch (error) {
+    recordFlowStep(flowTraceId, "Query-to-response pipeline failed", "error", {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      stage: "error",
+      incoming: {
+        selectedEngineCount: modelsList.length,
+        targetAgreement: safeTarget,
+      },
+      outgoing: {
+        error:
+          error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
+      },
+      durationMs: Date.now() - traceStart,
+    });
+    finishFlowTrace(flowTraceId, "error");
+    throw error;
+  }
 }
 
 export {
