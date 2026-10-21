@@ -3800,23 +3800,91 @@ const wantsFlowTrace =
           effectiveQuestion
         );
 
-            if (flowTraceId) {
+                       if (flowTraceId) {
+        const __loadedFilesProbe = [
+          "server.ts",
+          "src/App.tsx",
+          "src/consensusEngine.ts",
+        ].map((rel) => {
+          const abs = path.resolve(__dirname, rel);
+          try {
+            const content = fs.readFileSync(abs, "utf8");
+            return { path: rel, content };
+          } catch {
+            return { path: rel, content: null as string | null };
+          }
+        });
+        const __foundFiles = __loadedFilesProbe.filter(
+          (f) => f.content !== null
+        );
+        console.log(
+          `[B1] REPO_ROOT resolved to: ${__dirname}`
+        );
+        console.log(
+          `[B2] prepareContext CALLED, question length = ${effectiveQuestion.length}`
+        );
+        console.log(
+          `[Step4] loaded ${__foundFiles.length}/${__loadedFilesProbe.length} files from ${__dirname}`
+        );
+
+        if (__foundFiles.length === 0) {
+          // HALT — do NOT let Step 6 pretend MERGED_WITH_SAVED with 0 files
+          recordFlowStep(
+            flowTraceId,
+            "4. Context preparation",
+            "failed",
+            {
+              sourceFile: "server.ts",
+              sourceFunction:
+                "request handler: context preparation",
+              incoming: {
+                effectiveQuestion,
+                cleanHistory,
+                safeAttachments,
+              },
+              outgoing: null,
+              decision:
+                `CONTEXT_PREP_FAILED — 0/${__loadedFilesProbe.length} files loaded from ${__dirname}. ` +
+                `Refusing to proceed with empty context.`,
+            }
+          );
+          finishFlowTrace(flowTraceId, "error");
+          res.status(500).json({
+            success: false,
+            step: 4,
+            error: "CONTEXT_PREP_FAILED",
+            repoRoot: __dirname,
+            loadedFiles: __loadedFilesProbe.map((f) => ({
+              path: f.path,
+              found: f.content !== null,
+            })),
+          });
+          return;
+        }
+
         recordFlowStep(
           flowTraceId,
           "4. Context preparation",
           "ok",
           {
             sourceFile: "server.ts",
-            sourceFunction: "request handler: context preparation",
+            sourceFunction:
+              "request handler: context preparation",
             incoming: {
               effectiveQuestion,
               cleanHistory,
               safeAttachments,
             },
-            outgoing: liveStructureContext ?? null,
-            decision: liveStructureContext
-              ? "Context returned and passed to the consensus loop."
-              : "No additional live context returned.",
+            outgoing: {
+              loadedFiles: __loadedFilesProbe.map((f) => ({
+                path: f.path,
+                found: f.content !== null,
+                chars: f.content?.length ?? 0,
+              })),
+              liveStructureContext:
+                liveStructureContext ?? null,
+            },
+            decision: `Loaded ${__foundFiles.length}/${__loadedFilesProbe.length} files from ${__dirname}.`,
           }
         );
       }
