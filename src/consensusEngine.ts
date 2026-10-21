@@ -12350,7 +12350,7 @@ iterationsRequired: actualRoundsCompleted,
     );
       // Keep the complete selected engine set eligible throughout all rounds.
 // Record failures per round; never permanently exclude an engine.
-        if (selectedModels.length === 0) {
+      const unknownModels = selectedModels.filter(     (model) => !ENGINE_REGISTRY[model]   );    if (unknownModels.length > 0) {     const message =       "CONFORMITY NOT REACHED: No provider mapping exists for: " +       unknownModels.join(", ") +       ". No unverified answer is being returned as success.";      return {       contextMode: relation.contextMode,       historyMatchScore: relation.historyMatchScore,       matchedPairIndices: relation.matchedPairIndices,       payloadSentToEngines: relation.payloadSentToEngines,       finalAnswer: message,       hasAppPreview: false,       appTitle: "",       generatedAppHtml: "",       achievedAgreement: 0,       iterationsRequired: 0,       consensusSummary: message,       convergenceRounds: [],       nodeContributions: [],       groundingSources: [],       workingMemoryFacts: relation.workingMemoryFacts || [],       cumulativeSavedPairsCount: allPairsCount + 1,       droppedOldestCount,       conformityReached: false,       fulfillmentVerification: {         status: "unverified",         feedback: message,         missingRequirements: [           "Every selected engine must have a valid provider mapping.",           "The final answer must pass conformity verification.",         ],       },       stopReason: "CONFORMITY_NOT_REACHED",     };   }
     const message =
       "CONFORMITY NOT REACHED: No AI engine was selected. " +
       "No unverified answer is being returned as success.";
