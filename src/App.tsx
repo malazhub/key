@@ -2430,7 +2430,7 @@ export default function App() {
     }
     return "Key";
   });
-  c  const [headerTitleColors, setHeaderTitleColors] = useState<string[]>(() => {
+  const [headerTitleColors, setHeaderTitleColors] = useState<string[]>(() => {
     try {
       const savedColors = localStorage.getItem("malaz_key_title_colors_v8");
       if (savedColors) {
