@@ -857,6 +857,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  isTraceMessage?: boolean;
   attachments?: ChatAttachment[];
   resolvedMergedQuery?: string;
   mergedSequenceChain?: string;
@@ -4905,12 +4906,13 @@ const data = await res.json();
 
       if (data.tracerOnly === true) {
         const traceMessage: ChatMessage = {
-          id: `assistant-trace-${Date.now()}`,
-          role: "assistant",
-          content:
-            typeof data.answer === "string"
-              ? data.answer
-              : "No trace output was returned.",
+  id: `assistant-trace-${Date.now()}`,
+  role: "assistant",
+  isTraceMessage: true,
+  content:
+    typeof data.answer === "string"
+      ? data.answer
+      : "No trace output was returned.",
           timestamp: new Date().toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -5609,12 +5611,13 @@ if (!response.ok) {
 
 if (data.tracerOnly === true) {
   const traceMessage: ChatMessage = {
-    id: `assistant-trace-${Date.now()}`,
-    role: "assistant",
-    content:
-      typeof data.answer === "string"
-        ? data.answer
-        : "No trace output was returned.",
+  id: `assistant-trace-${Date.now()}`,
+  role: "assistant",
+  isTraceMessage: true,
+  content:
+    typeof data.answer === "string"
+      ? data.answer
+      : "No trace output was returned.",
     timestamp: new Date().toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -6710,14 +6713,40 @@ if (data.tracerOnly === true) {
                   );
                 }
 
-                const isExpanded = !!expandedConsensusIds[msg.id];
-                const participating = msg.activeModels || activeModels;
-                const isAssistantHighlighted = highlightedTurnId === msg.id;
+                if (msg.isTraceMessage) {
+  return (
+    <div
+      key={msg.id}
+      id={`chat-msg-${msg.id}`}
+      className="flex flex-col items-start scroll-mt-6 mb-6"
+    >
+      <div className="w-full max-w-5xl rounded-xl border border-slate-800/90 bg-slate-900/50 p-3 sm:p-4 text-sm">
+        <div
+          className={[
+            "[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:mb-3",
+            "[&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2",
+            "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1",
+            "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5",
+            "[&_li]:my-0.5 [&_pre]:overflow-x-auto",
+            "[&_code]:break-words [&_hr]:my-3",
+            "min-w-0 break-words",
+          ].join(" ")}
+        >
+          <MarkdownRenderer content={msg.content} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                return (
-                  <div
-                    key={msg.id}
-                    id={`chat-msg-${msg.id}`}
+const isExpanded = !!expandedConsensusIds[msg.id];
+const participating = msg.activeModels || activeModels;
+const isAssistantHighlighted = highlightedTurnId === msg.id;
+
+return (
+  <div
+    key={msg.id}
+    id={`chat-msg-${msg.id}`}
                     className="flex flex-col justify-start scroll-mt-6 mb-28"
                   >
                     <div
