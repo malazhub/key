@@ -370,14 +370,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       lines.push(`Detail: ${event.detail}`);
     }
   }
-        lines.push(
-    "",
-    "## Final agreed response",
-    "",
-    answer ?? "No final answer was recorded.",
-  );
-
-  lines.push(
+          lines.push(
     "",
     "## Final agreed response",
     "",
