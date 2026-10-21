@@ -21,6 +21,26 @@ const SAFE_FIELDS = new Set([
   "retryable",
   "reasonCode",
   "finishReason",
+  "selectedEngineCount",
+  "successfulEngineResponses",
+  "failedEngineResponses",
+  "batchProduced",
+  "batchAgreement",
+  "targetAgreement",
+  "agreementTargetMet",
+  "independentVerificationPassed",
+  "conformityReached",
+  "verificationStatus",
+  "missingRequirementCount",
+  "groundingSourceCount",
+  "plannerCandidateCount",
+  "selectedEvidenceCount",
+  "contextMode",
+  "strictQueryPriority",
+  "iterationsRequired",
+  "achievedAgreement",
+  "activeModelCount",
+  "answerChars",
 ]);
 
 function formatFlowValue(value: unknown): string {
@@ -305,7 +325,57 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     "Payload contents are summarized to keep the trace readable.",
   ];
 
+  // Render each consensus round as one combined block, rather than exposing
+  // every internal round event as a separate trace step.
+  const displayEvents: FlowEvent[] = [];
+  const roundGroups = new Map<number, FlowEvent[]>();
   for (const event of trace.events) {
+    if (
+      event.round !== undefined &&
+      (event.stage === "consensus_round" ||
+        event.stage === "conformity_verification")
+    ) {
+      const group = roundGroups.get(event.round) ?? [];
+      group.push(event);
+      roundGroups.set(event.round, group);
+      continue;
+    }
+    displayEvents.push(event);
+  }
+
+  for (const [round, events] of roundGroups) {
+    const incoming: Record<string, unknown> = {};
+    const outgoing: Record<string, unknown> = {};
+    for (const event of events) {
+      if (event.incoming && typeof event.incoming === "object") {
+        Object.assign(incoming, event.incoming);
+      }
+      if (event.outgoing && typeof event.outgoing === "object") {
+        Object.assign(outgoing, event.outgoing);
+      }
+    }
+    const first = events[0];
+    const failed = events.some((event) => event.status === "error");
+    const running = events.some((event) => event.status === "running");
+    displayEvents.push({
+      id: first.id,
+      step: `Consensus round ${round}: combined engine results and verification`,
+      status: failed ? "error" : running ? "running" : "ok",
+      at: first.at,
+      sourceFile: "src/consensusEngine.ts",
+      sourceFunction: "runSmartMemoryConsensusLoop",
+      stage: "consensus_round_summary",
+      round,
+      incoming,
+      outgoing,
+      durationMs: events.reduce((sum, event) => sum + (event.durationMs ?? 0), 0) || undefined,
+      decision: events.map((event) => event.decision).filter(Boolean).join(" "),
+      detail: events.map((event) => event.detail).filter(Boolean).join(" | ").slice(0, 240) || undefined,
+    });
+  }
+  displayEvents.sort((a, b) => a.id - b.id);
+
+  for (const event of displayEvents) {
     lines.push(
       "",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -313,62 +383,22 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       "",
       `📄 Source file: ${event.sourceFile ?? "Not recorded"}`,
       `⚙️ Function / logic: ${event.sourceFunction ?? "Not recorded"}`,
-      `🔵 Incoming: ${
-        event.incoming !== undefined
-          ? formatFlowValue(event.incoming)
-          : "Not recorded"
-      }`,
-      `🟢 Outgoing: ${
-        event.outgoing !== undefined
-          ? formatFlowValue(event.outgoing)
-          : "Not recorded"
-      }`,
+      `🔵 Incoming: ${event.incoming !== undefined ? formatFlowValue(event.incoming) : "Not recorded"}`,
+      `🟢 Outgoing: ${event.outgoing !== undefined ? formatFlowValue(event.outgoing) : "Not recorded"}`,
       `Status: ${event.status}`,
     );
 
-    if (event.stage) {
-      lines.push(`Stage: ${event.stage}`);
-    }
-
-    if (event.engine) {
-      lines.push(`Engine: ${event.engine}`);
-    }
-
-    if (event.round !== undefined) {
-      lines.push(`Round: ${event.round}`);
-    }
-
-    if (event.attempt !== undefined) {
-      lines.push(`Attempt: ${event.attempt}`);
-    }
-
-    if (event.reasonCode) {
-      lines.push(`Reason code: ${event.reasonCode}`);
-    }
-
-    if (event.refusalDetected !== undefined) {
-      lines.push(`Refusal detected: ${event.refusalDetected}`);
-    }
-
-    if (event.inputChars !== undefined) {
-      lines.push(`Input characters: ${event.inputChars}`);
-    }
-
-    if (event.outputChars !== undefined) {
-      lines.push(`Output characters: ${event.outputChars}`);
-    }
-
-    if (event.durationMs !== undefined) {
-      lines.push(`Duration: ${event.durationMs} ms`);
-    }
-
-    if (event.decision) {
-      lines.push(`Decision: ${event.decision}`);
-    }
-
-    if (event.detail) {
-      lines.push(`Detail: ${event.detail}`);
-    }
+    if (event.stage) lines.push(`Stage: ${event.stage}`);
+    if (event.engine) lines.push(`Engine: ${event.engine}`);
+    if (event.round !== undefined) lines.push(`Round: ${event.round}`);
+    if (event.attempt !== undefined) lines.push(`Attempt: ${event.attempt}`);
+    if (event.reasonCode) lines.push(`Reason code: ${event.reasonCode}`);
+    if (event.refusalDetected !== undefined) lines.push(`Refusal detected: ${event.refusalDetected}`);
+    if (event.inputChars !== undefined) lines.push(`Input characters: ${event.inputChars}`);
+    if (event.outputChars !== undefined) lines.push(`Output characters: ${event.outputChars}`);
+    if (event.durationMs !== undefined) lines.push(`Duration: ${event.durationMs} ms`);
+    if (event.decision) lines.push(`Decision: ${event.decision.slice(0, 240)}`);
+    if (event.detail) lines.push(`Detail: ${event.detail.slice(0, 240)}`);
   }
           lines.push(
     "",
