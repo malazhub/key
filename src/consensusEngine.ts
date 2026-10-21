@@ -12350,7 +12350,7 @@ iterationsRequired: actualRoundsCompleted,
     );
       // Keep the complete selected engine set eligible throughout all rounds.
 // Record failures per round; never permanently exclude an engine.
-    if (selectedModels.length === 0) {
+        if (selectedModels.length === 0) {
     const message =
       "CONFORMITY NOT REACHED: No AI engine was selected. " +
       "No unverified answer is being returned as success.";
