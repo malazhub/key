@@ -1,13 +1,27 @@
 
-  const getString = (...keys: string[]): string | undefined => {
-    for (const key of keys) {
-      const value = payload[key];
-      if (typeof value === "string" && value.trim()) {
-        return value;
-      }
-    }
-    return undefined;
-  };
+  import { randomUUID } from "node:crypto";
+
+export type FlowStatus = "running" | "ok" | "error" | "skipped";
+
+const SAFE_FIELDS = new Set([
+  "engine",
+  "provider",
+  "model",
+  "modelId",
+  "status",
+  "httpStatus",
+  "round",
+  "attempt",
+  "latencyMs",
+  "durationMs",
+  "inputChars",
+  "outputChars",
+  "refusalDetected",
+  "blocked",
+  "retryable",
+  "reasonCode",
+  "finishReason",
+]);
 
   const getNumber = (...keys: string[]): number | undefined => {
     for (const key of keys) {
