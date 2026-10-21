@@ -218,13 +218,32 @@ export function finishFlowTrace(
   latestCompletedTraceId = traceId;
 }
 
-export function getLatestFlowTrace(): FlowTrace | undefined {
-  const trace = latestCompletedTraceId
-    ? traces.get(latestCompletedTraceId)
-    : undefined;
+export function formatFlowTrace(trace: FlowTrace | undefined): string {
+  if (!trace) {
+    return [
+      "# Query-to-response trace",
+      "",
+      "No previous query trace was found.",
+      "",
+      "Send a normal message first, then type: show trace.",
+    ].join("\n");
+  }
 
-  return trace ? structuredClone(trace) : undefined;
-}
+  const finalEvent = [...trace.events]
+    .reverse()
+    .find((event) => /final response assembly/i.test(event.step));
+
+  const rawOutgoing =
+    finalEvent?.outgoing &&
+    typeof finalEvent.outgoing === "object"
+      ? (finalEvent.outgoing as Record<string, unknown>)
+      : {};
+
+  const nested =
+    rawOutgoing.consensusResult &&
+    typeof rawOutgoing.consensusResult === "object"
+      ? (rawOutgoing.consensusResult as Record<string, unknown>)
+      : undefined;
 
 export function formatFlowTrace(trace: FlowTrace | undefined): string {
   if (!trace) {
