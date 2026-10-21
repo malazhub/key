@@ -2430,11 +2430,25 @@ export default function App() {
     }
     return "Key";
   });
-  const [headerTitleColors, setHeaderTitleColors] = useState<string[]>(() => {
+  c  const [headerTitleColors, setHeaderTitleColors] = useState<string[]>(() => {
     try {
       const savedColors = localStorage.getItem("malaz_key_title_colors_v8");
       if (savedColors) {
         const parsed = JSON.parse(savedColors);
+        
+        // PERMANENT FIX: Self-Healing State
+        // If the old fake upgrade left a single Red color ["#ef4444"] or Blue ["#3b82f6"], 
+        // we forcefully wipe it out and reset the logo to the default theme.
+        if (
+          Array.isArray(parsed) && 
+          parsed.length === 1 && 
+          (parsed[0] === "#ef4444" || parsed[0] === "#3b82f6")
+        ) {
+          localStorage.removeItem("malaz_key_title_colors_v8");
+          localStorage.removeItem("malaz_key_continuous_upgrade_state_v1");
+          return [];
+        }
+
         if (Array.isArray(parsed)) return parsed;
       }
     } catch {
