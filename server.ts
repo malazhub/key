@@ -3550,11 +3550,10 @@ const wantsFlowTrace =
         const trace = getLatestFlowTrace();
 
         res.json({
-          answer: formatFlowTrace(trace),
-          flowTrace: trace ?? null,
-          tracerOnly: true,
-        });
-        return;
+  answer: formatFlowTrace(trace),
+  tracerOnly: true,
+});
+return;
       }
 
      flowTraceId = startFlowTrace(effectiveQuestion);
