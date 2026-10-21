@@ -12525,9 +12525,9 @@ iterationsRequired: actualRoundsCompleted,
               responseSchema: shouldGenerateAppPreview
   ? responseSchemaConfig
   : undefined,
-signal: AbortSignal.timeout(15000),
+signal: AbortSignal.timeout(60000), // Increased to 60s so it doesn't abort
 }),
-15000,
+60000,
 `ConsensusRound${roundNumber}(${modelName})`
           );
 
@@ -15435,10 +15435,7 @@ assertDefendedQuery(
           }
         );
       } catch (error) {
-  if (request.signal?.aborted) {
-    throw error;
-  }
-
+  
   lastError = error;
 
   const decision =
