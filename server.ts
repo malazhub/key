@@ -4323,7 +4323,12 @@ export const VERSION8_SUPERSEDING_ENGINE = {
           }
         }
 
-                const __finalPayloadWithProof = {
+                        // We define the variables right here so they exist in this scope.
+        const __patchC_persistence = __persistence;
+        const __patchC_headSha = __headSha;
+        const __patchC_artifacts = __persistedArtifacts;
+
+        const __finalPayloadWithProof = {
           ...finalApiPayload,
           persistence: __patchC_persistence,
           headSha: __patchC_headSha,
@@ -4344,7 +4349,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
             incoming: { consensusResult: result },
             outgoing: __finalPayloadWithProof,
             decision:
-              __persistence === "complete"
+              __patchC_persistence === "complete"
                 ? "All artifacts written and committed; real headSha returned."
                 : "No code blocks to persist; answer-only response.",
             durationMs:
