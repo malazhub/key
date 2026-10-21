@@ -2315,17 +2315,19 @@ if (
 
 export default function App() {
   // 10 AI Engine Slots (Left Sidebar) — Zero-Divergence Cloning + Isolated Session Persistence
-      const [models, setModels] = useState<string[]>(() => {
+       const [models, setModels] = useState<string[]>(() => {
     try {
       const savedIsolated = localStorage.getItem(ENGINE_SLOTS_STORAGE_KEY);
       if (savedIsolated) {
         const parsed = JSON.parse(savedIsolated);
-        if (Array.isArray(parsed) && parsed.length === 10) return parsed;
+        if (Array.isArray(parsed) && parsed.length === 10 && parsed[0] === "ChatGPT 4o") {
+          return parsed;
+        }
       }
     } catch {
       // ignore
     }
-    // The REAL 10 Key engines
+    // Force the REAL 10 Key engines
     return [
       "ChatGPT 4o",
       "Claude 3.5 Sonnet",
