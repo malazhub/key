@@ -4323,15 +4323,14 @@ export const VERSION8_SUPERSEDING_ENGINE = {
           }
         }
 
-        const __finalPayloadWithProof = {
+                const __finalPayloadWithProof = {
           ...finalApiPayload,
-          persistence: __persistence,
-          headSha: __headSha,
-          artifacts: __persistedArtifacts,
-          // Remove the fake placeholders
-          autoDeployResult: undefined,
-          selfModificationApplied:
-            finalApiPayload.selfModificationApplied,
+          persistence: __patchC_persistence,
+          headSha: __patchC_headSha,
+          artifacts: __patchC_artifacts,
+          // Explicitly overwrite the fake strings so the trace is honest
+          autoDeployResult: null,
+          selfModificationApplied: finalApiPayload.selfModificationApplied || null,
         };
 
         recordFlowStep(
