@@ -4158,30 +4158,208 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         }
       }
 
-                      if (flowTraceId) {
-        const responseSummary =
-          typeof finalApiPayload.answer === "string"
-            ? finalApiPayload.answer
-            : JSON.stringify(finalApiPayload.answer ?? finalApiPayload);
+                                            if (flowTraceId) {
+        // HONEST PERSISTENCE — Step 8 must return a real commitSha + artifacts,
+        // not the literal string "processed".
+        let __persistedArtifacts: Array<{
+          path: string;
+          written: boolean;
+          committed: boolean;
+          commitSha: string | null;
+          bytes: number;
+          error?: string;
+        }> = [];
+        let __headSha: string | null = null;
+        let __persistence: "none" | "partial" | "complete" = "none";
+
+        const __patchBlocks: Array<{
+          path: string;
+          content: string;
+        }> =
+          Array.isArray(
+            (result as Record<string, unknown>).codeBlocks
+          )
+            ? ((result as Record<string, unknown>).codeBlocks as Array<{
+                path: string;
+                content: string;
+              }>)
+            : [];
+
+        if (__patchBlocks.length > 0) {
+          const __execFileAsync = (
+            await import("node:child_process")
+          ).exec
+            ? (await import("node:util")).promisify(
+                (await import("node:child_process")).execFile
+              )
+            : null;
+
+          for (const __block of __patchBlocks) {
+            const __abs = path.resolve(
+              __dirname,
+              __block.path
+            );
+            if (!__abs.startsWith(__dirname + path.sep)) {
+              __persistedArtifacts.push({
+                path: __block.path,
+                written: false,
+                committed: false,
+                commitSha: null,
+                bytes: 0,
+                error: "Path traversal blocked",
+              });
+              continue;
+            }
+
+            const __bytes = Buffer.byteLength(
+              __block.content,
+              "utf8"
+            );
+            let __written = false;
+            let __committed = false;
+            let __commitSha: string | null = null;
+            let __error: string | undefined;
+
+            try {
+              fs.mkdirSync(path.dirname(__abs), {
+                recursive: true,
+              });
+              fs.writeFileSync(
+                __abs,
+                __block.content,
+                "utf8"
+              );
+              __written = true;
+              console.log(
+                `[Step8] WROTE ${__block.path} (${__bytes} bytes)`
+              );
+            } catch (err) {
+              __error = `write: ${(err as Error).message}`;
+            }
+
+            if (__written && __execFileAsync) {
+              try {
+                await __execFileAsync(
+                  "git",
+                  ["add", "--", __block.path],
+                  { cwd: __dirname }
+                );
+                await __execFileAsync(
+                  "git",
+                  [
+                    "commit",
+                    "-m",
+                    `key upgrade: ${__block.path}`,
+                  ],
+                  { cwd: __dirname }
+                );
+                const { stdout } =
+                  await __execFileAsync(
+                    "git",
+                    ["rev-parse", "HEAD"],
+                    { cwd: __dirname }
+                  );
+                __commitSha = String(stdout || "").trim();
+                __committed = Boolean(__commitSha);
+                console.log(
+                  `[Step8] COMMITTED ${__block.path} sha=${__commitSha}`
+                );
+              } catch (err) {
+                __error = `${__error ?? ""} | git: ${(err as Error).message}`;
+              }
+            }
+
+            __persistedArtifacts.push({
+              path: __block.path,
+              written: __written,
+              committed: __committed,
+              commitSha: __commitSha,
+              bytes: __bytes,
+              error: __error,
+            });
+
+            if (__commitSha && !__headSha) {
+              __headSha = __commitSha;
+            }
+          }
+
+          const __committedCount = __persistedArtifacts.filter(
+            (a) => a.committed
+          ).length;
+          __persistence =
+            __committedCount === 0
+              ? "none"
+              : __committedCount ===
+                __persistedArtifacts.length
+              ? "complete"
+              : "partial";
+
+          // HALT — never allow "processed" placeholders or fake success
+          if (__persistence !== "complete") {
+            recordFlowStep(
+              flowTraceId,
+              "7. Final response assembly",
+              "failed",
+              {
+                sourceFile: "server.ts",
+                sourceFunction:
+                  "request handler — finalApiPayload assembly",
+                incoming: { consensusResult: result },
+                outgoing: {
+                  persistence: __persistence,
+                  headSha: __headSha,
+                  artifacts: __persistedArtifacts,
+                },
+                decision:
+                  `PERSISTENCE_FAILED — only ${__committedCount}/${__persistedArtifacts.length} artifacts committed.`,
+                durationMs:
+                  Date.now() - flowTraceStartedAt,
+              }
+            );
+            finishFlowTrace(flowTraceId, "error");
+            res.status(500).json({
+              success: false,
+              step: 8,
+              error: "PERSISTENCE_FAILED",
+              persistence: __persistence,
+              headSha: __headSha,
+              artifacts: __persistedArtifacts,
+            });
+            return;
+          }
+        }
+
+        const __finalPayloadWithProof = {
+          ...finalApiPayload,
+          persistence: __persistence,
+          headSha: __headSha,
+          artifacts: __persistedArtifacts,
+          // Remove the fake placeholders
+          autoDeployResult: undefined,
+          selfModificationApplied:
+            finalApiPayload.selfModificationApplied,
+        };
 
         recordFlowStep(
-  flowTraceId,
-  "7. Final response assembly",
-  "ok",
-  {
-        sourceFile: "server.ts",
-    sourceFunction: "request handler — finalApiPayload assembly",
-    incoming: {
-      consensusResult: result,
-    },
-    outgoing: finalApiPayload,
-    decision:
-      finalApiPayload.answer === result.finalAnswer
-        ? "Final answer matches the consensus answer."
-        : "Final answer differs from the consensus answer; inspect the payload transformation.",
-    durationMs: Date.now() - flowTraceStartedAt,
-  },
-);
+          flowTraceId,
+          "7. Final response assembly",
+          "ok",
+          {
+            sourceFile: "server.ts",
+            sourceFunction:
+              "request handler — finalApiPayload assembly",
+            incoming: { consensusResult: result },
+            outgoing: __finalPayloadWithProof,
+            decision:
+              __persistence === "complete"
+                ? "All artifacts written and committed; real headSha returned."
+                : "No code blocks to persist; answer-only response.",
+            durationMs:
+              Date.now() - flowTraceStartedAt,
+          }
+        );
+
+        Object.assign(finalApiPayload, __finalPayloadWithProof);
 
         res.once("finish", () => {
           if (!flowTraceId) return;
@@ -4207,7 +4385,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
 
       }
 
-      res.json({   success: true,   ...finalApiPayload, });
+      // Fix the "Rounds: 0" mismatch — always report the real completed       // round count from the consensus loop.       const __realRounds = Number(         finalApiPayload.iterationsRequired       );       const __roundsReported = Number.isInteger(__realRounds)         ? __realRounds         : 0;        res.json({         success: true,         ...finalApiPayload,         consensusSummary: {           rounds: __roundsReported,           note:             __roundsReported === 0               ? "no rounds executed"               : "ok",         },       });
     } catch (error: unknown) {
       if (flowTraceId) {
                 recordFlowStep(flowTraceId, "Request failed", "error", {
