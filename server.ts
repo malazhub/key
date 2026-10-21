@@ -2100,11 +2100,9 @@ Mode: ${
     ],
   };
 
-  // REAL LIVE ENGINE CONSENSUS.
-  // Each round uses only actual engine responses. Successful responses are
-  // carried into the next round until the user-selected target is reached
-  // or the existing 50-round safety boundary is reached.
-  const healthyModels = getOrderedCandidateModels().filter(isModelAvailable);
+  // Use the engines selected for this request.
+// Keep the user's selection intact; remove unavailable engines.
+const parallelCandidates = modelsList.filter(isModelAvailable);
   const parallelCandidates = healthyModels.slice(0, 4);
 
   async function callModelWithRetry(
@@ -2243,27 +2241,37 @@ const response = await ai.models.generateContent({
       note: string;
     }> = [];
 
-    for (let round = 1; round <= 50; round += 1) {
-      const settledResults = await Promise.allSettled(
-        parallelCandidates.map((modelName) =>
-          callModelWithRetry(modelName, round, priorAnswers)
-        )
-      );
+    fconst failedResponses = settledResults.filter(
+  (result) => result.status === "rejected"
+).length;
 
-      const successfulResults = settledResults
-        .filter(
-          (
-            result
-          ): result is PromiseFulfilledResult<any> =>
-            result.status === "fulfilled"
-        )
-        .map((result) => result.value)
-        .filter(
-          (result) =>
-            result &&
-            typeof result.finalAnswer === "string" &&
-            result.finalAnswer.trim().length > 0
-        );
+if (options?.flowTraceId) {
+  recordFlowStep(
+    options.flowTraceId,
+    `Consensus round ${round} — combined batch`,
+    successfulResults.length > 0 ? "ok" : "error",
+    {
+      sourceFile: "server.ts",
+      sourceFunction: "runSmartMemoryConsensusLoop",
+      stage: "consensus",
+      round,
+      incoming: {
+        selected: parallelCandidates.length,
+      },
+      outgoing: {
+        succeeded: successfulResults.length,
+        failed: failedResponses,
+        agreement: null,
+        targetAgreement: safeTarget,
+        verification: "not_run",
+      },
+      decision:
+        successfulResults.length > 0
+          ? "Combined engine batch returned usable answers."
+          : "No usable answers were returned in this round.",
+    }
+  );
+}
 
       if (successfulResults.length === 0) {
         const failures = settledResults
