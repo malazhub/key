@@ -2315,17 +2315,28 @@ if (
 
 export default function App() {
   // 10 AI Engine Slots (Left Sidebar) — Zero-Divergence Cloning + Isolated Session Persistence
-  const [models, setModels] = useState<string[]>(() => {
+    const [models, setModels] = useState<string[]>(() => {
     try {
       const savedIsolated = localStorage.getItem(ENGINE_SLOTS_STORAGE_KEY);
       if (savedIsolated) {
         const parsed = JSON.parse(savedIsolated);
-        if (Array.isArray(parsed) && parsed.length === 10) return parsed;
+        // If it has 10 slots and at least one real engine string, use it.
+        if (Array.isArray(parsed) && parsed.length === 10 && parsed.some((m: string) => m && m.trim().length > 0)) {
+          return parsed;
+        }
       }
     } catch {
       // ignore
     }
-    return [...EMPTY_ENGINE_SLOTS];
+    // PERMANENT FIX: If it's empty or broken, force-populate default engines so you aren't blocked!
+    return [
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-2.5-flash",
+      "", "", "", "", ""
+    ];
   });
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [customEngineInput, setCustomEngineInput] = useState<string>("");
@@ -2484,15 +2495,15 @@ export default function App() {
       return "bottom";
     }
   );
-  const [showCarButton, setShowCarButton] = useState<boolean>(() => {
+    const [showCarButton, setShowCarButton] = useState<boolean>(() => {
     try {
       const savedCarBtn = localStorage.getItem("malaz_key_show_car_btn_v1");
-      if (savedCarBtn === "false") return false;
+      // PERMANENT FIX: Only show the car button if the user EXPLICITLY turned it on.
       if (savedCarBtn === "true") return true;
     } catch {
       // ignore
     }
-    return true;
+    return false;
   });
   const [showVersion8Modal, setShowVersion8Modal] = useState<boolean>(false);
   const [version8ActiveTab, setVersion8ActiveTab] = useState<
