@@ -3564,7 +3564,7 @@ const wantsFlowTrace =
 return;
       }
 
-     flowTraceId = startFlowTrace(effectiveQuestion);
+     flowTraceId = startFlowTrace(requestedQuestion);
 
       recordFlowStep(flowTraceId, "1. Request received", "ok", {
           sourceFile: "server.ts",
