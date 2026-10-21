@@ -4397,7 +4397,7 @@ export const VERSION8_SUPERSEDING_ENGINE = {
         finishFlowTrace(flowTraceId, "error");
       }
 
-      console.error("Consensus API Error:", error);
+           console.error("Consensus API Error:", error);
             const message =
         error instanceof Error
           ? error.message
@@ -4406,10 +4406,13 @@ export const VERSION8_SUPERSEDING_ENGINE = {
       if (!res.headersSent) {
         res.status(502).json({
           success: false,
+          step: "BACKEND_FAILURE",
+          error: message, // This forces the trace to show the exact error
           conformityReached: false,
-          stopReason: "CONFORMITY_NOT_REACHED",
+          stopReason: "BACKEND_HUNG_OR_FAILED",
           fulfillmentVerification: {
             status: "unverified",
+            feedback: message,
             feedback:
               "The request failed before conformity could be confirmed: " +
               message,
