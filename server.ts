@@ -236,7 +236,7 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       "Send a normal message first, then type: show trace.",
     ].join("\n");
   }
-
+   
   const finalEvent = [...trace.events]
     .reverse()
     .find((event) => /final response assembly/i.test(event.step));
@@ -330,17 +330,8 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
       lines.push(`Stage: ${event.stage}`);
     }
 
-    if (event.engine) {
-      lines.push(`Engine: ${event.engine}`);
-    }
-
-    if (event.round !== undefined) {
-      lines.push(`Round: ${event.round}`);
-    }
-
-    if (event.attempt !== undefined) {
-      lines.push(`Attempt: ${event.attempt}`);
-    }
+   // Engine and round information belongs in the combined summary,
+// not as separate details under every processing step.
 
     if (event.reasonCode) {
       lines.push(`Reason code: ${event.reasonCode}`);
