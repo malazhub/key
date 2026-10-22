@@ -54,7 +54,57 @@ function formatFlowValue(value: unknown): string {
     : `Structured payload: ${Object.keys(data).length} field(s); content collapsed`;
 }
     
+function normalizeTraceStep(value: string): string {
+  const step = String(value || "").replace(/\s+/g, " ").trim();
+  return step.slice(0, 160) || "Unnamed step";
+}
 
+function normalizeTraceFunction(
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+
+  const name = value.trim();
+
+  return /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(name)
+    ? name
+    : undefined;
+}
+
+function sanitizeTracePayload(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+
+  if (typeof value === "string") {
+    return { type: "text", chars: value.length };
+  }
+
+  if (Array.isArray(value)) {
+    return { type: "array", items: value.length };
+  }
+
+  if (typeof value !== "object") {
+    return value;
+  }
+
+  const data = value as Record<string, unknown>;
+  const safeData: Record<string, unknown> = {};
+
+  for (const [key, item] of Object.entries(data)) {
+    if (
+      SAFE_FIELDS.has(key) &&
+      (typeof item === "string" ||
+        typeof item === "number" ||
+        typeof item === "boolean")
+    ) {
+      safeData[key] =
+        typeof item === "string" ? item.slice(0, 80) : item;
+    }
+  }
+
+  return Object.keys(safeData).length > 0
+    ? safeData
+    : { type: "object", fieldCount: Object.keys(data).length };
+}
 export interface FlowEvent {
   id: number;
   step: string;
