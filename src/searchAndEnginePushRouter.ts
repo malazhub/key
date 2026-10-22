@@ -134,16 +134,83 @@ export function buildEngineQueryPayload(
 export async function pushQueryToEnginesAndConverge(
   request: SearchAndEnginePushRequest
 ): Promise<Record<string, any>> {
-  const effectiveQuestion = String(request.question || "").trim();
+ const startedAt = Date.now();
+const effectiveQuestion = String(request.question || "").trim();
+const flowTraceId = startFlowTrace(effectiveQuestion);
+
+recordFlowStep(
+  flowTraceId,
+  "Request received",
+  "ok",
+  {
+    sourceFile: "src/searchAndEnginePushRouter.ts",
+    sourceFunction: "pushQueryToEnginesAndConverge",
+    incoming: {
+      queryChars: effectiveQuestion.length,
+    },
+  }
+);
+
+try {
+  recordFlowStep(
+    flowTraceId,
+    "Query validation",
+    "running",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+    }
+  );
+
   assertDefendedQuery(effectiveQuestion);
 
+  recordFlowStep(
+    flowTraceId,
+    "Query validation",
+    "ok",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+    }
+  );
+
   const modelsList = Array.isArray(request.activeModels)
-    ? request.activeModels.map((model) => String(model || "").trim()).filter(Boolean)
+    ? request.activeModels
+        .map((model) => String(model || "").trim())
+        .filter(Boolean)
     : [];
 
   if (modelsList.length === 0) {
-    throw new Error("No engine has been selected. Choose at least one engine slot.");
+    recordFlowStep(
+      flowTraceId,
+      "Engine selection validation",
+      "error",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "pushQueryToEnginesAndConverge",
+        detail: "No engine has been selected",
+      }
+    );
+
+    throw new Error(
+      "No engine has been selected. Choose at least one engine slot."
+    );
   }
+
+  recordFlowStep(
+    flowTraceId,
+    "Engine selection validation",
+    "ok",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      outgoing: {
+        engineCount: modelsList.length,
+      },
+    }
+  );
+
+  // Keep the remaining existing code here.
 
   const safeTarget = Math.max(
     0,
