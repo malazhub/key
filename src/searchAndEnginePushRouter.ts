@@ -250,7 +250,7 @@ try {
       null
     );
 
-    re    recordFlowStep(
+    recordFlowStep(
       flowTraceId,
       "Final response assembly",
       "ok",
