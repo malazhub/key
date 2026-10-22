@@ -5,6 +5,11 @@
  * Key — Live Web Search, 5-Channel Memory Search & Multi-Engine Query Push Router
  * File: src/searchAndEnginePushRouter.ts
  */
+import {
+  startFlowTrace,
+  recordFlowStep,
+  finishFlowTrace,
+} from "./flowTracer";
 import { assertDefendedQuery } from "./security/queryGuard";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
@@ -150,28 +155,69 @@ export async function pushQueryToEnginesAndConverge(
     )
   );
 
-  const loopResult = await runSmartMemoryConsensusLoop(
-    effectiveQuestion,
-    request.history || [],
-    modelsList,
-    safeTarget,
-    {
-      buildAppMode: Boolean(request.buildAppMode),
-      adminUpgradeMode: Boolean(request.adminUpgradeMode),
-      nextVersionTag: request.nextVersionTag || "key",
-      attachments: request.attachments || [],
-      strictQueryPriority: request.strictQueryPriority,
-      liveStructureContext: request.liveStructureContext,
-    }
-  );
+   const flowTraceId = startFlowTrace(effectiveQuestion);
+  const startedAt = Date.now();
 
-  return executeConsensusApiPayload(
-    loopResult,
-    effectiveQuestion,
-    modelsList,
-    safeTarget,
-    null
-  );
+  try {
+    const loopResult = await runSmartMemoryConsensusLoop(
+      effectiveQuestion,
+      request.history || [],
+      modelsList,
+      safeTarget,
+      {
+        buildAppMode: Boolean(request.buildAppMode),
+        adminUpgradeMode: Boolean(request.adminUpgradeMode),
+        nextVersionTag: request.nextVersionTag || "key",
+        attachments: request.attachments || [],
+        strictQueryPriority: request.strictQueryPriority,
+        liveStructureContext: request.liveStructureContext,
+        flowTraceId,
+      }
+    );
+
+    const response = executeConsensusApiPayload(
+      loopResult,
+      effectiveQuestion,
+      modelsList,
+      safeTarget,
+      null
+    );
+
+    recordFlowStep(
+      flowTraceId,
+      "Final response assembly",
+      "ok",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "pushQueryToEnginesAndConverge",
+        durationMs: Date.now() - startedAt,
+        outgoing: {
+          status: "ok",
+          outputChars: String(loopResult.finalAnswer || "").length,
+        },
+      }
+    );
+
+    finishFlowTrace(flowTraceId, "ok");
+    return response;
+  } catch (error) {
+    recordFlowStep(
+      flowTraceId,
+      "Consensus pipeline failed",
+      "error",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "pushQueryToEnginesAndConverge",
+        durationMs: Date.now() - startedAt,
+        outgoing: {
+          status: "error",
+        },
+      }
+    );
+
+    finishFlowTrace(flowTraceId, "error");
+    throw error;
+  }
 }
 
 export {
