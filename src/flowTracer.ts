@@ -337,198 +337,59 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     return [
       "# Step Tracer",
       "",
-      "| Step | Status | Source | Metrics |",
-      "|---|---|---|---|",
-      "| Request routing | unavailable | unavailable | — |",
-      "| Combined processing | unavailable | unavailable | — |",
-      "| Final response assembly | unavailable | unavailable | — |",
+      "No previous query trace was found.",
+      "",
+      "Send a normal message first, then type: show trace.",
     ].join("\n");
   }
 
-  const events = trace.events;
+  const safe = (value: string): string =>
+    value.replace(/[|\\\n\r]/g, " ");
 
-  const findEvent = (pattern: RegExp) =>
-    [...events].reverse().find((event) => pattern.test(event.step));
+  const source = (event: FlowEvent): string => {
+    if (!event.sourceFile) return "Not recorded";
+    return event.sourceFunction
+      ? `${event.sourceFile} — ${event.sourceFunction}()`
+      : event.sourceFile;
+  };
 
-  const requestEvent =
-    events.find((event) => /query accepted by engine router/i.test(event.step)) ??
-    events.find((event) => /request/i.test(event.step));
-
-  const processingEvent =
-    findEvent(/combined engine batch|agreement and verification|consensus loop entered/i);
-
-  const finalEvent = findEvent(/final response assembly/i);
-
-  const source = (event: FlowEvent | undefined) => {
-    if (!event?.sourceFile || !event.sourceFunction) {
-      return "unavailable";
+  const metrics = (event: FlowEvent): string => {
+    const values: string[] = [];
+    if (event.engine) values.push(`engine: ${event.engine}`);
+    if (event.stage) values.push(`stage: ${event.stage}`);
+    if (event.round !== undefined) values.push(`round: ${event.round}`);
+    if (event.attempt !== undefined) values.push(`attempt: ${event.attempt}`);
+    if (event.durationMs !== undefined) {
+      values.push(`duration: ${event.durationMs} ms`);
     }
-
-    return `${event.sourceFile} — ${event.sourceFunction}()`;
+    if (event.inputChars !== undefined) {
+      values.push(`input chars: ${event.inputChars}`);
+    }
+    if (event.outputChars !== undefined) {
+      values.push(`output chars: ${event.outputChars}`);
+    }
+    if (event.reasonCode) values.push(`reason: ${event.reasonCode}`);
+    if (event.refusalDetected !== undefined) {
+      values.push(`refusal: ${event.refusalDetected}`);
+    }
+    return values.length ? values.map(safe).join("; ") : "—";
   };
 
-  const status = (event: FlowEvent | undefined) =>
-    event?.status ?? "unavailable";
-
-  const maxRound = events.reduce(
-    (highest, event) => Math.max(highest, event.round ?? 0),
-    0,
+  const rows = trace.events.map(
+    (event) =>
+      `| ${event.id}. ${safe(event.step)} | ${event.status} | ${safe(source(event))} | ${metrics(event)} |`,
   );
-
-  const finalOutgoing =
-    finalEvent?.outgoing && typeof finalEvent.outgoing === "object"
-      ? finalEvent.outgoing as Record<string, unknown>
-      : {};
-
-  const metricFields = [
-    "selectedEngineCount",
-    "successfulEngineResponses",
-    "failedEngineResponses",
-    "achievedAgreement",
-    "targetAgreement",
-    "iterationsRequired",
-    "activeModelCount",
-  ];
-
-  const metrics = (event: FlowEvent | undefined) => {
-    if (!event) return "—";
-
-    const payloads = [
-      event.incoming,
-      event.outgoing,
-    ].filter(
-      (value): value is Record<string, unknown> =>
-        Boolean(value) && typeof value === "object" && !Array.isArray(value),
-    );
-
-    const entries = metricFields.flatMap((key) => {
-      const value = [...payloads]
-        .reverse()
-        .map((payload) => payload[key])
-        .find(
-          (item) =>
-            typeof item === "number" && Number.isFinite(item),
-        );
-
-      return value === undefined ? [] : [`${key}: ${value}`];
-    });
-
-    return entries.length ? entries.join(", ") : "—";
-  };
-
-  const processingMetrics = [
-    ...(maxRound > 0 ? [`rounds: ${maxRound}`] : []),
-    metrics(processingEvent) === "—" ? "" : metrics(processingEvent),
-  ].filter(Boolean).join(", ") || "—";
-
-  const finalMetrics = metricFields.flatMap((key) => {
-    const value = finalOutgoing[key];
-    return typeof value === "number" && Number.isFinite(value)
-      ? [`${key}: ${value}`]
-      : [];
-  }).join(", ") || "—";
-
-  const rows = [
-    `| Request routing | ${status(requestEvent)} | ${source(requestEvent)} | ${metrics(requestEvent)} |`,
-    `| Combined processing | ${status(processingEvent)} | ${source(processingEvent)} | ${processingMetrics} |`,
-    `| Final response assembly | ${status(finalEvent)} | ${source(finalEvent)} | ${finalMetrics} |`,
-  ];
 
   return [
     "# Step Tracer",
     "",
+    `- **Trace ID:** ${trace.id}`,
+    `- **Started:** ${trace.startedAt}`,
+    `- **Finished:** ${trace.finishedAt ?? "Still running"}`,
+    `- **Overall status:** ${trace.status}`,
+    "",
     "| Step | Status | Source | Metrics |",
     "|---|---|---|---|",
-    ...rows,
+    ...(rows.length ? rows : ["| No steps recorded | — | — | — |"]),
   ].join("\n");
-}
-  for (const event of trace.events) {
-    lines.push(
-      "",
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      `### Step ${event.id}: ${event.step}`,
-      "",
-      `📄 Source file: ${event.sourceFile ?? "Not recorded"}`,
-      `⚙️ Function / logic: ${event.sourceFunction ?? "Not recorded"}`,
-      `🔵 Incoming: ${
-        event.incoming !== undefined
-          ? formatFlowValue(event.incoming)
-          : "Not recorded"
-      }`,
-      `🟢 Outgoing: ${
-        event.outgoing !== undefined
-          ? formatFlowValue(event.outgoing)
-          : "Not recorded"
-      }`,
-      `Status: ${event.status}`,
-    );
-
-    if (event.stage) {
-      lines.push(`Stage: ${event.stage}`);
-    }
-
-    if (event.engine) {
-      lines.push(`Engine: ${event.engine}`);
-    }
-
-    if (event.round !== undefined) {
-      lines.push(`Round: ${event.round}`);
-    }
-
-    if (event.attempt !== undefined) {
-      lines.push(`Attempt: ${event.attempt}`);
-    }
-
-    if (event.reasonCode) {
-      lines.push(`Reason code: ${event.reasonCode}`);
-    }
-
-    if (event.refusalDetected !== undefined) {
-      lines.push(`Refusal detected: ${event.refusalDetected}`);
-    }
-
-    if (event.inputChars !== undefined) {
-      lines.push(`Input characters: ${event.inputChars}`);
-    }
-
-    if (event.outputChars !== undefined) {
-      lines.push(`Output characters: ${event.outputChars}`);
-    }
-
-    if (event.durationMs !== undefined) {
-      lines.push(`Duration: ${event.durationMs} ms`);
-    }
-
-    if (event.decision) {
-      lines.push(`Decision: ${event.decision}`);
-    }
-
-    if (event.detail) {
-      lines.push(`Detail: ${event.detail}`);
-    }
-  }
-          lines.push(
-    "",
-    "## Final agreed response",
-    "",
-    answer ?? "No final answer was recorded.",
-  );
-
-  if (achieved !== undefined) {
-    lines.push(
-      "",
-      `Agreement: ${achieved}%` +
-        (target !== undefined ? ` (target ${target}%)` : ""),
-    );
-  }
-
-  if (rounds !== undefined) {
-    lines.push(`Rounds completed: ${rounds}`);
-  }
-
-  if (summary) {
-    lines.push("", `Consensus: ${summary}`);
-  }
-
-  return lines.join("\n");
 }
