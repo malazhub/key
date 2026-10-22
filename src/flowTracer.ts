@@ -282,19 +282,116 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
   const rounds = getNumber("iterationsRequired");
   const summary = getString("consensusSummary");
 
-      const lines = [
-    "# Query-to-response trace",
-    "",
-    "## Original user query",
-    "",
-    trace.question,
-    "",
-    "## Processing events",
-    "",
-    "Events are listed in chronological order.",
-    "Payload contents are summarized to keep the trace readable.",
+      export function formatFlowTrace(trace: FlowTrace | undefined): string {
+  if (!trace) {
+    return [
+      "# Step Tracer",
+      "",
+      "| Step | Status | Source | Metrics |",
+      "|---|---|---|---|",
+      "| Request routing | unavailable | unavailable | — |",
+      "| Combined processing | unavailable | unavailable | — |",
+      "| Final response assembly | unavailable | unavailable | — |",
+    ].join("\n");
+  }
+
+  const events = trace.events;
+
+  const findEvent = (pattern: RegExp) =>
+    [...events].reverse().find((event) => pattern.test(event.step));
+
+  const requestEvent =
+    events.find((event) => /query accepted by engine router/i.test(event.step)) ??
+    events.find((event) => /request/i.test(event.step));
+
+  const processingEvent =
+    findEvent(/combined engine batch|agreement and verification|consensus loop entered/i);
+
+  const finalEvent = findEvent(/final response assembly/i);
+
+  const source = (event: FlowEvent | undefined) => {
+    if (!event?.sourceFile || !event.sourceFunction) {
+      return "unavailable";
+    }
+
+    return `${event.sourceFile} — ${event.sourceFunction}()`;
+  };
+
+  const status = (event: FlowEvent | undefined) =>
+    event?.status ?? "unavailable";
+
+  const maxRound = events.reduce(
+    (highest, event) => Math.max(highest, event.round ?? 0),
+    0,
+  );
+
+  const finalOutgoing =
+    finalEvent?.outgoing && typeof finalEvent.outgoing === "object"
+      ? finalEvent.outgoing as Record<string, unknown>
+      : {};
+
+  const metricFields = [
+    "selectedEngineCount",
+    "successfulEngineResponses",
+    "failedEngineResponses",
+    "achievedAgreement",
+    "targetAgreement",
+    "iterationsRequired",
+    "activeModelCount",
   ];
 
+  const metrics = (event: FlowEvent | undefined) => {
+    if (!event) return "—";
+
+    const payloads = [
+      event.incoming,
+      event.outgoing,
+    ].filter(
+      (value): value is Record<string, unknown> =>
+        Boolean(value) && typeof value === "object" && !Array.isArray(value),
+    );
+
+    const entries = metricFields.flatMap((key) => {
+      const value = [...payloads]
+        .reverse()
+        .map((payload) => payload[key])
+        .find(
+          (item) =>
+            typeof item === "number" && Number.isFinite(item),
+        );
+
+      return value === undefined ? [] : [`${key}: ${value}`];
+    });
+
+    return entries.length ? entries.join(", ") : "—";
+  };
+
+  const processingMetrics = [
+    ...(maxRound > 0 ? [`rounds: ${maxRound}`] : []),
+    metrics(processingEvent) === "—" ? "" : metrics(processingEvent),
+  ].filter(Boolean).join(", ") || "—";
+
+  const finalMetrics = metricFields.flatMap((key) => {
+    const value = finalOutgoing[key];
+    return typeof value === "number" && Number.isFinite(value)
+      ? [`${key}: ${value}`]
+      : [];
+  }).join(", ") || "—";
+
+  const rows = [
+    `| Request routing | ${status(requestEvent)} | ${source(requestEvent)} | ${metrics(requestEvent)} |`,
+    `| Combined processing | ${status(processingEvent)} | ${source(processingEvent)} | ${processingMetrics} |`,
+    `| Final response assembly | ${status(finalEvent)} | ${source(finalEvent)} | ${finalMetrics} |`,
+  ];
+
+  return [
+    "# Step Tracer",
+    "",
+    "| Step | Status | Source | Metrics |",
+    "|---|---|---|---|",
+    ...rows,
+  ].join("\n");
+}
   for (const event of trace.events) {
     lines.push(
       "",
