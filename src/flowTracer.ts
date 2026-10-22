@@ -109,46 +109,34 @@ export function recordFlowStep(
   const trace = traces.get(traceId);
   if (!trace) return;
 
-    trace.events.push({
+  const incoming = sanitizeTracePayload(data.incoming);
+  const outgoing = sanitizeTracePayload(data.outgoing);
+
+  const sourceFile =
+    data.sourceFile &&
+    /^src\/[A-Za-z0-9_./-]+\.tsx?$/.test(data.sourceFile)
+      ? data.sourceFile
+      : undefined;
+
+  const sourceFunction = normalizeTraceFunction(data.sourceFunction);
+
+  trace.events.push({
     id: trace.events.length + 1,
-    step,
+    step: normalizeTraceStep(step),
     status,
     at: new Date().toISOString(),
-    ...(data.sourceFile === undefined
-      ? {}
-      : { sourceFile: data.sourceFile }),
-    ...(data.sourceFunction === undefined
-      ? {}
-      : { sourceFunction: data.sourceFunction }),
-    ...(data.durationMs === undefined
-      ? {}
-      : { durationMs: data.durationMs }),
-    ...(data.detail === undefined ? {} : { detail: data.detail }),
-    ...(data.incoming === undefined
-      ? {}
-      : { incoming: structuredClone(data.incoming) }),
-    ...(data.outgoing === undefined
-      ? {}
-      : { outgoing: structuredClone(data.outgoing) }),
-    ...(data.decision === undefined
-      ? {}
-      : { decision: data.decision }),
-    ...(data.stage === undefined ? {} : { stage: data.stage }),
-    ...(data.engine === undefined ? {} : { engine: data.engine }),
-    ...(data.round === undefined ? {} : { round: data.round }),
-    ...(data.attempt === undefined ? {} : { attempt: data.attempt }),
-    ...(data.reasonCode === undefined
-      ? {}
-      : { reasonCode: data.reasonCode }),
-    ...(data.refusalDetected === undefined
-      ? {}
-      : { refusalDetected: data.refusalDetected }),
-    ...(data.inputChars === undefined
-      ? {}
-      : { inputChars: data.inputChars }),
-    ...(data.outputChars === undefined
-      ? {}
-      : { outputChars: data.outputChars }),
+    ...(sourceFile ? { sourceFile } : {}),
+    ...(sourceFunction ? { sourceFunction } : {}),
+    ...(typeof data.durationMs === "number" &&
+    Number.isFinite(data.durationMs)
+      ? { durationMs: data.durationMs }
+      : {}),
+    ...(incoming ? { incoming } : {}),
+    ...(outgoing ? { outgoing } : {}),
+    ...(typeof data.round === "number" &&
+    Number.isFinite(data.round)
+      ? { round: data.round }
+      : {}),
   });
 }
 
@@ -166,12 +154,12 @@ const MAX_TRACES = 30;
 const traces = new Map<string, FlowTrace>();
 let latestCompletedTraceId: string | undefined;
 
-export function startFlowTrace(question = ""): string {
+export function startFlowTrace(_question = ""): string {
   const id = randomUUID();
 
   traces.set(id, {
     id,
-    question: question.slice(0, 2000),
+    question: "[redacted]",
     startedAt: new Date().toISOString(),
     status: "running",
     events: [],
@@ -190,7 +178,7 @@ export function recordFlowEvent(
   traceId: string,
   step: string,
   status: FlowStatus,
-  detail?: string,
+  _detail?: string,
   durationMs?: number,
 ): void {
   const trace = traces.get(traceId);
@@ -198,11 +186,13 @@ export function recordFlowEvent(
 
   trace.events.push({
     id: trace.events.length + 1,
-    step,
+    step: normalizeTraceStep(step),
     status,
     at: new Date().toISOString(),
-    ...(durationMs === undefined ? {} : { durationMs }),
-    ...(detail ? { detail: detail.slice(0, 240) } : {}),
+    ...(typeof durationMs === "number" &&
+    Number.isFinite(durationMs)
+      ? { durationMs }
+      : {}),
   });
 }
 
