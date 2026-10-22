@@ -15575,7 +15575,7 @@ assertDefendedQuery(
         ];
 
       try {
-            try {
+           
         return await withProviderRecovery(
           () =>
             withStrictTimeout(
