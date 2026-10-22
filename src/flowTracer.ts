@@ -266,73 +266,8 @@ export function getLatestFlowTrace(): FlowTrace | undefined {
   return trace ? structuredClone(trace) : undefined;
 }
 
+
 export function formatFlowTrace(trace: FlowTrace | undefined): string {
-  if (!trace) {
-    return [
-      "# Query-to-response trace",
-      "",
-      "No previous query trace was found.",
-      "",
-      "Send a normal message first, then type: show trace.",
-    ].join("\n");
-  }
-
-  const finalEvent = [...trace.events]
-    .reverse()
-    .find((event) => /final response assembly/i.test(event.step));
-
-  const rawOutgoing =
-    finalEvent?.outgoing &&
-    typeof finalEvent.outgoing === "object"
-      ? (finalEvent.outgoing as Record<string, unknown>)
-      : {};
-
-  const nested =
-    rawOutgoing.consensusResult &&
-    typeof rawOutgoing.consensusResult === "object"
-      ? (rawOutgoing.consensusResult as Record<string, unknown>)
-      : undefined;
-
-  const payload: Record<string, unknown> = {
-    ...(nested ?? {}),
-    ...rawOutgoing,
-    answer:
-      typeof nested?.finalAnswer === "string"
-        ? nested.finalAnswer
-        : typeof nested?.answer === "string"
-          ? nested.answer
-          : typeof rawOutgoing.answer === "string"
-            ? rawOutgoing.answer
-            : undefined,
-  };
-
-  const getString = (...keys: string[]): string | undefined => {
-    for (const key of keys) {
-      const value = payload[key];
-      if (typeof value === "string" && value.trim()) {
-        return value;
-      }
-    }
-    return undefined;
-  };
-
-  const getNumber = (...keys: string[]): number | undefined => {
-    for (const key of keys) {
-      const value = payload[key];
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value;
-      }
-    }
-    return undefined;
-  };
-
-  const answer = getString("answer", "finalAnswer");
-  const achieved = getNumber("achievedAgreement", "actualAgreement");
-  const target = getNumber("targetAgreement", "safeTarget");
-  const rounds = getNumber("iterationsRequired");
-  const summary = getString("consensusSummary");
-
-      export function formatFlowTrace(trace: FlowTrace | undefined): string {
   if (!trace) {
     return [
       "# Step Tracer",
@@ -355,23 +290,30 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
 
   const metrics = (event: FlowEvent): string => {
     const values: string[] = [];
+
     if (event.engine) values.push(`engine: ${event.engine}`);
     if (event.stage) values.push(`stage: ${event.stage}`);
     if (event.round !== undefined) values.push(`round: ${event.round}`);
     if (event.attempt !== undefined) values.push(`attempt: ${event.attempt}`);
+
     if (event.durationMs !== undefined) {
       values.push(`duration: ${event.durationMs} ms`);
     }
+
     if (event.inputChars !== undefined) {
       values.push(`input chars: ${event.inputChars}`);
     }
+
     if (event.outputChars !== undefined) {
       values.push(`output chars: ${event.outputChars}`);
     }
+
     if (event.reasonCode) values.push(`reason: ${event.reasonCode}`);
+
     if (event.refusalDetected !== undefined) {
       values.push(`refusal: ${event.refusalDetected}`);
     }
+
     return values.length ? values.map(safe).join("; ") : "—";
   };
 
