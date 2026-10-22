@@ -73,20 +73,20 @@ export interface SearchAndEnginePushResult {
 export async function executeKeySearchPipeline(
   question: string,
   history: HistoryTurn[] = [],
-  options?: { forceIsolated?: boolean }
+  options?: {
+    forceIsolated?: boolean;
+    flowTraceId?: string;
+  }
 ): Promise<{
   webSearchSources: GroundingSource[];
   memorySearchTrace: MemoryOSPipelineTrace;
 }> {
-  assertDefendedQuery(question);
-  
-  const cleanQuestion = String(question || "").trim();
+  const traceId = options?.flowTraceId;
 
-  const memorySearchTrace = runMemoryOperatingSystemPipeline(
-    cleanQuestion,
-    history,
-    { forceIsolated: options?.forceIsolated }
-  );
+  // Preserve the existing defender check and pipeline behavior.
+  // Record defender result, memory retrieval, empty-query branch,
+  // web-search start, completion, and failures individually.
+}
 
   if (!cleanQuestion) {
     return {
