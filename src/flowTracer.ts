@@ -8,7 +8,7 @@ const SAFE_FIELDS = new Set([
   "provider",
   "model",
   "modelId",
-  "status",
+  "status",f
   "httpStatus",
   "round",
   "attempt",
