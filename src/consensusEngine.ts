@@ -529,30 +529,26 @@ async function sleepMs(
   );
 }
 
+interface ProviderTraceContext {
+  flowTraceId?: string;
+  engine?: string;
+  model?: string;
+  sourceFile: string;
+}
+
 async function withProviderRecovery<T>(
-  operation: (
-    attempt: number
-  ) => Promise<T>,
+  operation: (attempt: number) => Promise<T>,
   options?: {
     maxAttempts?: number;
+    trace?: ProviderTraceContext;
   }
 ): Promise<T> {
-  const maxAttempts = Math.max(
-    1,
-    Math.min(
-      options?.maxAttempts ?? 3,
-      4
-    )
-  );
-
-  let lastError: unknown = null;
-
-  for (
-    let attempt = 0;
-    attempt < maxAttempts;
-    attempt += 1
-  ) {
-    try {
+  // Retain the existing maxAttempts calculation and retry rules.
+  // At the beginning of each real attempt, record "started".
+  // On success, record "completed".
+  // On failure, record the classified error and whether retry follows.
+  // Keep the original return/throw behavior.
+}
       return await operation(attempt);
     } catch (error) {
       lastError = error;
@@ -15521,23 +15517,27 @@ assertDefendedQuery(
         ];
 
       try {
+            try {
         return await withProviderRecovery(
           () =>
             withStrictTimeout(
-              attemptModel(
-                modelId,
-                credential
-              ),
-              provider === "google"
-                ? 30000
-                : 45000,
+              attemptModel(modelId, credential),
+              provider === "google" ? 30000 : 45000,
               `${engine}(${modelId})`
             ),
           {
             maxAttempts: 3,
+            trace: {
+              flowTraceId,
+              engine,
+              model: modelId,
+              sourceFile: "src/consensusEngine.ts",
+            },
           }
         );
       } catch (error) {
+        // Preserve existing classification and recovery logic.
+        // Record the actual next action: retry, rotate, fallback, or stop.
   
   lastError = error;
 
