@@ -237,11 +237,7 @@ export function startFlowTrace(safeQuestion = ""): string {
     events: [],
   });
 
-  // Preserve the existing MAX_TRACES retention logic.
-  return id;
-}
-
-  while (traces.size > MAX_TRACES) {
+    while (traces.size > MAX_TRACES) {
     const oldestId = traces.keys().next().value;
     if (!oldestId) break;
     traces.delete(oldestId);
