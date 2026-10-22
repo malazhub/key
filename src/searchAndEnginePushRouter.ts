@@ -233,8 +233,6 @@ try {
     }
   );
 
-  // Keep the remaining existing code here.
-
     const safeTarget = Math.max(
     0,
     Math.min(
@@ -246,69 +244,68 @@ try {
     )
   );
 
-  try {
-    const loopResult = await runSmartMemoryConsensusLoop(
-      effectiveQuestion,
-      request.history || [],
-      modelsList,
-      safeTarget,
-      {
-        buildAppMode: Boolean(request.buildAppMode),
-        adminUpgradeMode: Boolean(request.adminUpgradeMode),
-        nextVersionTag: request.nextVersionTag || "key",
-        attachments: request.attachments || [],
-        strictQueryPriority: request.strictQueryPriority,
-        liveStructureContext: request.liveStructureContext,
-        flowTraceId,
-      }
-    );
-
-    const response = executeConsensusApiPayload(
-      loopResult,
-      effectiveQuestion,
-      modelsList,
-      safeTarget,
-      null
-    );
-
-    recordFlowStep(
+  const loopResult = await runSmartMemoryConsensusLoop(
+    effectiveQuestion,
+    request.history || [],
+    modelsList,
+    safeTarget,
+    {
+      buildAppMode: Boolean(request.buildAppMode),
+      adminUpgradeMode: Boolean(request.adminUpgradeMode),
+      nextVersionTag: request.nextVersionTag || "key",
+      attachments: request.attachments || [],
+      strictQueryPriority: request.strictQueryPriority,
+      liveStructureContext: request.liveStructureContext,
       flowTraceId,
-      "Final response assembly",
-      "ok",
-      {
-        sourceFile: "src/searchAndEnginePushRouter.ts",
-        sourceFunction: "pushQueryToEnginesAndConverge",
-        durationMs: Date.now() - startedAt,
-        outgoing: {
-          status: "ok",
-          outputChars: String(loopResult.finalAnswer || "").length,
-          achievedAgreement: loopResult.achievedAgreement,
-          iterationsRequired: loopResult.iterationsRequired,
-          activeEngineCount: loopResult.activeModels.length,
-        },
-      }
-    );
+    }
+  );
 
-    finishFlowTrace(flowTraceId, "ok");
-    return response;
-  } catch (error) {
-    recordFlowStep(
-      flowTraceId,
-      "Consensus pipeline failed",
-      "error",
-      {
-        sourceFile: "src/searchAndEnginePushRouter.ts",
-        sourceFunction: "pushQueryToEnginesAndConverge",
-        durationMs: Date.now() - startedAt,
-        outgoing: {
-          status: "error",
-        },
-      }
-    );
+  const response = executeConsensusApiPayload(
+    loopResult,
+    effectiveQuestion,
+    modelsList,
+    safeTarget,
+    null
+  );
 
-    finishFlowTrace(flowTraceId, "error");
-    throw error;
-  }
+  recordFlowStep(
+    flowTraceId,
+    "Final response assembly",
+    "ok",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      durationMs: Date.now() - startedAt,
+      outgoing: {
+        status: "ok",
+        outputChars: String(loopResult.finalAnswer || "").length,
+        achievedAgreement: loopResult.achievedAgreement,
+        iterationsRequired: loopResult.iterationsRequired,
+        activeEngineCount: loopResult.activeModels.length,
+      },
+    }
+  );
+
+  finishFlowTrace(flowTraceId, "ok");
+  return response;
+} catch (error) {
+  recordFlowStep(
+    flowTraceId,
+    "Consensus pipeline failed",
+    "error",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      durationMs: Date.now() - startedAt,
+      outgoing: {
+        status: "error",
+      },
+    }
+  );
+
+  finishFlowTrace(flowTraceId, "error");
+  throw error;
+}
 }
 
 export {
