@@ -81,12 +81,18 @@ export async function executeKeySearchPipeline(
   webSearchSources: GroundingSource[];
   memorySearchTrace: MemoryOSPipelineTrace;
 }> {
-  const traceId = options?.flowTraceId;
+    const traceId = options?.flowTraceId;
+  const cleanQuestion = String(question || "").trim();
 
-  // Preserve the existing defender check and pipeline behavior.
-  // Record defender result, memory retrieval, empty-query branch,
-  // web-search start, completion, and failures individually.
-}
+  assertDefendedQuery(cleanQuestion);
+
+  const memorySearchTrace = await runMemoryOperatingSystemPipeline(
+    cleanQuestion,
+    history,
+    {
+      forceIsolated: options?.forceIsolated,
+    }
+  );
 
   if (!cleanQuestion) {
     return {
@@ -95,7 +101,24 @@ export async function executeKeySearchPipeline(
     };
   }
 
-  const webSearchSources = await fetchGoogleSearchGrounding(cleanQuestion);
+  const webSearchSources =
+    await fetchGoogleSearchGrounding(cleanQuestion);
+
+  if (traceId) {
+    recordFlowStep(
+      traceId,
+      "Search pipeline completed",
+      "ok",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "executeKeySearchPipeline",
+        outgoing: {
+          webSourceCount: webSearchSources.length,
+        },
+      }
+    );
+  }
+
   return {
     webSearchSources,
     memorySearchTrace,
@@ -212,18 +235,16 @@ try {
 
   // Keep the remaining existing code here.
 
-  const safeTarget = Math.max(
+    const safeTarget = Math.max(
     0,
     Math.min(
       100,
-      typeof request.targetAgreement === "number" && Number.isFinite(request.targetAgreement)
+      typeof request.targetAgreement === "number" &&
+        Number.isFinite(request.targetAgreement)
         ? request.targetAgreement
         : 95
     )
   );
-
-   const flowTraceId = startFlowTrace(effectiveQuestion);
-  const startedAt = Date.now();
 
   try {
     const loopResult = await runSmartMemoryConsensusLoop(
