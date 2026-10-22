@@ -153,8 +153,8 @@ function buildStandaloneGitHubPagesHtml(): string {
                 <span>👁 Preview Application</span>
               </button>
               <button id="stepTracerTopBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-violet-500/15 border-violet-500/50 text-violet-300 hover:bg-violet-500/25 flex items-center gap-1.5 cursor-pointer">
-                <span>🧭 Step Tracer</span>
-              </button>
+  <span>🧭 Step Tracer</span>
+</button>
               <button id="upgradeKeyTopBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-slate-900 border-slate-800 text-amber-300 hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer"><span id="upgradeKeyTopLabel">🔒 Upgrade key → key1</span>
               </button>
             </div>
