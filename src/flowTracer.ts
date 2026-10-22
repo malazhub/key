@@ -170,7 +170,7 @@ export function recordFlowStep(
 
   const sourceFunction = normalizeTraceFunction(data.sourceFunction);
 
-  trace.events.push({
+    trace.events.push({
     id: trace.events.length + 1,
     step: normalizeTraceStep(step),
     status,
@@ -181,11 +181,33 @@ export function recordFlowStep(
     Number.isFinite(data.durationMs)
       ? { durationMs: data.durationMs }
       : {}),
-    ...(incoming ? { incoming } : {}),
-    ...(outgoing ? { outgoing } : {}),
-    ...(typeof data.round === "number" &&
-    Number.isFinite(data.round)
-      ? { round: data.round }
+    ...(incoming !== undefined ? { incoming } : {}),
+    ...(outgoing !== undefined ? { outgoing } : {}),
+    ...(data.decision !== undefined
+      ? { decision: sanitizeLabel(data.decision) }
+      : {}),
+    ...(data.detail !== undefined
+      ? { detail: sanitizeLabel(data.detail) }
+      : {}),
+    ...(data.stage !== undefined
+      ? { stage: sanitizeLabel(data.stage) }
+      : {}),
+    ...(data.engine !== undefined
+      ? { engine: sanitizeLabel(data.engine) }
+      : {}),
+    ...(Number.isFinite(data.round) ? { round: data.round } : {}),
+    ...(Number.isFinite(data.attempt) ? { attempt: data.attempt } : {}),
+    ...(data.reasonCode !== undefined
+      ? { reasonCode: sanitizeLabel(data.reasonCode) }
+      : {}),
+    ...(data.refusalDetected !== undefined
+      ? { refusalDetected: data.refusalDetected }
+      : {}),
+    ...(Number.isFinite(data.inputChars)
+      ? { inputChars: data.inputChars }
+      : {}),
+    ...(Number.isFinite(data.outputChars)
+      ? { outputChars: data.outputChars }
       : {}),
   });
 }
@@ -204,16 +226,20 @@ const MAX_TRACES = 30;
 const traces = new Map<string, FlowTrace>();
 let latestCompletedTraceId: string | undefined;
 
-export function startFlowTrace(_question = ""): string {
+export function startFlowTrace(safeQuestion = ""): string {
   const id = randomUUID();
 
   traces.set(id, {
     id,
-    question: "[redacted]",
+    question: safeQuestion.slice(0, 2000),
     startedAt: new Date().toISOString(),
     status: "running",
     events: [],
   });
+
+  // Preserve the existing MAX_TRACES retention logic.
+  return id;
+}
 
   while (traces.size > MAX_TRACES) {
     const oldestId = traces.keys().next().value;
