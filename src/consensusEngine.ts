@@ -543,37 +543,91 @@ async function withProviderRecovery<T>(
     trace?: ProviderTraceContext;
   }
 ): Promise<T> {
-  // Retain the existing maxAttempts calculation and retry rules.
-  // At the beginning of each real attempt, record "started".
-  // On success, record "completed".
-  // On failure, record the classified error and whether retry follows.
-  // Keep the original return/throw behavior.
-}
-      return await operation(attempt);
+  const maxAttempts = Math.max(
+    1,
+    Math.min(options?.maxAttempts ?? 3, 5)
+  );
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      if (options?.trace?.flowTraceId) {
+        recordFlowStep(
+          options.trace.flowTraceId,
+          "Provider attempt started",
+          "started",
+          {
+            sourceFile: options.trace.sourceFile,
+            sourceFunction: "withProviderRecovery",
+            outgoing: {
+              engine: options.trace.engine,
+              model: options.trace.model,
+              attempt: attempt + 1,
+              maxAttempts,
+            },
+          }
+        );
+      }
+
+      const result = await operation(attempt);
+
+      if (options?.trace?.flowTraceId) {
+        recordFlowStep(
+          options.trace.flowTraceId,
+          "Provider attempt completed",
+          "ok",
+          {
+            sourceFile: options.trace.sourceFile,
+            sourceFunction: "withProviderRecovery",
+            outgoing: {
+              engine: options.trace.engine,
+              model: options.trace.model,
+              attempt: attempt + 1,
+            },
+          }
+        );
+      }
+
+      return result;
     } catch (error) {
       lastError = error;
 
-      const decision =
-        classifyProviderFailure(error);
+      const decision = classifyProviderFailure(error);
+      const willRetry =
+        decision.retryable && attempt < maxAttempts - 1;
 
-      if (
-        !decision.retryable ||
-        attempt >= maxAttempts - 1
-      ) {
+      if (options?.trace?.flowTraceId) {
+        recordFlowStep(
+          options.trace.flowTraceId,
+          "Provider attempt failed",
+          "error",
+          {
+            sourceFile: options.trace.sourceFile,
+            sourceFunction: "withProviderRecovery",
+            outgoing: {
+              engine: options.trace.engine,
+              model: options.trace.model,
+              attempt: attempt + 1,
+              failureClass: decision.failureClass,
+              retryable: decision.retryable,
+              willRetry,
+            },
+          }
+        );
+      }
+
+      if (!willRetry) {
         throw error;
       }
 
-      await sleepMs(
-        providerRetryDelayMs(attempt)
-      );
+      await sleepMs(providerRetryDelayMs(attempt));
     }
   }
 
   throw lastError instanceof Error
     ? lastError
-    : new Error(
-        "Provider recovery exhausted."
-      );
+    : new Error("Provider recovery exhausted.");
 }
 
 function getConfiguredModelFallbacks(
