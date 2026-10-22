@@ -237,7 +237,7 @@ export function startFlowTrace(safeQuestion = ""): string {
     events: [],
   });
 
-    while (traces.size > MAX_TRACES) {
+  while (traces.size > MAX_TRACES) {
     const oldestId = traces.keys().next().value;
     if (!oldestId) break;
     traces.delete(oldestId);
@@ -245,7 +245,6 @@ export function startFlowTrace(safeQuestion = ""): string {
 
   return id;
 }
-
 export function recordFlowEvent(
   traceId: string,
   step: string,
