@@ -343,21 +343,24 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
     return values.length ? values.map(safe).join("; ") : "—";
   };
 
-  const rows = trace.events.map(
-    (event) =>
-      `| ${event.id}. ${safe(event.step)} | ${event.status} | ${safe(source(event))} | ${metrics(event)} |`,
-  );
+  const summary = summarizeFlowTrace(trace);
 
-  return [
-    "# Step Tracer",
-    "",
-    `- **Trace ID:** ${trace.id}`,
-    `- **Started:** ${trace.startedAt}`,
-    `- **Finished:** ${trace.finishedAt ?? "Still running"}`,
-    `- **Overall status:** ${trace.status}`,
-    "",
-    "| Step | Status | Source | Metrics |",
-    "|---|---|---|---|",
-    ...(rows.length ? rows : ["| No steps recorded | — | — | — |"]),
-  ].join("\n");
+return [
+  "# Query Trace",
+  "",
+  `- Trace ID: ${trace.id}`,
+  `- Overall status: ${trace.status}`,
+  `- Total events: ${summary.totalEvents}`,
+  `- Provider attempts: ${summary.providerAttempts}`,
+  `- Retries: ${summary.retries}`,
+  `- Rounds: ${summary.rounds}`,
+  `- Errors: ${summary.errors}`,
+  "",
+  "# Complete Event History",
+  "",
+  ...trace.events.map(
+    (event) =>
+      `${event.id}. ${event.at} | ${event.status} | ${event.step}`,
+  ),
+].join("\n");
 }
