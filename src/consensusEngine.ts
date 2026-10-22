@@ -12858,12 +12858,16 @@ if (flowTraceId) {
       decision: conformityReached
         ? "Agreement and independent verification passed; finalize the combined answer."
         : "Conformity is not reached; revise the combined batch if another round is available.",
+      reasonCode: conformityReached
+        ? "consensus_conformity_reached"
+        : !agreementTargetMet
+          ? "agreement_below_target"
+          : `verification_${lastVerification.status}`,
       detail: lastVerification.feedback.slice(0, 240),
       durationMs: Date.now() - roundStartedAt,
     }
   );
 }
-
     if (conformityReached) {
       let bestIndex = 0;
       let bestScore = -Infinity;
