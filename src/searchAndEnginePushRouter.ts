@@ -183,7 +183,7 @@ export async function pushQueryToEnginesAndConverge(
       null
     );
 
-    recordFlowStep(
+    re    recordFlowStep(
       flowTraceId,
       "Final response assembly",
       "ok",
@@ -194,6 +194,9 @@ export async function pushQueryToEnginesAndConverge(
         outgoing: {
           status: "ok",
           outputChars: String(loopResult.finalAnswer || "").length,
+          achievedAgreement: loopResult.achievedAgreement,
+          iterationsRequired: loopResult.iterationsRequired,
+          activeEngineCount: loopResult.activeModels.length,
         },
       }
     );
