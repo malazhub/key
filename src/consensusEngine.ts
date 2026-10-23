@@ -5438,7 +5438,8 @@ export function isKeySelfModificationRequest(
     return false;
   }
 
-    // Universal Semantic Key UI Target Detector (matches any word order: "reset button", "button called reset", "inside the input box", "above send into the input box", etc.) const hasAnyKeyUiControlOrRegionTarget =
+     // Universal Semantic Key UI Target Detector (matches any word order: "reset button", "button called reset", "inside the input box", "above send into the input box", etc.)
+  const hasAnyKeyUiControlOrRegionTarget =
     /\b(top\s+text|top\s+box|top\s+bar|text\s+key|text\s+beside\s+key|beside\s+key|malazhub\.github\.io|reset\s+button|reset\s+key|button\s+(?:called\s+|named\s+)?reset|called\s+reset|\breset\b[\s\S]{0,35}\b(?:input\s+box|send|composer|button)\b|\b(?:button|control)\b[\s\S]{0,25}\breset\b|above\s+send|beside\s+send|next\s+to\s+send|attach\s+button|button\s+(?:called\s+|named\s+)?attach|called\s+attach|preview\s+(?:application\s+)?button|button\s+(?:called\s+|named\s+)?preview|download\s+(?:application\s+)?button|button\s+(?:called\s+|named\s+)?download|car\s+button|button\s+(?:called\s+|named\s+)?car|called\s+car|(?:above|beside|under|below|inside|into|in|within)\s+(?:user\s+|the\s+)?(?:input\s+box|search\s+box|ask\s+box|composer)|left\s+panel|sidebar|side\s+panel|ur\s+view|your\s+view|ur\s+display|your\s+display|view\s+of\s+key|refresh\s+(?:ur|your|the)\s+display)\b/i.test(
       q
     );
