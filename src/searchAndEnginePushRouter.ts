@@ -273,13 +273,15 @@ try {
     "Final response assembly",
     "ok",
     {
+          "ok",
+    {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
       durationMs: Date.now() - startedAt,
       outgoing: {
         status: "ok",
         outputChars: String(loopResult.finalAnswer || "").length,
-                achievedAgreement: loopResult.achievedAgreement,
+        achievedAgreement: loopResult.achievedAgreement,
         iterationsRequired: loopResult.iterationsRequired,
         activeEngineCount:
           "activeModels" in loopResult && Array.isArray(loopResult.activeModels)
@@ -288,6 +290,9 @@ try {
       },
     }
   );
+
+  finishFlowTrace(flowTraceId, "ok");
+  return response;
 
   finishFlowTrace(flowTraceId, "ok");
   return response;
