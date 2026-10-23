@@ -54,6 +54,39 @@ function formatFlowValue(value: unknown): string {
     : `Structured payload: ${Object.keys(data).length} field(s); content collapsed`;
 }
     
+function sanitizeLabel(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function summarizeFlowTrace(trace: FlowTrace): {
+  totalEvents: number;
+  providerAttempts: number;
+  retries: number;
+  rounds: number;
+  errors: number;
+} {
+  const events = trace.events;
+
+  return {
+    totalEvents: events.length,
+    providerAttempts: events.filter(
+      (event) => /provider attempt started/i.test(event.step)
+    ).length,
+    retries: events.filter(
+      (event) => /retry/i.test(event.step) || /retry/i.test(event.reasonCode || "")
+    ).length,
+    rounds: new Set(
+      events
+        .map((event) => event.round)
+        .filter((round): round is number => typeof round === "number")
+    ).size,
+    errors: events.filter((event) => event.status === "error").length,
+  };
+}
+
 function normalizeTraceStep(value: string): string {
   const step = String(value || "").replace(/\s+/g, " ").trim();
   return step.slice(0, 160) || "Unnamed step";
