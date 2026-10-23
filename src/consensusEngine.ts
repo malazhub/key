@@ -7491,11 +7491,7 @@ export function sanitizeAndEnrichConsensusResult(
     if (!generatedAppHtml) {
       generatedAppHtml = buildKey1ZeroDivergencePortalHtml();
     }
-    } else {
-    const claimsInteractiveUi =
-      Boolean(shouldGenerateAppPreview) ||
-      generatedAppHtml.length > 80 ||
-      extractedHtml.length > 80;
+    
   } else {
     const claimsInteractiveUi =
       Boolean(shouldGenerateAppPreview) ||
