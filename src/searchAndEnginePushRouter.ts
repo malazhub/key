@@ -268,12 +268,10 @@ try {
     null
   );
 
-  recordFlowStep(
+  r  recordFlowStep(
     flowTraceId,
     "Final response assembly",
     "ok",
-    {
-          "ok",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
