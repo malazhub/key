@@ -268,7 +268,7 @@ try {
     null
   );
 
-  r  recordFlowStep(
+  recordFlowStep(
     flowTraceId,
     "Final response assembly",
     "ok",
