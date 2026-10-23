@@ -7593,13 +7593,6 @@ return (
                     <span>🛡️ Version 8 (v7.0)</span>
                   </button>
 
-                                    {/* Single Preview Application Button Above Input */}
-                  {showPreviewButton && (
-                    <button
-                      id="keyBottomPreviewAppBtn"
-                      type="button"
-                      onClick={handlePreviewApplicationFromContext}
-
                   
                   {/* Single Preview Application Button Above Input */}
                   {showPreviewButton && (
