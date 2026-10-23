@@ -3693,81 +3693,7 @@ const data = await res.json();
     ]
   );
 
-  // Forward PC Keyboard Arrow Keys (↑ ↓ ← →) and Q (Horn) to any active Car Simulation iframe when not typing in an input/textarea
-  useEffect(() => {
-    const forwardCarSimKey = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      const tag = activeEl?.tagName?.toLowerCase() || "";
-      if (
-        tag === "textarea" ||
-        tag === "input" ||
-        (activeEl as HTMLElement)?.isContentEditable
-      ) {
-        return;
-      }
-      if (
-        [
-          "ArrowUp",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowRight",
-          "q",
-          "Q",
-          "w",
-          "a",
-          "s",
-          "d",
-        ].includes(e.key)
-      ) {
-        const iframes = document.querySelectorAll("iframe");
-        let forwarded = false;
-        iframes.forEach((frame) => {
-          try {
-            if (frame.contentWindow) {
-              frame.contentWindow.postMessage(
-                {
-                  type: "KEY_CAR_SIM_INPUT",
-                  eventType: e.type,
-                  key: e.key,
-                  code: e.code,
-                },
-                "*"
-              );
-              forwarded = true;
-            }
-          } catch {
-            // ignore cross-origin
-          }
-        });
-        if (
-          forwarded &&
-          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
-        ) {
-          e.preventDefault();
-        }
-      }
-    };
-    window.addEventListener("keydown", forwardCarSimKey);
-    window.addEventListener("keyup", forwardCarSimKey);
-    return () => {
-      window.removeEventListener("keydown", forwardCarSimKey);
-      window.removeEventListener("keyup", forwardCarSimKey);
-    };
-  }, []);
-
-  const handleLaunchCarSimulationModal = useCallback(() => {
-    const carTitle =
-      "UltraDrive 3D Pro — Real Street, Traffic, Buildings & V8 Motor Simulator (Windows 11 · Arrow Keys + Q Horn)";
-    const carHtml = buildUltraCarSimulationPortalHtml();
-    saveCumulativeBuildState(carTitle, carHtml);
-    setPreviewTab("live");
-    setPreviewReloadKey((k) => k + 1);
-    setActivePreviewModal({
-      title: carTitle,
-      html: carHtml,
-      isSyncingWithEngines: false,
-    });
-  }, []);
+    // Sign In with Email
 
   // Sign In with Email
   const handleEmailSignIn = async (e: React.FormEvent) => {
@@ -7667,19 +7593,12 @@ return (
                     <span>🛡️ Version 8 (v7.0)</span>
                   </button>
 
-                  {/* Persistent "Car" Button Down in Bottom Control Bar to Launch Car Simulation Immediately (bound to live showCarButton self-mod state) */}
-                  {showCarButton && (
+                                    {/* Single Preview Application Button Above Input */}
+                  {showPreviewButton && (
                     <button
-                      id="keyBottomCarLauncherBtn"
+                      id="keyBottomPreviewAppBtn"
                       type="button"
-                      onClick={handleLaunchCarSimulationModal}
-                      className="px-4 py-1.5 rounded-lg text-xs font-extrabold border bg-amber-400 hover:bg-amber-300 border-amber-300 text-slate-950 transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-md"
-                      title="Click to immediately launch the UltraDrive 3D Pro Car Driving Simulation (Arrow Keys ↑↓←→ + Q Horn)"
-                    >
-                      <span>🚗</span>
-                      <span>Car</span>
-                    </button>
-                  )}
+                      onClick={handlePreviewApplicationFromContext}
 
                   
                   {/* Single Preview Application Button Above Input */}
