@@ -552,11 +552,11 @@ async function withProviderRecovery<T>(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      if (options?.trace?.flowTraceId) {
+            if (options?.trace?.flowTraceId) {
         recordFlowStep(
           options.trace.flowTraceId,
           "Provider attempt started",
-          "started",
+          "running",
           {
             sourceFile: options.trace.sourceFile,
             sourceFunction: "withProviderRecovery",
@@ -15576,7 +15576,7 @@ assertDefendedQuery(
 
       try {
            
-        return await withProviderRecovery(
+                return await withProviderRecovery(
           () =>
             withStrictTimeout(
               attemptModel(modelId, credential),
@@ -15586,7 +15586,6 @@ assertDefendedQuery(
           {
             maxAttempts: 3,
             trace: {
-              flowTraceId,
               engine,
               model: modelId,
               sourceFile: "src/consensusEngine.ts",
