@@ -53,10 +53,8 @@ import {
   calculateMathematicalRelationWithPrevious,
   isStrictYesNoOrSingleWordQuery,
   resolveStrictYesNoAnswer,
-  isCarSimulationRequest,
-  buildUltraCarSimulationPortalHtml,
-  isJetFlightSimulationRequest,
-  buildUltraJetFlightSimulationPortalHtml,
+ 
+  
   isKey1CloneOrButtonRequest,
   isKeySelfModificationRequest,
   parseKeySelfModificationSpec,
@@ -1131,17 +1129,7 @@ function enrichAndRepairAssistantMessage(
     isTopicIsolationMsg ||
     isNoAppOrLogicMsg;
 
-  const isJetSimMsg =
-    !isBlockedByGreetingOrNoApp &&
-    !isCapabilityQuestionMsg &&
-    !isStructureOrFileTreeMsg &&
-    isJetFlightSimulationRequest(rawUserAsk, selfModContextText);
-  const isCarSimMsg =
-    !isBlockedByGreetingOrNoApp &&
-    !isCapabilityQuestionMsg &&
-    !isStructureOrFileTreeMsg &&
-    !isJetSimMsg &&
-    isCarSimulationRequest(rawUserAsk, selfModContextText);
+  
   const hasFakeTokenReply =
     !isBlockedByGreetingOrNoApp &&
     /Refreshed and Upgraded Key Generation|ENG-\d+-UPGRADED-SECURE-KEY|cannot\s+upgrade\s+(?:my|ur|your|it)self|unable\s+to\s+upgrade|not\s+able\s+to\s+upgrade/i.test(
@@ -1153,16 +1141,12 @@ function enrichAndRepairAssistantMessage(
       (rawUserAsk
         ? isKeySelfModificationRequest(rawUserAsk, selfModContextText)
         : isKeySelfModificationRequest(selfModContextText, selfModContextText)));
-  const isSelfModMessage =
+    const isSelfModMessage =
     !isBlockedByGreetingOrNoApp &&
-    !isJetSimMsg &&
-    !isCarSimMsg &&
     (userActuallyAskedForSelfMod || hasFakeTokenReply);
 
   const isKeyDeployMessage =
     !isBlockedByGreetingOrNoApp &&
-    !isJetSimMsg &&
-    !isCarSimMsg &&
     !isSelfModMessage &&
     isKey1CloneOrButtonRequest(rawUserAsk);
 
@@ -1214,17 +1198,7 @@ function enrichAndRepairAssistantMessage(
     if (!generatedAppHtml) {
       generatedAppHtml = buildKeyLiveFileSystemBrowserPortalHtml();
     }
-    } else if (isJetSimMsg) {
-    // (Removed: hard-coded jet-sim template. Leave as normal chat answer.)
-    hasAppPreview = false;
-    appTitle = "";
-    generatedAppHtml = "";
-    } else if (isCarSimMsg) {
-    // (Removed: hard-coded car-sim template. Leave as normal chat answer.)
-    hasAppPreview = false;
-    appTitle = "";
-    generatedAppHtml = "";
-  }else if (isSelfModMessage) {
+      } else if (isSelfModMessage) {
     const spec = parseKeySelfModificationSpec(rawUserAsk, selfModContextText);
     hasAppPreview = true;
     appTitle = appTitle || spec.summaryTitle;
