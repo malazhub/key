@@ -279,9 +279,12 @@ try {
       outgoing: {
         status: "ok",
         outputChars: String(loopResult.finalAnswer || "").length,
-        achievedAgreement: loopResult.achievedAgreement,
+                achievedAgreement: loopResult.achievedAgreement,
         iterationsRequired: loopResult.iterationsRequired,
-        activeEngineCount: loopResult.activeModels.length,
+        activeEngineCount:
+          "activeModels" in loopResult && Array.isArray(loopResult.activeModels)
+            ? loopResult.activeModels.length
+            : modelsList.length,
       },
     }
   );
