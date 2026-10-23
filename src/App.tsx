@@ -1214,23 +1214,17 @@ function enrichAndRepairAssistantMessage(
     if (!generatedAppHtml) {
       generatedAppHtml = buildKeyLiveFileSystemBrowserPortalHtml();
     }
-  } else if (isJetSimMsg) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "AeroStrike 3D — Windows 11 Integrated-GPU Jet Fighter Flight & Missile Simulator (Arrow Keys + Q Missile)";
-    if (!generatedAppHtml || !generatedAppHtml.includes("jetSimCanvas")) {
-      generatedAppHtml = buildUltraJetFlightSimulationPortalHtml();
-    }
-  } else if (isCarSimMsg) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "UltraDrive 3D Pro — Real Street, Traffic, Buildings & V8 Motor Simulator (Windows 11 · Arrow Keys + Q Horn)";
-    if (!generatedAppHtml) {
-      generatedAppHtml = buildUltraCarSimulationPortalHtml();
-    }
-  } else if (isSelfModMessage) {
+    } else if (isJetSimMsg) {
+    // (Removed: hard-coded jet-sim template. Leave as normal chat answer.)
+    hasAppPreview = false;
+    appTitle = "";
+    generatedAppHtml = "";
+    } else if (isCarSimMsg) {
+    // (Removed: hard-coded car-sim template. Leave as normal chat answer.)
+    hasAppPreview = false;
+    appTitle = "";
+    generatedAppHtml = "";
+  }else if (isSelfModMessage) {
     const spec = parseKeySelfModificationSpec(rawUserAsk, selfModContextText);
     hasAppPreview = true;
     appTitle = appTitle || spec.summaryTitle;
@@ -1427,33 +1421,9 @@ function buildInstantClientAppFromContext(
   const cleanReply = (assistantContent || "").trim();
   const combined = `${cleanQ} ${cleanReply}`;
 
-  // 0a. Prioritize AeroStrike 3D Jet Fighter Flight Simulation whenever requested in query or context
-  if (
-    isJetFlightSimulationRequest(cleanQ, cleanReply) ||
-    /\b(AeroStrike 3D|Jet Fighter Flight)\b/i.test(
-      `${combined} ${existingAppTitle || ""}`
-    )
-  ) {
-    return {
-      title:
-        "AeroStrike 3D — Windows 11 Integrated-GPU Jet Fighter Flight & Missile Simulator (Arrow Keys + Q Missile)",
-      html: buildUltraJetFlightSimulationPortalHtml(),
-    };
-  }
+  
 
-  // 0b. Prioritize UltraDrive 3D Car Simulation whenever requested in query or context
-  if (
-    isCarSimulationRequest(cleanQ, cleanReply) ||
-    /\b(Car Driving Simulation|UltraDrive 3D)\b/i.test(
-      `${combined} ${existingAppTitle || ""}`
-    )
-  ) {
-    return {
-      title:
-        "UltraDrive 3D Pro — Real Street, Traffic, Buildings & V8 Motor Simulator (Windows 11 · Arrow Keys + Q Horn)",
-      html: buildUltraCarSimulationPortalHtml(),
-    };
-  }
+  
 
   // 0. Prioritize Key Self-Modification & Self-Upgrade Replica (e.g., Top text Key moved to middle, Reset button above Send, etc.)
   if (isKeySelfModificationRequest(cleanQ, cleanReply)) {
@@ -1532,442 +1502,14 @@ function buildInstantClientAppFromContext(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // 2. Wi-Fi / Network / Hardware Scanner Application
-  if (
-    /\b(wifi|wi-fi|wireless\s+network|nearby\s+wifi|scan\s+wifi|ssid|bssid|rssi|network\s+scanner|wifi\s+scanner)\b/i.test(
-      combined
-    )
-  ) {
-    return {
-      title:
-        "ProScan Live Wi-Fi & Hardware Network Discovery Suite (Full-Screen Application)",
-      html: `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ProScan Live Wi-Fi &amp; Network Scanner</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 p-6 font-sans min-h-screen">
-  <div class="max-w-6xl mx-auto space-y-5">
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/40 p-5 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-          <h1 class="text-lg font-extrabold text-white">ProScan Live Wi-Fi &amp; Nearby Network Discovery Suite</h1>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">Active Context Application · Sweeps 2.4 GHz, 5 GHz &amp; 6 GHz Access Points (SSID, BSSID MAC, RSSI dBm, Channel &amp; WPA3 Security)</p>
-      </div>
-      <div class="flex items-center gap-2.5">
-        <button id="scanWifiNowBtn" type="button" class="px-5 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer shadow-lg">
-          📡 Scan Nearby Wi-Fi Now
-        </button>
-      </div>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Detected Networks</div>
-        <div id="statCount" class="text-2xl font-extrabold text-emerald-400 font-mono mt-1">8 APs</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Strongest Signal</div>
-        <div id="statBest" class="text-lg font-extrabold text-sky-400 font-mono mt-1">-36 dBm (98%)</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Active Bands</div>
-        <div class="text-lg font-extrabold text-amber-300 font-mono mt-1">2.4 / 5 / 6 GHz</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="text-slate-400">Scanner Status</div>
-        <div id="statStatus" class="text-sm font-bold text-emerald-300 mt-1.5">● Live Sweep Complete</div>
-      </div>
-    </div>
-    <div class="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
-      <table class="w-full text-left border-collapse text-xs">
-        <thead>
-          <tr class="bg-slate-950/90 text-slate-400 border-b border-slate-800 uppercase text-[11px]">
-            <th class="py-3 px-4">SSID (Network Name)</th>
-            <th class="py-3 px-4">BSSID (MAC)</th>
-            <th class="py-3 px-4">Signal (RSSI)</th>
-            <th class="py-3 px-4">Band / Ch</th>
-            <th class="py-3 px-4">Security</th>
-            <th class="py-3 px-4 text-right">Action</th>
-          </tr>
-        </thead>
-        <tbody id="wifiRows" class="divide-y divide-slate-800/80"></tbody>
-      </table>
-    </div>
-    <div id="connBanner" class="hidden p-4 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-xs text-emerald-200 font-semibold"></div>
-  </div>
-  <script>
-    (function() {
-      var nets = [
-        { ssid: 'Malaz_UltraNet_6E', bssid: 'A4:83:E7:4B:12:90', rssi: -36, quality: 98, band: '6 GHz', ch: 37, sec: 'WPA3-SAE' },
-        { ssid: 'Key_Fiber_5G_Pro', bssid: 'D8:47:32:9A:C1:04', rssi: -43, quality: 93, band: '5 GHz', ch: 149, sec: 'WPA3/WPA2' },
-        { ssid: 'Home_Mesh_WiFi_5G', bssid: '2C:FD:A1:77:89:11', rssi: -51, quality: 86, band: '5 GHz', ch: 36, sec: 'WPA2-PSK' },
-        { ssid: 'Office_Enterprise_AP', bssid: '80:2A:A8:19:5C:E2', rssi: -58, quality: 79, band: '5 GHz', ch: 44, sec: 'WPA2-EAP' },
-        { ssid: 'Key_SmartHub_2.4G', bssid: 'D8:47:32:9A:C1:01', rssi: -62, quality: 74, band: '2.4 GHz', ch: 6, sec: 'WPA2-PSK' },
-        { ssid: 'FiberBox_Guest_WiFi', bssid: '50:C7:BF:3E:08:7B', rssi: -69, quality: 63, band: '2.4 GHz', ch: 1, sec: 'WPA2-PSK' },
-        { ssid: 'Cafe_Free_Hotspot', bssid: 'B0:BE:76:21:44:9C', rssi: -75, quality: 52, band: '2.4 GHz', ch: 11, sec: 'Open' },
-        { ssid: 'IoT_Sensor_Bridge', bssid: '18:FE:34:A2:09:55', rssi: -81, quality: 41, band: '2.4 GHz', ch: 6, sec: 'WPA2-PSK' }
-      ];
-      var tbody = document.getElementById('wifiRows');
-      var banner = document.getElementById('connBanner');
-      function render() {
-        tbody.innerHTML = '';
-        nets.forEach(function(n) {
-          var tr = document.createElement('tr');
-          tr.className = 'hover:bg-slate-800/60 transition';
-          tr.innerHTML =
-            '<td class="py-3 px-4 font-bold text-white">📶 ' + n.ssid + '</td>' +
-            '<td class="py-3 px-4 font-mono text-slate-300">' + n.bssid + '</td>' +
-            '<td class="py-3 px-4 font-mono text-emerald-400 font-bold">' + n.rssi + ' dBm (' + n.quality + '%)</td>' +
-            '<td class="py-3 px-4 font-mono text-sky-300">' + n.band + ' · Ch ' + n.ch + '</td>' +
-            '<td class="py-3 px-4"><span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[11px]">' + n.sec + '</span></td>' +
-            '<td class="py-3 px-4 text-right"><button type="button" class="inspect-btn px-3 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold cursor-pointer">Inspect AP</button></td>';
-          tr.querySelector('.inspect-btn').addEventListener('click', function() {
-            banner.classList.remove('hidden');
-            banner.innerHTML = '✓ <strong>Connected / Inspected Access Point:</strong> <code>' + n.ssid + '</code> (' + n.bssid + ') · Signal: ' + n.rssi + ' dBm (' + n.quality + '%) · Band: ' + n.band + ' Channel ' + n.ch + ' · Security: ' + n.sec;
-          });
-          tbody.appendChild(tr);
-        });
-      }
-      document.getElementById('scanWifiNowBtn').addEventListener('click', function() {
-        var st = document.getElementById('statStatus');
-        st.textContent = '⏳ Scanning 2.4 / 5 / 6 GHz Channels...';
-        setTimeout(function() {
-          nets.forEach(function(n) {
-            var d = Math.floor(Math.random() * 5) - 2;
-            n.rssi = Math.max(-90, Math.min(-30, n.rssi + d));
-            n.quality = Math.max(15, Math.min(99, Math.round(100 - Math.abs(n.rssi + 30) * 1.2)));
-          });
-          nets.sort(function(a, b) { return b.rssi - a.rssi; });
-          document.getElementById('statBest').textContent = nets[0].rssi + ' dBm (' + nets[0].quality + '%)';
-          st.textContent = '● Live Sweep Updated (' + new Date().toLocaleTimeString() + ')';
-          render();
-        }, 350);
-      });
-      render();
-    })();
-  </script>
-</body>
-</html>`,
-    };
-  }
 
-  // 3. Game Arena Application
-  if (
-    /\b(game|chess|tic\s*tac\s*toe|snake|arcade|puzzle|play|player|score|board)\b/i.test(
-      combined
-    )
-  ) {
-    return {
-      title: `Interactive Game Arena — ${cleanQ.slice(0, 42)}`,
-      html: `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${safeTitle}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 p-6 font-sans min-h-screen flex items-center justify-center">
-  <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-emerald-500/40 p-6 shadow-2xl space-y-5">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-      <div>
-        <h1 class="text-lg font-extrabold text-white">${safeTitle}</h1>
-        <p class="text-xs text-slate-400 mt-0.5">Full-Screen Interactive Game Preview · Context: "${safeQuery}"</p>
-      </div>
-      <div class="flex items-center gap-2.5 text-xs font-mono">
-        <span id="scoreBadge" class="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">You (X): 0 | AI (O): 0</span>
-        <button id="newGameBtn" type="button" class="px-4 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold cursor-pointer">New Match</button>
-      </div>
-    </div>
-    <div id="statusBox" class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-emerald-300 font-semibold text-center">
-      Your Turn (X) — Click any square below to play!
-    </div>
-    <div id="gridBoard" class="grid grid-cols-3 gap-3 max-w-sm mx-auto py-2"></div>
-  </div>
-  <script>
-    (function() {
-      var board = ['','','','','','','','',''];
-      var pScore = 0, aScore = 0, over = false;
-      var grid = document.getElementById('gridBoard');
-      var status = document.getElementById('statusBox');
-      var badge = document.getElementById('scoreBadge');
-      var wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-      function won(b, s) { return wins.some(function(w){ return b[w[0]]===s && b[w[1]]===s && b[w[2]]===s; }); }
-      function draw() {
-        grid.innerHTML = '';
-        board.forEach(function(c, i) {
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'h-24 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-3xl font-extrabold flex items-center justify-center cursor-pointer transition ' + (c === 'X' ? 'text-emerald-400' : 'text-sky-400');
-          btn.textContent = c;
-          btn.addEventListener('click', function() { step(i); });
-          grid.appendChild(btn);
-        });
-      }
-      function step(i) {
-        if (over || board[i]) return;
-        board[i] = 'X';
-        if (won(board, 'X')) {
-          pScore++; over = true;
-          status.textContent = '🎉 You Won this Match! Click "New Match" to play again.';
-          badge.textContent = 'You (X): ' + pScore + ' | AI (O): ' + aScore;
-          draw(); return;
-        }
-        var empty = board.map(function(v, idx){ return v===''?idx:-1; }).filter(function(idx){ return idx!==-1; });
-        if (!empty.length) {
-          over = true;
-          status.textContent = '🤝 Draw Game! Click "New Match" for a rematch.';
-          draw(); return;
-        }
-        var pick = empty.indexOf(4) !== -1 ? 4 : empty[Math.floor(Math.random() * empty.length)];
-        board[pick] = 'O';
-        if (won(board, 'O')) {
-          aScore++; over = true;
-          status.textContent = '⚡ AI Engine Won! Click "New Match" to challenge again.';
-          badge.textContent = 'You (X): ' + pScore + ' | AI (O): ' + aScore;
-        } else {
-          status.textContent = 'Your Turn (X) — Choose your next square!';
-        }
-        draw();
-      }
-      document.getElementById('newGameBtn').addEventListener('click', function() {
-        board = ['','','','','','','','','']; over = false;
-        status.textContent = 'New Match Started — Your Turn (X)!';
-        draw();
-      });
-      draw();
-    })();
-  </script>
-</body>
-</html>`,
-    };
-  }
 
-  // 4. Weather & Forecast Station Application
-  if (
-    /\b(weather|forecast|temperature|climate|rain|wind|humidity|celsius|fahrenheit)\b/i.test(
-      combined
-    )
-  ) {
-    const cityMatch =
-      cleanQ.match(
-        /\b(?:in|for|at)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/
-      ) ||
-      cleanReply.match(
-        /\b(London|Paris|New York|Tokyo|Dubai|Cairo|Berlin|Sydney|Toronto|Madrid|Rome)\b/i
-      );
-    const defaultCity = (cityMatch && cityMatch[1]) || "London";
-    const safeCity = defaultCity.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-    return {
-      title: `Live Weather & 5-Day Forecast Application — ${defaultCity}`,
-      html: `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Weather &amp; Forecast Station</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 p-6 font-sans min-h-screen">
-  <div class="max-w-4xl mx-auto rounded-2xl bg-slate-900 border border-sky-500/40 p-6 shadow-2xl space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-      <div>
-        <h1 class="text-xl font-extrabold text-white">☀️ Live Interactive Weather &amp; 5-Day Forecast Station</h1>
-        <p class="text-xs text-slate-400 mt-1">Generated from Context: "${safeQuery}"</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <input id="cityInp" type="text" value="${safeCity}" placeholder="Enter any city..." class="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-400" />
-        <button id="updateCityBtn" type="button" class="px-4 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer shadow-md">Check Weather</button>
-      </div>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-      <div class="p-4 rounded-xl bg-slate-950 border border-slate-800">
-        <div class="text-slate-400">Active City</div>
-        <div id="wCity" class="text-lg font-extrabold text-white mt-1">${safeCity}</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-950 border border-slate-800">
-        <div class="text-slate-400">Temperature</div>
-        <div id="wTemp" class="text-2xl font-extrabold text-emerald-400 font-mono mt-1">21°C / 70°F</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-950 border border-slate-800">
-        <div class="text-slate-400">Sky Condition</div>
-        <div id="wCond" class="text-sm font-bold text-sky-300 mt-1.5">⛅ Partly Sunny</div>
-      </div>
-      <div class="p-4 rounded-xl bg-slate-950 border border-slate-800">
-        <div class="text-slate-400">Humidity &amp; Wind</div>
-        <div id="wWind" class="text-sm font-bold text-amber-300 font-mono mt-1.5">56% · 14 km/h</div>
-      </div>
-    </div>
-    <div id="forecastRow" class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs"></div>
-  </div>
-  <script>
-    (function() {
-      var days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-      var conds = ['☀️ Sunny', '⛅ Partly Cloudy', '🌤️ Clear Breeze', '🌦️ Light Shower', '🌞 Warm'];
-      function update(city) {
-        document.getElementById('wCity').textContent = city;
-        var baseC = Math.floor(15 + Math.random() * 14);
-        var baseF = Math.round(baseC * 9 / 5 + 32);
-        document.getElementById('wTemp').textContent = baseC + '°C / ' + baseF + '°F';
-        document.getElementById('wCond').textContent = conds[Math.floor(Math.random() * conds.length)];
-        document.getElementById('wWind').textContent = Math.floor(42 + Math.random() * 35) + '% · ' + Math.floor(8 + Math.random() * 16) + ' km/h';
-        var row = document.getElementById('forecastRow');
-        row.innerHTML = '';
-        days.forEach(function(d, idx) {
-          var c = baseC + (idx % 3) - 1;
-          var card = document.createElement('div');
-          card.className = 'p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-center space-y-1';
-          card.innerHTML =
-            '<div class="font-bold text-slate-300">' + d + '</div>' +
-            '<div class="text-lg font-extrabold text-emerald-400 font-mono">' + c + '°C</div>' +
-            '<div class="text-[11px] text-sky-300">' + conds[idx % conds.length] + '</div>';
-          row.appendChild(card);
-        });
-      }
-      document.getElementById('updateCityBtn').addEventListener('click', function() {
-        var c = document.getElementById('cityInp').value.trim() || 'London';
-        update(c);
-      });
-      update('${safeCity}');
-    })();
-  </script>
-</body>
-</html>`,
-    };
-  }
 
-  // 5. General Context-Driven Interactive Application Test Suite (extracts points/steps from the conversation above)
-  const extractedPoints = (cleanReply || cleanQ)
-    .replace(/#{1,4}\s+/g, "")
-    .replace(/\*\*/g, "")
-    .split(/\n+/)
-    .map((line) => line.replace(/^[-*•\d.)+\s]+/, "").trim())
-    .filter((line) => line.length > 18)
-    .slice(0, 6);
+  // (Removed: generic "context modules" template. No app is generated here;
+  // caller will fall back to a normal consensus query when no real HTML exists.)
 
-  const defaultModules =
-    extractedPoints.length > 0
-      ? extractedPoints
-      : [
-          `Primary Execution Module for "${cleanQ.slice(0, 60)}"`,
-          "Interactive Input & Parameter Validation Engine",
-          "Real-Time State Inspection & Live Output Verification",
-          "Multi-Engine Consensus Diagnostic & Export Module",
-        ];
-
-  const modulesJson = JSON.stringify(defaultModules).replace(
-    /<\/script>/gi,
-    "<\\/script>"
-  );
-
-  return {
-    title: safeTitle,
-    html: `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${safeTitle}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 p-6 font-sans min-h-screen">
-  <div class="max-w-5xl mx-auto space-y-5">
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/40 p-5 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-          <h1 class="text-lg font-extrabold text-white">${safeTitle}</h1>
-        </div>
-        <p class="text-xs text-slate-400 mt-1">Interactive Full-Screen Application Generated from Conversation Context: "${safeQuery}"</p>
-      </div>
-      <span class="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold font-mono">
-        ● Live Interactive Mode
-      </span>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-4">
-        <div class="text-xs font-bold uppercase tracking-wider text-emerald-400">
-          Interactive Controls &amp; Live Execution
-        </div>
-        <div class="space-y-3">
-          <label class="block text-xs font-semibold text-slate-300">Application Input / Test Parameter:</label>
-          <input id="appTestInput" type="text" value="${safeQuery}" placeholder="Enter parameter or command to test..." class="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-emerald-400" />
-          <div class="flex flex-wrap items-center gap-2.5 pt-1">
-            <button id="runTestBtn" type="button" class="px-5 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer shadow-lg transition">
-              ▶ Run &amp; Test Application Now
-            </button>
-            <button id="simStepBtn" type="button" class="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs cursor-pointer transition">
-              ⚡ Execute Next Context Step
-            </button>
-            <button id="resetAppBtn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 cursor-pointer transition">
-              Reset
-            </button>
-          </div>
-        </div>
-
-        <div id="liveConsoleBox" class="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 text-xs space-y-2 font-mono">
-          <div class="text-emerald-400 font-bold">● Live Application Output Console:</div>
-          <div id="liveConsoleText" class="text-slate-200 leading-relaxed">Application initialized from your conversation context. Click "▶ Run &amp; Test Application Now" or any module on the right to test live.</div>
-        </div>
-      </div>
-
-      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3">
-        <div class="text-xs font-bold uppercase tracking-wider text-sky-400">
-          Context Modules (Click to Test)
-        </div>
-        <div id="moduleButtonsList" class="space-y-2"></div>
-      </div>
-    </div>
-  </div>
-  <script>
-    (function() {
-      var modules = ${modulesJson};
-      var listEl = document.getElementById('moduleButtonsList');
-      var consoleText = document.getElementById('liveConsoleText');
-      var inp = document.getElementById('appTestInput');
-      var runCount = 0;
-      var stepIdx = 0;
-
-      modules.forEach(function(m, i) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-xs text-slate-200 cursor-pointer transition flex items-start gap-2.5';
-        btn.innerHTML = '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold">#' + (i + 1) + '</span><span class="flex-1">' + m.replace(/</g, '&lt;') + '</span>';
-        btn.addEventListener('click', function() {
-          runCount++;
-          consoleText.innerHTML = '✓ <strong>Module #' + (i + 1) + ' Executed (Run #' + runCount + ' at ' + new Date().toLocaleTimeString() + '):</strong><br/>' + m.replace(/</g, '&lt;');
-        });
-        listEl.appendChild(btn);
-      });
-
-      document.getElementById('runTestBtn').addEventListener('click', function() {
-        runCount++;
-        var val = inp.value.trim() || 'Default Context Input';
-        consoleText.innerHTML = '✓ <strong>Application Executed (#' + runCount + ' at ' + new Date().toLocaleTimeString() + '):</strong><br/>Active Parameter: <code>' + val.replace(/</g, '&lt;') + '</code><br/>Status: All ' + modules.length + ' context modules verified and active.';
-      });
-
-      document.getElementById('simStepBtn').addEventListener('click', function() {
-        var m = modules[stepIdx % modules.length];
-        stepIdx++;
-        consoleText.innerHTML = '⚡ <strong>Step #' + ((stepIdx - 1) % modules.length + 1) + ' Verified (' + new Date().toLocaleTimeString() + '):</strong><br/>' + m.replace(/</g, '&lt;');
-      });
-
-      document.getElementById('resetAppBtn').addEventListener('click', function() {
-        inp.value = '';
-        consoleText.textContent = 'Workspace reset. Enter any parameter above or click a module to test.';
-      });
-    })();
-  </script>
-</body>
-</html>`,
-  };
+  return { title: "", html: "" };
 }
 
 /**
@@ -5367,12 +4909,18 @@ const data = await res.json();
       contextUserMsg?.content ||
       "Universal Multi-Platform Application";
 
-    const instantApp = buildInstantClientAppFromContext(
+        const instantApp = buildInstantClientAppFromContext(
       effectiveQuery,
       typedQuery ? undefined : latestAssistantMsg?.content,
       typedQuery ? undefined : latestAssistantMsg?.generatedAppHtml,
       typedQuery ? undefined : latestAssistantMsg?.appTitle
     );
+
+    // No real app HTML available → route to a normal consensus query.
+    if (!instantApp.html) {
+      await runConsensus();
+      return;
+    }
 
     const alreadyHasGeneratedHtml =
       !typedQuery &&
@@ -5517,12 +5065,18 @@ const data = await res.json();
         latestModifiedAppMsg?.appTitle ||
         cumulativeSaved?.title;
 
-    const instantApp = buildInstantClientAppFromContext(
+        const instantApp = buildInstantClientAppFromContext(
       effectiveQuery,
       typedQuery ? undefined : latestAssistantMsg?.content,
       baseHtmlToUse,
       baseTitleToUse
     );
+
+    // No real app HTML available → route to a normal consensus query.
+    if (!instantApp.html) {
+      await runConsensus();
+      return;
+    }
 
     saveCumulativeBuildState(instantApp.title, instantApp.html);
 
