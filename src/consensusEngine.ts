@@ -5438,17 +5438,7 @@ export function isKeySelfModificationRequest(
     return false;
   }
 
-  // 4. NEVER trigger Key header/reset UI layout self-modification when the user is requesting a Car Simulation, Jet/Flight Simulation, 3D/WebGL/Three.js Widget, Game, Weather, Scanner, or any Domain Application!
-  if (
-    isCarSimulationRequest(rawQ, cumulativeContext) ||
-    isJetFlightSimulationRequest(rawQ, cumulativeContext) ||
-    isWifiOrHardwareScannerRequest(rawQ)
-  ) {
-    return false;
-  }
-
-  // Universal Semantic Key UI Target Detector (matches any word order: "reset button", "button called reset", "inside the input box", "above send into the input box", etc.)
-  const hasAnyKeyUiControlOrRegionTarget =
+    // Universal Semantic Key UI Target Detector (matches any word order: "reset button", "button called reset", "inside the input box", "above send into the input box", etc.) const hasAnyKeyUiControlOrRegionTarget =
     /\b(top\s+text|top\s+box|top\s+bar|text\s+key|text\s+beside\s+key|beside\s+key|malazhub\.github\.io|reset\s+button|reset\s+key|button\s+(?:called\s+|named\s+)?reset|called\s+reset|\breset\b[\s\S]{0,35}\b(?:input\s+box|send|composer|button)\b|\b(?:button|control)\b[\s\S]{0,25}\breset\b|above\s+send|beside\s+send|next\s+to\s+send|attach\s+button|button\s+(?:called\s+|named\s+)?attach|called\s+attach|preview\s+(?:application\s+)?button|button\s+(?:called\s+|named\s+)?preview|download\s+(?:application\s+)?button|button\s+(?:called\s+|named\s+)?download|car\s+button|button\s+(?:called\s+|named\s+)?car|called\s+car|(?:above|beside|under|below|inside|into|in|within)\s+(?:user\s+|the\s+)?(?:input\s+box|search\s+box|ask\s+box|composer)|left\s+panel|sidebar|side\s+panel|ur\s+view|your\s+view|ur\s+display|your\s+display|view\s+of\s+key|refresh\s+(?:ur|your|the)\s+display)\b/i.test(
       q
     );
@@ -7412,14 +7402,15 @@ export function sanitizeAndEnrichConsensusResult(
     !isCapabilityQ &&
     !hasExplicitNoApplicationDirective(question) &&
     isKeySelfModificationRequest(question, cumulativeContextText);
-  const hasNoAppOrLogicGuard =
+    const hasNoAppOrLogicGuard =
     isConversationalInquiry ||
     hasExplicitNoApplicationDirective(question) ||
     (!isDirectSelfModInSanitizer &&
       !isCapabilityQ &&
       !isCodebaseDiagnosticOrLogicGapQuery(question) &&
       (isTopicIsolation || isLogicOrArchitectureQuery(question)));
-    const isKey1Request =
+
+  const isKey1Request =
     !isStrictYesNo &&
     !isGreeting &&
     !hasNoAppOrLogicGuard &&
@@ -7457,23 +7448,7 @@ export function sanitizeAndEnrichConsensusResult(
       appTitle = "";
       generatedAppHtml = "";
     }
-  } else if (isJetSimRequest) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "AeroStrike 3D — Windows 11 Integrated-GPU Jet Fighter Flight & Missile Simulator (Arrow Keys + Q Missile)";
-    if (!generatedAppHtml || !generatedAppHtml.includes("jetSimCanvas")) {
-      generatedAppHtml = buildUltraJetFlightSimulationPortalHtml();
-    }
-  } else if (isCarSimRequest) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "UltraDrive 3D Pro — Real Street, Traffic, Buildings & V8 Motor Simulator (Windows 11 · Arrow Keys + Q Horn)";
-    if (!generatedAppHtml) {
-      generatedAppHtml = buildUltraCarSimulationPortalHtml();
-    }
-  } else if (isSelfModRequest) {
+    } else if (isSelfModRequest) {
     const selfModSpec = parseKeySelfModificationSpec(
       question,
       cumulativeContextText
