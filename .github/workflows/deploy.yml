@@ -24,11 +24,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout
-  uses: actions/checkout@v4
-  with:
-    ref: main
-    fetch-depth: 1
+           - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
