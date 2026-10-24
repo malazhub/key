@@ -1,4 +1,3 @@
-
 name: Deploy Key to GitHub Pages
 
 'on':
@@ -24,7 +23,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-           - name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: main
@@ -34,7 +33,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
 
       - name: Update npm
         run: npm install -g npm@11.6.0
@@ -65,4 +63,3 @@ jobs:
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
