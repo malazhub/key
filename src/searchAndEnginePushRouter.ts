@@ -290,8 +290,7 @@ try {
   finishFlowTrace(flowTraceId, "ok");
   return response;
 
-  finishFlowTrace(flowTraceId, "ok");
-  return response;
+  
 } catch (error) {
   recordFlowStep(
     flowTraceId,
