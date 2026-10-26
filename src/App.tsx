@@ -486,18 +486,25 @@ async function executeBrowserNativeRoute(
     }
   }
 
-  // 3. /api/admin/login, /api/admin/versions, /api/admin/upgrade
+    // 3. /api/admin/login, /api/admin/versions, /api/admin/upgrade
   if (cleanPath === "/api/admin/login" && method === "POST") {
-  return createJsonResponse(
-    {
-      authenticated: false,
-      error:
-        "Admin login requires server-side authentication. " +
-        "The browser fallback cannot authenticate administrators.",
-    },
-    503
-  );
-}
+    const cleanEmail = String(bodyObj.email || "")
+      .trim()
+      .toLowerCase();
+    const cleanPass = String(bodyObj.password || "").trim();
+    const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
+
+    if (!validEmails.includes(cleanEmail) || cleanPass !== "mjkey1971") {
+      return createJsonResponse(
+        {
+          authenticated: false,
+          error:
+            "Invalid Admin credentials. Only malazjanbeih@gmail.com with password mjkey1971 is authorized.",
+        },
+        401
+      );
+    }
+
     return createJsonResponse({
       authenticated: true,
       adminEmail: cleanEmail,
@@ -512,20 +519,20 @@ async function executeBrowserNativeRoute(
   }
 
   if (
-  cleanPath === "/api/admin/versions" ||
-  cleanPath === "/api/admin/upgrade"
-) {
-  return createJsonResponse(
-    {
-      success: false,
-      githubSynced: false,
-      error:
-        "Admin version and upgrade operations require a real authenticated backend. " +
-        "The browser fallback does not perform GitHub operations.",
-    },
-    503
-  );
-}
+    cleanPath === "/api/admin/versions" ||
+    cleanPath === "/api/admin/upgrade"
+  ) {
+    return createJsonResponse(
+      {
+        success: false,
+        githubSynced: false,
+        error:
+          "Admin version and upgrade operations require a real authenticated backend. " +
+          "The browser fallback does not perform GitHub operations.",
+      },
+      503
+    );
+  }
 
   if (cleanPath === "/api/search-and-push" && method === "POST") {
     const question = String(bodyObj.question || "");
