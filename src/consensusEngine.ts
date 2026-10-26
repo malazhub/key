@@ -3215,50 +3215,6 @@ export function buildFramework2026SelfUpgradedPortalHtml(): string {
 </html>`;
 }
 
-export const KEY_COMPLETE_FILE_TREE_ASCII = `Live Container Root URL (Dev):   https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-Live Container Root URL (Prod):  https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-Live File-Tree JSON API URL:     https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
-Permanent GitHub Repo Root URL:  https://github.com/malazhub/key (https://github.com/malazhub/key/tree/main)
-Live GitHub Pages Root URL:      https://malazhub.github.io/key/
-
-https://github.com/malazhub/key/tree/main  <-->  https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-├── .env.example
-├── .github/
-│   └── workflows/
-│       └── deploy.yml
-├── .gitignore
-├── README.md
-├── admin_github_token.json
-├── admin_versions_db.json
-├── bun.lock
-├── cloud_users_db.json
-├── firebase-applet-config.json
-├── firebase-blueprint.json
-├── firestore.rules
-├── index.html
-├── metadata.json
-├── package.json
-├── server.ts                                 <-- Backend Express + Node.js fs Read/Write/Tree & Self-Upgrade API
-├── tsconfig.json
-├── version8.py                               <-- Version 8 (v7.0 Real-Attacker Harness — 3,059 lines verbatim)
-├── vite.config.ts
-└── src/
-    ├── App.tsx                               <-- Main Key Workspace UI, State & Control Modals
-    ├── consensusEngine.ts                    <-- Core 10-Engine Consensus, Context Router & Self-Upgrade Kernel
-    ├── firebase.ts                           <-- Firebase Auth & Firestore Client
-    ├── index.css                             <-- Global Tailwind CSS Stylesheet
-    ├── main.tsx                              <-- React 19 DOM Entry Point
-    ├── mirroredKeyState.json                 <-- Live Mirrored Workspace State Snapshot
-    ├── searchAndEnginePushRouter.ts          <-- Search Pipeline & Engine Push Router
-    ├── selfUpgradeRegistry.json              <-- Persistent Autonomous Self-Upgrade Ledger
-    ├── components/
-    │   ├── GitHubExportModal.tsx             <-- GitHub Repository & Structure Exporter
-    │   ├── MarkdownRenderer.tsx              <-- Rich Markdown & Code Block Renderer
-    │   └── SemanticHistoryGraph.tsx          <-- D3.js Causal Provenance & History Graph
-    └── upgrades/
-        ├── activeSelfUpgradeModule.ts        <-- Active Superseding Self-Upgrade Manifest
-        ├── version8.py                       <-- Mirrored Verbatim Python Harness inside src/upgrades/
-        └── version8Harness.ts                <-- Native TypeScript Version 8 Harness & Override Controller`;
 
 export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
   return `<!DOCTYPE html>
@@ -9605,7 +9561,6 @@ export async function runSmartMemoryConsensusLoop(
     nextVersionTag?: string;
     attachments?: IncomingAttachment[];
     strictQueryPriority?: boolean;
-    liveStructureContext?: string;
     flowTraceId?: string;
   }
 ) {
