@@ -268,27 +268,32 @@ try {
 
   recordFlowStep(
     flowTraceId,
+   const finalAnswer = String(loopResult.finalAnswer || "").trim();
+
+if (!finalAnswer) {
+  recordFlowStep(
+    flowTraceId,
     "Final response assembly",
-    "ok",
+    "error",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
-      durationMs: Date.now() - startedAt,
+      detail: "The consensus engine returned an empty final answer.",
       outgoing: {
-        status: "ok",
-        outputChars: String(loopResult.finalAnswer || "").length,
+        status: "error",
+        outputChars: 0,
         achievedAgreement: loopResult.achievedAgreement,
         iterationsRequired: loopResult.iterationsRequired,
-        activeEngineCount:
-          "activeModels" in loopResult && Array.isArray(loopResult.activeModels)
-            ? loopResult.activeModels.length
-            : modelsList.length,
       },
     }
   );
 
-  finishFlowTrace(flowTraceId, "ok");
-  return response;
+  finishFlowTrace(flowTraceId, "error");
+  throw new Error("The consensus engine returned no final answer.");
+}
+
+// Keep the existing response assembly and trace fields below this point.
+// Do not change self-upgrade or trace-card code.
 
   
 } catch (error) {
