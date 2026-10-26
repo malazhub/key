@@ -3761,26 +3761,22 @@ I have audited the entire codebase (\`src/consensusEngine.ts\`, \`src/App.tsx\`,
 
 ---
 
-### 2. Where Key's Structure Is Saved & Live Filesystem APIs
 
-- **Workspace Root on Disk (\`/\` via \`server.ts\` \`__dirname\` & mirrored to \`https://github.com/malazhub/key\`):**
-  - **Browse Folders & File Tree:** \`GET /api/fs/tree\`
-  - **Read Any Source File on Disk:** \`GET /api/fs/read?path=<file>\`
-  - **Modify / Write Any File on Disk:** \`POST /api/fs/write\` (\`{ path, content }\`)
-  - **Execute & Persist Autonomous Self-Upgrade on Disk:** \`POST /api/self-upgrade/execute\`
+### 2. Key's Filesystem and Self-Upgrade Capabilities
+
+Key's filesystem and self-upgrade capabilities must be reported according to verified runtime results. Do not claim that a live disk scan, file read, file write, or self-upgrade has succeeded unless the corresponding operation actually ran and returned a successful result.
 
 ---
 
-### 3. Key's Complete Folder & File Tree (\`5 Folders · 31 Tracked Files\`)
+### 3. Key's Folder and File Tree
 
-\`\`\`text
-${KEY_COMPLETE_FILE_TREE_ASCII}
-\`\`\`
+A complete folder and file tree must be generated from a successful filesystem scan. No hardcoded tree or unverified file count should be presented as the current disk state.
 
 ---
 
-### 4. Interactive Live File-Tree Browser, Code Editor & Disk Self-Upgrade Studio (Open Directly Below)
-Use the **Key Live Structure, Folder/File-Tree Browser & Autonomous Disk Self-Upgrade Studio** embedded directly below to browse all folders and files, read or edit any file on disk, and click **\`⚡ Execute & Persist Self-Upgrade to Disk Now\`**.`;
+### 4. Filesystem Browser and Self-Upgrade Studio
+
+The filesystem browser and self-upgrade workflow must remain available through their existing application modules. Report whether filesystem access or a self-upgrade succeeded only after receiving and checking the actual operation result.
 }
 
 interface CachedSparseVector {
