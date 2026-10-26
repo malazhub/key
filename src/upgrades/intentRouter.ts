@@ -1,4 +1,4 @@
-```ts
+
 // src/upgrades/intentRouter.ts
 
 import { assertDefendedQuery } from "../security/queryGuard";
@@ -51,4 +51,4 @@ export function routeIntent(message: string): Intent {
   // All non-upgrade input follows the normal query path.
   return { type: "question", text };
 }
-```
+
