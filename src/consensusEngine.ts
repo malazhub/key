@@ -5,7 +5,7 @@ import {
 } from "./security/defenderCore";import { recordFlowStep } from "./flowTracer";
 export * from "./upgrades/version8Harness";
 
-type ConvergenceRound = { round: number; similarityScore: number; note: string };
+type ConvergenceRound = { round: number; simfilarityScore: number; note: string };
 import {
   HARNESS_VERSION as V8_HARNESS_VERSION,
   CANARY_TOKEN as V8_CANARY_TOKEN,
@@ -9591,102 +9591,6 @@ export function runMemoryOperatingSystemPipeline(
  * 2) Any Cached / Staged Structure not yet saved to GitHub (`key_self_upgrade_state.json`, `src/selfUpgradeRegistry.json`, `src/mirroredKeyState.json`, and browser localStorage overrides)
  * Never returns a canned answer; instead builds a real-time inspection grounding block for the AI engines.
  */
-export async function inspectLiveKeyStructureAndCachedState(
-  question: string,
-  providedLiveStructureContext?: string
-): Promise<string> {
-  // When server.ts already inspected disk + GitHub blob SHAs + cached files, return immediately without redundant network calls
-  if (providedLiveStructureContext && providedLiveStructureContext.trim().length > 0) {
-    return providedLiveStructureContext.trim();
-  }
-
-  const sections: string[] = [
-    `=== COMPLETE VISUAL ASCII FOLDER & FILE TREE OF KEY WORKSPACE (Root "/" -> https://github.com/malazhub/key) ===\n${KEY_COMPLETE_FILE_TREE_ASCII}`,
-  ];
-
-  // Browser or remote inspection fallback when server did not pre-inject liveStructureContext
-  if (typeof window !== "undefined") {
-    try {
-      const treeRes = await withStrictTimeout(
-        fetch("/api/fs/tree"),
-        3500,
-        "LiveFsTreeFetch"
-      );
-      if (treeRes.ok) {
-        const treeData = await treeRes.json();
-        if (Array.isArray(treeData.files) && treeData.files.length > 0) {
-          const fileSummary = treeData.files
-            .map(
-              (f: { path: string; sizeBytes?: number; lineCount?: number; category?: string }) =>
-                `  - ${f.path} (${f.lineCount || 0} lines, ${f.sizeBytes || 0} bytes — ${f.category || "Source"})`
-            )
-            .join("\n");
-          sections.push(
-            `=== LIVE WORKSPACE FILE TREE (/api/fs/tree -> ${treeData.totalFiles || treeData.files.length} files at ${treeData.rootPath || "/"}) ===\n${fileSummary}`
-          );
-        }
-      }
-    } catch {
-      // Fall through to GitHub API live inspection
-    }
-
-    try {
-      const upgRes = await withStrictTimeout(
-        fetch("/api/self-upgrade-structure"),
-        2500,
-        "LiveCachedUpgradeStateFetch"
-      );
-      if (upgRes.ok) {
-        const upgData = await upgRes.json();
-        sections.push(
-          `=== LIVE CACHED / STAGED SELF-UPGRADE STATE (/api/self-upgrade-structure) ===\n${JSON.stringify(upgData, null, 2)}`
-        );
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const customOverrides = localStorage.getItem("malaz_key_fs_overrides_v1");
-      const localUpgradeReg = localStorage.getItem("malaz_key_self_upgrade_registry_v1");
-      if (customOverrides || localUpgradeReg) {
-        sections.push(
-          `=== BROWSER CACHED / UNPUSHED STRUCTURE OVERRIDES (localStorage) ===\n` +
-            `Custom File Overrides: ${customOverrides || "{}"}\n` +
-            `Cached Self-Upgrade Registry: ${localUpgradeReg || "{}"}`
-        );
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Live GitHub Repository Structure Query (https://github.com/malazhub/key)
-  try {
-    const ghRes = await withStrictTimeout(
-      fetch("https://api.github.com/repos/malazhub/key/git/trees/main?recursive=1", {
-        headers: { Accept: "application/vnd.github.v3+json" },
-      }),
-      3000,
-      "GitHubRepoTreeFetch"
-    );
-    if (ghRes.ok) {
-      const ghData = await ghRes.json();
-      if (Array.isArray(ghData.tree)) {
-        const ghFiles = ghData.tree
-          .filter((item: { type?: string }) => item.type === "blob")
-          .map((item: { path: string; size?: number }) => `  - ${item.path} (${item.size || 0} bytes)`);
-        sections.push(
-          `=== LIVE PERMANENT GITHUB REPOSITORY TREE (https://github.com/malazhub/key @ main — ${ghFiles.length} tracked files, sha=${String(ghData.sha || "").slice(0, 10)}) ===\n${ghFiles.slice(0, 60).join("\n")}`
-        );
-      }
-    }
-  } catch {
-    // ignore GitHub rate-limit or offline state
-  }
-
-  return sections.join("\n\n");
-}
 
 
 
@@ -9884,14 +9788,7 @@ export async function runSmartMemoryConsensusLoop(
   // analytical task) is analyzed live, enriched with real-time structure or
   // conversation memory when relevant, and dispatched directly to the AI engines.
   // ============================================================================
-  const isStructureOrCodebaseInquiry =
-    isCodebaseStructureOrFileTreeQuery(cleanQuestion) ||
-    isSelfUpgradeCapabilityQuestion(cleanQuestion) ||
-    isCodebaseDiagnosticOrLogicGapQuery(cleanQuestion) ||
-    isLogicOrArchitectureQuery(cleanQuestion) ||
-    /\b(structure|file|files|folder|folders|tree|github|malazhub\/key|url|root|store|hosted|link|cached|cashed|saved\s+structure|codebase|source\s+code|server\.ts|consensusEngine|App\.tsx|searchAndEnginePushRouter|where\s+.*\b(saved|stored|hosted))\b/i.test(
-      cleanQuestion
-    );
+  
 
   const isMemoryOrHistoryInquiry =
     isExplicitHistoryRecallTarget ||
@@ -9901,22 +9798,14 @@ export async function runSmartMemoryConsensusLoop(
       cleanQuestion
     );
 
-  const liveStructureGroundingPromise = isStructureOrCodebaseInquiry
-    ? inspectLiveKeyStructureAndCachedState(
-        cleanQuestion,
-        options?.liveStructureContext
-      )
-    : Promise.resolve("");
+  
 
   const groundingPromise =
     attachments.length === 0 && !isGreetingTarget
       ? fetchGoogleSearchGrounding(cleanQuestion)
       : Promise.resolve([] as GroundingSource[]);
 
-  const [liveStructureGrounding, groundingSources] = await Promise.all([
-    liveStructureGroundingPromise,
-    groundingPromise,
-  ]);
+  const groundingSources = await groundingPromise;
     
   const plannerModel =
     getServerEnv("KEY_QUERY_PLANNER_MODEL") ||
@@ -10152,14 +10041,6 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
 2. QUERY ANALYSIS & ROUTING:
    - If the user's query is a greeting or welcome message (e.g., "hi", "hello", "how are you", "how are u doing"): respond naturally, warmly, and concisely as a live AI assistant without dumping unrelated technical boilerplate or past topics.
    - If the user's query asks a strict Yes/No question: begin your response with a direct "Yes" or "No" followed by a clear, accurate live explanation based on the actual state.
-   - If the user's query asks for the root URL where Key's structure is saved, or asks to display Key's structure, folders, or files as a tree: ALWAYS state the exact full https:// root URLs first (never replace a URL with vague labels like "Live Container Disk & Mirrored to GitHub"):
-     1. Live Cloud Container Root URL (Dev): https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-     2. Live Cloud Container Root URL (Shared/Prod): https://ais-pre-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/
-     3. Live Container File-Tree JSON API URL: https://ais-dev-f2uayjdkh47dvk4xbjqlp7-790065884957.europe-west2.run.app/api/fs/tree
-     4. Permanent GitHub Repository Root URL: https://github.com/malazhub/key (Branch Tree: https://github.com/malazhub/key/tree/main)
-     5. Live GitHub Pages Root URL: https://malazhub.github.io/key/
-     Then render the complete hierarchical ASCII folder/file tree (\`├──\`, \`└──\`) inside a fenced code block along with exact file sizes, line counts, and factual comparison from the LIVE INSPECTED KEY STRUCTURE block below.
-   - If the user's query asks to read deeply into Key's structure/logic and find gaps, errors, leaks, or weak logic (e.g., marked with [RED MARKED GAP] and permanent solutions): provide the COMPLETE, itemized multi-section technical audit with every [RED MARKED GAP], exact file/function locations, root cause analysis, and permanent architectural solution written out in full detail.
    - If the user's query refers to the previous/last conversation or asks to revise the previous response (e.g., "revise ur previous and respond", "based on the previous last conversation", "give me a short clear answer"): directly reference and revise/answer based on the IMMEDIATELY PRECEDING CONVERSATION TURN and LIVE SESSION CONVERSATION MEMORY TRANSCRIPT provided below.
 3. FORMATTING:
    - Match the natural clarity and precision of ChatGPT 4o, Claude 3.5 Sonnet, Gemini 2.5, and DeepSeek V3.
@@ -10191,11 +10072,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (ZERO READY-MADE OR PREDEFINED ANSWERS):
     promptSections.push(liveConversationMemoryBlock);
   }
 
-  if (isStructureOrCodebaseInquiry && liveStructureGrounding) {
-    promptSections.push(
-      `=== LIVE INSPECTED KEY STRUCTURE (PERMANENT GITHUB https://github.com/malazhub/key + LIVE WORKSPACE DISK + CACHED/STAGED SELF-UPGRADE STATE) ===\n${liveStructureGrounding}`
-    );
-  }
+ 
 
   if (isEnhancementTarget && lastSavedPair) {
     promptSections.push(
