@@ -28,20 +28,8 @@ export function routeIntent(message: string): Intent {
     };
   }
 
-  // /edit-ui with nothing after it
-  if (/^\/edit-ui\s*$/i.test(text)) {
-    throw new Error("Provide an instruction after /edit-ui.");
-  }
-
-  // /edit-ui <instruction>
-  const uiMatch = text.match(/^\/edit-ui\s+([\s\S]+)$/i);
-  if (uiMatch) {
-    const instruction = uiMatch[1].trim();
-    if (!instruction) {
-      throw new Error("Provide an instruction after /edit-ui.");
-    }
-    return { type: "ui_edit", instruction };
-  }
+  // PURPOSE: Do not divert non-upgrade messages into a separate UI-edit route.
+// Treat /edit-ui and all other non-upgrade input as normal query text.
 
   // /upgrade <instruction> with optional --rounds=N
   const upgradeMatch = text.match(
@@ -59,7 +47,8 @@ export function routeIntent(message: string): Intent {
     return { type: "self_upgrade", instruction, rounds };
   }
 
-  // PURPOSE: Every non-upgrade message follows the normal query pipeline.
-// URLs, GitHub links, file trees, and other topics receive no special routing.
+  // PURPOSE: Route every non-upgrade message as ordinary user input.
+// Do not classify URLs, GitHub repositories, file trees, or UI-edit
+// requests as separate commands.
 return { type: "question", text };
 }
