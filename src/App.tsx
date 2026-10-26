@@ -587,31 +587,242 @@ async function executeBrowserNativeRoute(
     });
   }
 
-  // 4. Live Filesystem & Autonomous Self-Upgrade Fallback Routes (/api/fs/tree, /api/fs/read, /api/fs/write, /api/self-upgrade/execute)
+  
+  // 4. Filesystem fallback routes.
+  // These routes operate only on the browser's local drafts and the
+  // codebase structure registry. They do NOT access the server's disk.
+
   if (cleanPath === "/api/fs/tree" && method === "GET") {
-    let customFiles: Record<string, string> = {};
-    try {
-      customFiles = JSON.parse(localStorage.getItem("malaz_key_fs_overrides_v1") || "{}") || {};
-    } catch {
-      customFiles = {};
+    const registryEntries = Object.values(
+      KEY_CODEBASE_STRUCTURE_REGISTRY
+    );
+
+    const filesByPath = new Map<
+      string,
+      {
+        path: string;
+        category: string;
+        componentOrFunction: string;
+        description: string;
+        sizeBytes: null;
+        lineCount: null;
+        source: string;
+      }
+    >();
+
+    for (const entry of registryEntries) {
+      const paths = entry.filePath
+        .split(/\s*\+\s*/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      for (const filePath of paths) {
+        const existing = filesByPath.get(filePath);
+
+        filesByPath.set(filePath, {
+          path: filePath,
+          category: existing?.category || "Registered source file",
+          componentOrFunction: [
+            existing?.componentOrFunction,
+            entry.componentOrFunction,
+          ]
+            .filter(Boolean)
+            .join(", "),
+          description: [
+            existing?.description,
+            entry.description,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          sizeBytes: null,
+          lineCount: null,
+          source: "codebase-structure-registry",
+        });
+      }
     }
-    const baseFiles = Object.values(KEY_CODEBASE_STRUCTURE_REGISTRY.files || {}).map((f) => {
-      const overrideContent = customFiles[f.path];
-      return {
-        path: f.path,
-        category: f.role || "Key Source File",
-        sizeBytes: typeof overrideContent === "string" ? overrideContent.length : 4096,
-        lineCount: typeof overrideContent === "string" ? overrideContent.split("\n").length : 120,
-      };
-    });
+
+    const files = Array.from(filesByPath.values()).sort((a, b) =>
+      a.path.localeCompare(b.path)
+    );
+
     return createJsonResponse({
       ok: true,
-      rootPath: "/workspace",
+      source: "codebase-structure-registry",
+      diskAccess: false,
+      completeDiskTree: false,
+      message:
+        "This is a registered source-file overview, not a live filesystem scan. " +
+        "Actual disk access requires a connected backend filesystem API.",
+      rootPath: null,
       repoUrl: "https://github.com/malazhub/key",
-      totalFiles: baseFiles.length,
-      asciiTree: baseFiles.map((file) => file.path).join("\n"),
-      registry: KEY_CODEBASE_STRUCTURE_REGISTRY,
-      files: baseFiles,
+      totalFiles: files.length,
+      asciiTree: files.map((file) => file.path).join("\n"),
+      files,
+    });
+  }
+
+  if (cleanPath === "/api/fs/read" && method === "GET") {
+    const queryStr = apiPath.includes("?")
+      ? apiPath.split("?")[1]
+      : "";
+
+    const params = new URLSearchParams(queryStr);
+    const relPath = (params.get("path") || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "");
+
+    if (
+      !relPath ||
+      relPath.split("/").some(
+        (segment) => segment === "." || segment === ".."
+      )
+    ) {
+      return createJsonResponse(
+        {
+          ok: false,
+          error: "A valid relative file path is required.",
+        },
+        400
+      );
+    }
+
+    let customFiles: Record<string, string> = {};
+
+    try {
+      const stored = localStorage.getItem(
+        "malaz_key_fs_overrides_v1"
+      );
+
+      const parsed = stored ? JSON.parse(stored) : {};
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+        customFiles = parsed;
+      }
+    } catch {
+      return createJsonResponse(
+        {
+          ok: false,
+          error: "Unable to read the browser's saved file drafts.",
+        },
+        500
+      );
+    }
+
+    if (typeof customFiles[relPath] !== "string") {
+      return createJsonResponse(
+        {
+          ok: false,
+          path: relPath,
+          diskAccess: false,
+          error:
+            "The real file could not be read: no filesystem backend is connected. " +
+            "This browser fallback can read only drafts previously saved in this browser.",
+        },
+        503
+      );
+    }
+
+    const content = customFiles[relPath];
+
+    return createJsonResponse({
+      ok: true,
+      path: relPath,
+      source: "browser-localStorage-draft",
+      diskAccess: false,
+      sizeBytes: new TextEncoder().encode(content).length,
+      lineCount: content.split("\n").length,
+      content,
+    });
+  }
+
+  if (cleanPath === "/api/fs/write" && method === "POST") {
+    const relPath = String(bodyObj.path || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "");
+
+    const content = bodyObj.content;
+
+    if (
+      !relPath ||
+      relPath.split("/").some(
+        (segment) => segment === "." || segment === ".."
+      ) ||
+      typeof content !== "string"
+    ) {
+      return createJsonResponse(
+        {
+          ok: false,
+          error:
+            "A valid relative path and string content are required.",
+        },
+        400
+      );
+    }
+
+    let customFiles: Record<string, string> = {};
+
+    try {
+      const stored = localStorage.getItem(
+        "malaz_key_fs_overrides_v1"
+      );
+
+      const parsed = stored ? JSON.parse(stored) : {};
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+        customFiles = parsed;
+      }
+
+      customFiles[relPath] = content;
+
+      localStorage.setItem(
+        "malaz_key_fs_overrides_v1",
+        JSON.stringify(customFiles)
+      );
+
+      // Verify that the browser draft was actually saved.
+      const saved = JSON.parse(
+        localStorage.getItem("malaz_key_fs_overrides_v1") || "{}"
+      );
+
+      if (saved[relPath] !== content) {
+        throw new Error("Browser draft read-back verification failed.");
+      }
+    } catch (error) {
+      return createJsonResponse(
+        {
+          ok: false,
+          path: relPath,
+          diskAccess: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to save or verify the browser draft.",
+        },
+        500
+      );
+    }
+
+    return createJsonResponse({
+      ok: true,
+      path: relPath,
+      source: "browser-localStorage-draft",
+      diskAccess: false,
+      persistedToServerDisk: false,
+      sizeBytes: new TextEncoder().encode(content).length,
+      lineCount: content.split("\n").length,
+      updatedAt: new Date().toISOString(),
+      message:
+        "Browser draft saved and verified. The server's filesystem was not modified.",
     });
   }
 
