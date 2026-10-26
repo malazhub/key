@@ -1,6 +1,8 @@
+```ts
 // src/upgrades/intentRouter.ts
 
 import { assertDefendedQuery } from "../security/queryGuard";
+
 export type Intent =
   | { type: "question"; text: string }
   | { type: "self_upgrade"; instruction: string; rounds: number };
@@ -14,7 +16,7 @@ export function routeIntent(message: string): Intent {
   const text = message.trim();
 
   if (!text) {
-    return { type: "chat", text: "" };
+    return { type: "question", text: "" };
   }
 
   // Bare "upgrade", "upgrade!", "/upgrade", or "/upgrade!"
@@ -26,24 +28,27 @@ export function routeIntent(message: string): Intent {
     };
   }
 
-  // PURPOSE: Do not divert non-upgrade messages into a separate UI-edit route.
-// Treat /edit-ui and all other non-upgrade input as normal query text.
-
   // /upgrade <instruction> with optional --rounds=N
   const upgradeMatch = text.match(
     /^\/upgrade(?:\s+--rounds=(\d+))?\s+([\s\S]+)$/i
   );
+
   if (upgradeMatch) {
     const rounds = upgradeMatch[1] ? Number(upgradeMatch[1]) : 1;
     const instruction = upgradeMatch[2].trim();
+
     if (!Number.isInteger(rounds) || rounds < 1 || rounds > 50) {
       throw new Error("Upgrade rounds must be between 1 and 50.");
     }
+
     if (!instruction) {
       throw new Error("Provide an instruction after /upgrade.");
     }
+
     return { type: "self_upgrade", instruction, rounds };
   }
 
-   return { type: "question", text };
+  // All non-upgrade input follows the normal query path.
+  return { type: "question", text };
 }
+```
