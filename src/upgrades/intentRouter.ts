@@ -3,8 +3,6 @@
 import { assertDefendedQuery } from "../security/queryGuard";
 export type Intent =
   | { type: "question"; text: string }
-  | { type: "chat"; text: string }
-  | { type: "ui_edit"; instruction: string }
   | { type: "self_upgrade"; instruction: string; rounds: number };
 
 const DEFAULT_UPGRADE_INSTRUCTION =
@@ -47,8 +45,5 @@ export function routeIntent(message: string): Intent {
     return { type: "self_upgrade", instruction, rounds };
   }
 
-  // PURPOSE: Route every non-upgrade message as ordinary user input.
-// Do not classify URLs, GitHub repositories, file trees, or UI-edit
-// requests as separate commands.
-return { type: "question", text };
+   return { type: "question", text };
 }
