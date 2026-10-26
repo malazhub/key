@@ -153,6 +153,153 @@ export function buildEngineQueryPayload(
  * using parallel hedged model execution (`gemini-flash-lite-latest`, `gemini-3-flash-preview`, etc.)
  * until reaching the target consensus threshold (>= targetAgreement%).
  */
+function extractGitHubRepo(
+  input: string
+): { owner: string; repo: string } | null {
+  const normalized = input.replace(/\\/g, "/");
+
+  const match = normalized.match(
+    /(?:https?:\/\/)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/
+  );
+
+  if (!match) return null;
+
+  return {
+    owner: match[1],
+    repo: match[2].replace(/\.git$/i, ""),
+  };
+}
+
+function wantsArchitectureTree(input: string): boolean {
+  return /\b(tree|directory|directories|folder|folders|structure|architecture|file layout)\b/i.test(
+    input
+  );
+}
+
+async function getVerifiedArchitectureTree(
+  question: string
+): Promise<{
+  answer: string;
+  repositoryEvidence: {
+    repository: string;
+    defaultBranch: string;
+    commitSha: string;
+    fileCount: number;
+  };
+} | null> {
+  if (!wantsArchitectureTree(question)) return null;
+
+  const repo = extractGitHubRepo(question);
+  if (!repo) return null;
+
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+  };
+
+  // Optional: set GITHUB_TOKEN in the server environment to avoid
+  // unauthenticated API rate limits.
+  if (process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+
+  const baseUrl =
+    `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}`;
+
+  const repoResponse = await fetch(baseUrl, { headers });
+
+  if (!repoResponse.ok) {
+    throw new Error(
+      `GitHub repository lookup failed: HTTP ${repoResponse.status}`
+    );
+  }
+
+  const repoData = await repoResponse.json();
+
+  const defaultBranch = String(repoData.default_branch || "");
+  if (!defaultBranch) {
+    throw new Error("GitHub did not return a default branch.");
+  }
+
+  const branchResponse = await fetch(
+    `${baseUrl}/branches/${encodeURIComponent(defaultBranch)}`,
+    { headers }
+  );
+
+  if (!branchResponse.ok) {
+    throw new Error(
+      `GitHub branch lookup failed: HTTP ${branchResponse.status}`
+    );
+  }
+
+  const branchData = await branchResponse.json();
+  const commitSha = String(branchData.commit?.sha || "");
+
+  if (!commitSha) {
+    throw new Error("GitHub did not return the branch commit SHA.");
+  }
+
+  const treeResponse = await fetch(
+    `${baseUrl}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`,
+    { headers }
+  );
+
+  if (!treeResponse.ok) {
+    throw new Error(
+      `GitHub tree lookup failed: HTTP ${treeResponse.status}`
+    );
+  }
+
+  const treeData = await treeResponse.json();
+
+  // Never claim a complete tree if GitHub says it was truncated.
+  if (treeData.truncated === true) {
+    throw new Error(
+      "GitHub returned a truncated tree; refusing to claim completeness."
+    );
+  }
+
+  if (!Array.isArray(treeData.tree)) {
+    throw new Error("GitHub returned an invalid tree response.");
+  }
+
+  const paths: string[] = treeData.tree
+    .filter(
+      (entry: { type?: string; path?: string }) =>
+        entry.type === "blob" && typeof entry.path === "string"
+    )
+    .map((entry: { path: string }) => entry.path)
+    .sort((a: string, b: string) => a.localeCompare(b));
+
+  const lines = [
+    `${repo.owner}/${repo.repo}`,
+    `Branch: ${defaultBranch}`,
+    `Commit: ${commitSha}`,
+    "",
+    ...paths.map((path: string) => `  ${path}`),
+  ];
+
+  return {
+    answer: [
+      `## Repository tree: ${repo.owner}/${repo.repo}`,
+      "",
+      `- Default branch: \`${defaultBranch}\``,
+      `- Commit: \`${commitSha}\``,
+      `- Files returned by GitHub: ${paths.length}`,
+      "",
+      "```text",
+      ...lines,
+      "```",
+      "",
+      `Source: https://github.com/${repo.owner}/${repo.repo}/tree/${commitSha}`,
+    ].join("\n"),
+    repositoryEvidence: {
+      repository: `${repo.owner}/${repo.repo}`,
+      defaultBranch,
+      commitSha,
+      fileCount: paths.length,
+    },
+  };
+}
 export async function pushQueryToEnginesAndConverge(
   request: SearchAndEnginePushRequest
 ): Promise<Record<string, any>> {
@@ -185,7 +332,38 @@ try {
   );
 
   assertDefendedQuery(effectiveQuestion);
+  const architectureResult =
+    await getVerifiedArchitectureTree(effectiveQuestion);
 
+  if (architectureResult) {
+    recordFlowStep(
+      flowTraceId,
+      "GitHub repository tree fetched",
+      "ok",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "pushQueryToEnginesAndConverge",
+        outgoing: architectureResult.repositoryEvidence,
+      }
+    );
+
+    finishFlowTrace(flowTraceId, "ok");
+
+    return {
+      finalAnswer: architectureResult.answer,
+      answer: architectureResult.answer,
+      achievedAgreement: 0,
+      iterationsRequired: 0,
+      activeModels: [],
+      nodeContributions: [],
+      webSearchSources: [],
+      repositoryEvidence: architectureResult.repositoryEvidence,
+      verification: {
+        passed: true,
+        method: "GitHub API tree and commit SHA",
+      },
+    };
+  }
   recordFlowStep(
     flowTraceId,
     "Query validation",
