@@ -39,7 +39,6 @@ export interface SearchAndEnginePushRequest {
   adminUpgradeMode?: boolean;
   nextVersionTag?: string;
   attachments?: IncomingAttachment[];
-  liveStructureContext?: string;
 }
 
 export interface SearchAndEnginePushResult {
@@ -255,7 +254,6 @@ try {
       nextVersionTag: request.nextVersionTag || "key",
       attachments: request.attachments || [],
       strictQueryPriority: request.strictQueryPriority,
-      liveStructureContext: request.liveStructureContext,
       flowTraceId,
     }
   );
