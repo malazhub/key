@@ -610,7 +610,7 @@ async function executeBrowserNativeRoute(
       rootPath: "/workspace",
       repoUrl: "https://github.com/malazhub/key",
       totalFiles: baseFiles.length,
-      asciiTree: KEY_COMPLETE_FILE_TREE_ASCII,
+      asciiTree: baseFiles.map((file) => file.path).join("\n"),
       registry: KEY_CODEBASE_STRUCTURE_REGISTRY,
       files: baseFiles,
     });
@@ -1074,12 +1074,7 @@ function enrichAndRepairAssistantMessage(
     !isHistoryRecallOrMemoryDiagMsg &&
     !isConversationalInquiryMsg &&
     isSelfUpgradeCapabilityQuestion(rawUserAsk);
-  const isStructureOrFileTreeMsg =
-    !isGreetingMsg &&
-    !isStrictYesNoMsg &&
-    !isHistoryRecallOrMemoryDiagMsg &&
-    !isConversationalInquiryMsg &&
-    isCodebaseStructureOrFileTreeQuery(rawUserAsk);
+  
   const isDirectSelfModAsk =
     !isGreetingMsg &&
     !isStrictYesNoMsg &&
@@ -1092,14 +1087,14 @@ function enrichAndRepairAssistantMessage(
     !isConversationalInquiryMsg &&
     !isDirectSelfModAsk &&
     !isCapabilityQuestionMsg &&
-    !isStructureOrFileTreeMsg &&
+    
     isTopicIsolationOrComplaintQuery(rawUserAsk);
   const isNoAppOrLogicMsg =
     !isGreetingMsg &&
     !isHistoryRecallOrMemoryDiagMsg &&
     !isDirectSelfModAsk &&
     !isCapabilityQuestionMsg &&
-    !isStructureOrFileTreeMsg &&
+    
     (isConversationalInquiryMsg ||
       hasExplicitNoApplicationDirective(rawUserAsk) ||
       isLogicOrArchitectureQuery(rawUserAsk));
@@ -1169,14 +1164,13 @@ function enrichAndRepairAssistantMessage(
           userQuery: q,
           agreedAnswer: "",
         }));
-      hasAppPreview = true;
-      appTitle =
-        appTitle ||
-        "Key Continuous Multi-Turn Memory Engine & Live Working Memory Ledger Studio (30-Turn Rolling Context Window)";
-      if (!generatedAppHtml) {
-        generatedAppHtml =
-          buildKeyConversationMemoryInspectorPortalHtml(priorPairs);
-      }
+       hasAppPreview = Boolean(
+    generatedAppHtml && generatedAppHtml.trim().length > 0
+  );
+  if (!hasAppPreview) {
+    appTitle = "";
+    generatedAppHtml = "";
+  }
     } else {
       hasAppPreview = false;
       appTitle = "";
