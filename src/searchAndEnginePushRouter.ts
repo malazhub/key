@@ -331,48 +331,64 @@ try {
     }
   );
 
-  assertDefendedQuery(effectiveQuestion);
+ 
+assertDefendedQuery(effectiveQuestion);
+
+if (wantsArchitectureTree(effectiveQuestion)) {
+  if (!extractGitHubRepo(effectiveQuestion)) {
+    throw new Error(
+      "A valid GitHub repository URL is required."
+    );
+  }
+
   const architectureResult =
     await getVerifiedArchitectureTree(effectiveQuestion);
 
-  if (architectureResult) {
-    recordFlowStep(
-      flowTraceId,
-      "GitHub repository tree fetched",
-      "ok",
-      {
-        sourceFile: "src/searchAndEnginePushRouter.ts",
-        sourceFunction: "pushQueryToEnginesAndConverge",
-        outgoing: architectureResult.repositoryEvidence,
-      }
+  if (!architectureResult) {
+    throw new Error(
+      "GitHub verification failed. Refusing to invent repository architecture."
     );
-
-    finishFlowTrace(flowTraceId, "ok");
-
-    return {
-      finalAnswer: architectureResult.answer,
-      answer: architectureResult.answer,
-      achievedAgreement: 0,
-      iterationsRequired: 0,
-      activeModels: [],
-      nodeContributions: [],
-      webSearchSources: [],
-      repositoryEvidence: architectureResult.repositoryEvidence,
-      verification: {
-        passed: true,
-        method: "GitHub API tree and commit SHA",
-      },
-    };
   }
+
   recordFlowStep(
     flowTraceId,
-    "Query validation",
+    "GitHub repository tree fetched",
     "ok",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
+      outgoing: architectureResult.repositoryEvidence,
     }
   );
+
+  finishFlowTrace(flowTraceId, "ok");
+
+  return {
+    finalAnswer: architectureResult.answer,
+    answer: architectureResult.answer,
+    achievedAgreement: 0,
+    iterationsRequired: 0,
+    activeModels: [],
+    nodeContributions: [],
+    webSearchSources: [],
+    repositoryEvidence: architectureResult.repositoryEvidence,
+    verification: {
+      passed: true,
+      method: "GitHub API tree and commit SHA",
+    },
+  };
+}
+
+recordFlowStep(
+  flowTraceId,
+  "Query validation",
+  "ok",
+  {
+    sourceFile: "src/searchAndEnginePushRouter.ts",
+    sourceFunction: "pushQueryToEnginesAndConverge",
+  }
+);
+
 
   const modelsList = Array.isArray(request.activeModels)
     ? request.activeModels
