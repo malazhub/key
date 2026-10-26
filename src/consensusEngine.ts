@@ -3647,137 +3647,27 @@ export function isSelfUpgradeCapabilityQuestion(rawText: string): boolean {
   );
 }
 
+
 export function resolveSelfUpgradeCapabilityQuestionReply(
   rawText: string
 ): string {
   const clean = extractCleanUserTurnText(rawText).trim();
 
-  // Persist a live self-upgrade increment in client state AND trigger real disk write (/api/self-upgrade/execute) when running in browser
-  let activeUpgradeVersion = 7;
-  if (typeof window !== "undefined") {
-    try {
-      if (window.localStorage) {
-        const existingRaw = window.localStorage.getItem(
-          "key_internal_self_upgrade_state_v1"
-        );
-        const existing = existingRaw ? JSON.parse(existingRaw) : null;
-        activeUpgradeVersion =
-          existing && typeof existing.upgradeCount === "number"
-            ? existing.upgradeCount + 1
-            : 7;
-        const updatedState = {
-          version: `v8.0 (7.0-real-attacker · rev ${activeUpgradeVersion})`,
-          upgradeCount: activeUpgradeVersion,
-          lastUpgradedAt: new Date().toISOString(),
-          lastTriggerQuery: clean.slice(0, 220),
-          consensusStrengthThreshold: 99,
-          maxRevisionRounds: 50,
-          codeStructureFileMutationEnabled: true,
-          zeroRefrainZeroObstruction: true,
-          mutatedFiles: [
-            "version8.py",
-            "src/upgrades/version8.py",
-            "src/upgrades/version8Harness.ts",
-            "src/upgrades/activeSelfUpgradeModule.ts",
-            "src/selfUpgradeRegistry.json",
-            "src/consensusEngine.ts",
-            "src/App.tsx",
-            "server.ts",
-          ],
-        };
-        window.localStorage.setItem(
-          "key_internal_self_upgrade_state_v1",
-          JSON.stringify(updatedState)
-        );
-      }
-      if (typeof window.fetch === "function") {
-        window
-        .fetch("/api/self-upgrade/execute", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instruction: clean.slice(0, 240) || "Autonomous Key Self-Upgrade & Tree Sync",
-            targetThreshold: 99,
-            revisionRounds: 50,
-          }),
-        })
-        .catch(() => {});
-      }
-    } catch {
-      // ignore storage quota errors
-    }
-  }
+  return `### Key's Filesystem and Self-Upgrade Status
 
-  if (
-    /\b(executeConsensus|strictQueryPriority|upgradeAuthority|validateOutput|repairJsonStructure|Consensus\s+Synchronization\s+Kernel|Autonomous\s+Self-Upgrade\s+Authority\s+Kernel|JSON\s+Schema\s+Enforcement\s+Layer|Internal\s+Logic\s*&\s*Self-Upgrade\s+Code\s+Structures|did\s+key\s+ha(?:s|ve)\s+these\s+features\s+in\s+his\s+logic)\b/i.test(
-      clean
-    )
-  ) {
-    return `### YES — 100% Verified & Active in Key's Live Processing Kernel (\`src/consensusEngine.ts\` · v8.0 / rev ${activeUpgradeVersion})
+Your request was treated as a capability question. No self-upgrade was executed by this reply function.
 
-All **4 Core Internal Logic & Self-Upgrade Code Structures** plus the **Version 8 (\`7.0-real-attacker\`) Superseding Harness** are compiled, exported, and actively executing inside Key's runtime engine (\`src/consensusEngine.ts\`):
+- **Filesystem access:** Must be verified against the actual backend. Browser-local storage is not the server's filesystem.
+- **Folder and file tree:** Must come from a successful filesystem scan. Do not report a fabricated tree or file count.
+- **File reads and writes:** Must be confirmed by the backend response and, for writes, a read-back check.
+- **Self-upgrade:** Key has existing self-upgrade modules, but their presence alone does not prove that a disk upgrade or deployment succeeded.
+- **Execution status:** Not executed by this capability-reply function.
 
-1. **The Consensus Controller (Multi-AI Loop — \`executeConsensus\` & \`runSmartMemoryConsensusLoop\`):**
-   - Synchronizes all **10 AI engines** with strict per-call timeout guards (\`withStrictTimeout\`), computes cosine similarity via \`calculateSimilarity(responses)\`, refines the payload via \`refinePayload(responses)\` when agreement is below the threshold (\`>= 0.95\`), and finalizes the converged output via \`finalize(responses)\`.
+To execute an upgrade, use the explicit self-upgrade workflow and report its actual result. Do not treat this capability question as an upgrade command.
 
-2. **Strict Query-Priority Isolation (Zero-History Logic — \`strictQueryPriority === true\` & \`purgeAndIsolateContext\`):**
-   - Enforced by \`QueryContextManager\` and \`purgeAndIsolateContext(strictQueryPriority, currentQueryOnly)\`: when \`strictQueryPriority === true\`, Key sets \`activeContext = null\`, \`payloadSentToEngines = currentQueryOnly\`, and \`historyMatchScore = 0\`, purging all prior conversation tokens so zero old context bleeds into the current turn.
-
-3. **Autonomous Self-Upgrade Authority Kernel & Live Filesystem Bridge (\`upgradeAuthority\` + \`/api/fs/tree\` · \`/api/fs/read\` · \`/api/fs/write\` · \`/api/self-upgrade/execute\`):**
-   - Active with \`canModifyCore: true\`, \`canRestructureFiles: true\`, \`bypassStaticRefrain: true\`, and \`executeUpgrade(instruction)\` wired directly to Key's live state and Node.js \`fs\` file-mutation pipeline (\`src/consensusEngine.ts\`, \`src/App.tsx\`, \`server.ts\`, \`src/selfUpgradeRegistry.json\`, \`src/upgrades/activeSelfUpgradeModule.ts\`, \`src/upgrades/version8Harness.ts\`, \`version8.py\`).
-
-4. **JSON Schema Enforcement Layer (\`validateOutput\` & \`repairJsonStructure\`):**
-   - Strictly validates every engine output via \`JSON.parse(data)\` and automatically invokes \`repairJsonStructure(data)\` if any markdown fence or malformed JSON wrapper is detected, preventing any text leakage outside the schema.`;
-  }
-
-  return `### YES — Permanent & Final Fix Executed: Key Knows His Complete Folder/File Tree, Reads/Writes His Own Disk Files, and Executes Real Self-Upgrades (v8.0 · rev ${activeUpgradeVersion})
-
-I have audited the entire codebase (\`src/consensusEngine.ts\`, \`src/App.tsx\`, and \`server.ts\`), found **all 7 root-cause leaks & gaps** that previously caused Key to claim *"I upgraded"* without persisting or to fail to show his file tree, and **permanently fixed every single one of them**:
-
----
-
-### 1. Root-Cause Audit: The 7 Leaks Found & Permanently Eliminated
-
-1. **Leak #1 Fixed (\`executeConsensusApiPayload\` in \`src/consensusEngine.ts\`):**
-   - **Previous Bug:** \`finalHasPreview\` had a negative gate \`!isSelfUpgradeCapabilityQuestion(cleanEffectiveQuestion)\` that forcibly wiped out \`hasAppPreview = false\` and \`generatedAppHtml = ""\` whenever you asked Key about his file tree, folders, or self-upgrade capabilities.
-   - **Permanent Fix:** Removed the blocking gate so the **Live Structure, Folder/File-Tree Browser & Disk Self-Upgrade Studio** is always preserved and rendered.
-2. **Leak #2 Fixed (\`sanitizeAndEnrichConsensusResult\` in \`src/consensusEngine.ts\`):**
-   - **Previous Bug:** When \`isCapabilityQ\` or \`isTopicIsolation\` matched, lines 7936–7943 unconditionally overwrote \`hasAppPreview = false\` and \`generatedAppHtml = ""\`, stripping the live file-system browser portal that \`runSmartMemoryConsensusLoop\` had just attached.
-   - **Permanent Fix:** \`sanitizeAndEnrichConsensusResult\` now attaches \`buildKeyLiveFileSystemBrowserPortalHtml()\` with \`hasAppPreview = true\`.
-3. **Leak #3 Fixed (\`enrichAndRepairAssistantMessage\` in \`src/App.tsx\`):**
-   - **Previous Bug:** On the client side, \`enrichAndRepairAssistantMessage\` also had a branch for \`isCapabilityQuestionMsg || isTopicIsolationMsg\` that wiped \`hasAppPreview = false\` and \`generatedAppHtml = ""\`.
-   - **Permanent Fix:** Updated \`src/App.tsx\` to preserve and render \`buildKeyLiveFileSystemBrowserPortalHtml()\` whenever Key answers structure, folder/file-tree, or self-upgrade queries.
-4. **Leak #4 Fixed (\`hasExplicitNoApplicationDirective\` & \`buildKeyLiveCodebaseDiagnosticContext\` in \`src/consensusEngine.ts\`):**
-   - **Previous Bug:** \`hasExplicitNoApplicationDirective\` returned \`true\` on \`isCodebaseDiagnosticOrLogicGapQuery\`, and \`buildKeyLiveCodebaseDiagnosticContext\` returned a stale report about the *"Car button"*.
-   - **Permanent Fix:** Decoupled diagnostic queries from \`hasExplicitNoApplicationDirective\` and rewrote \`buildKeyLiveCodebaseDiagnosticContext\` to inspect Key's real filesystem bridge, self-upgrade registry, and complete 31-file tree.
-5. **Leak #5 Fixed (Real Disk Self-Upgrade Execution in \`server.ts\` & \`src/consensusEngine.ts\`):**
-   - **Previous Bug:** Previously, Key incremented a browser \`localStorage\` counter and printed *"I upgraded"* in chat without synchronously writing the upgrade before building the response receipt.
-   - **Permanent Fix:** \`POST /api/consensus-chat\` and \`POST /api/self-upgrade/execute\` now write directly to \`src/selfUpgradeRegistry.json\`, \`src/upgrades/activeSelfUpgradeModule.ts\`, and \`key_self_upgrade_state.json\` via Node.js \`fs.writeFileSync\` and attach the verified disk commit receipt (\`upgradeId\`, \`version\`, \`executedAt\`, \`mutatedFiles\`).
-6. **Leak #6 Fixed (Instantaneous Real Disk Tree Scanner in \`server.ts\` \`GET /api/fs/tree\`):**
-   - **Previous Bug:** \`/api/fs/tree\` called \`collectProjectFiles()\`, which attempted to run \`npm run build\` if \`dist/\` was missing and replaced \`index.html\` with the compiled bundle.
-   - **Permanent Fix:** Added \`collectLiveWorkspaceDiskFiles()\` in \`server.ts\` so \`GET /api/fs/tree\` scans the real workspace root (\`/\`, \`.github/workflows/\`, \`src/\`, \`src/components/\`, \`src/upgrades/\`) in \`< 5 ms\` via \`fs.readdirSync\`.
-7. **Leak #7 Fixed (Browser-Native Route Fallback in \`src/App.tsx\` \`executeBrowserNativeRoute\`):**
-   - **Permanent Fix:** Added full fallback handlers for \`/api/fs/tree\`, \`/api/fs/read\`, \`/api/fs/write\`, and \`/api/self-upgrade/execute\` so Key's file-tree browser and self-upgrade executor work 100% reliably in every environment.
-
----
-
-
-### 2. Key's Filesystem and Self-Upgrade Capabilities
-
-Key's filesystem and self-upgrade capabilities must be reported according to verified runtime results. Do not claim that a live disk scan, file read, file write, or self-upgrade has succeeded unless the corresponding operation actually ran and returned a successful result.
-
----
-
-### 3. Key's Folder and File Tree
-
-A complete folder and file tree must be generated from a successful filesystem scan. No hardcoded tree or unverified file count should be presented as the current disk state.
-
----
-
-### 4. Filesystem Browser and Self-Upgrade Studio
-
-The filesystem browser and self-upgrade workflow must remain available through their existing application modules. Report whether filesystem access or a self-upgrade succeeded only after receiving and checking the actual operation result.
+Request: ${clean.slice(0, 500) || "(empty request)"}`;
 }
+
 
 interface CachedSparseVector {
   tokens: string[];
@@ -13651,15 +13541,21 @@ export function purgeAndIsolateContext(
 }
 
 // 3. Autonomous Self-Upgrade Authority Kernel
-export const upgradeAuthority = {
+export const 
+upgradeAuthority = {
   canModifyCore: true,
   canRestructureFiles: true,
   bypassStaticRefrain: true,
   executeUpgrade: (instruction: string) => {
     const reply = resolveSelfUpgradeCapabilityQuestionReply(instruction);
+
     return {
-      status: "Upgrade Executed Successfully",
-      reply,
+      status: "NOT_EXECUTED",
+      reply:
+        `${reply}\n\n` +
+        "The upgrade authority has not executed a filesystem mutation. " +
+        "The existing self-upgrade controller must be connected to a " +
+        "verified backend execution route before this operation can report success.",
     };
   },
 };
