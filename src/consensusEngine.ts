@@ -9621,27 +9621,66 @@ export async function runSmartMemoryConsensusLoop(
     getOrderedCandidateModels()[0] ||
     "gemini-2.5-flash";
 
-    const plannerModelInvoker = async (
+   
+  const plannerModelInvoker = async (
     plannerPrompt: string
   ): Promise<unknown> => {
     // Gate every planner request before it reaches Gemini.
     assertDefendedQuery(plannerPrompt);
 
-    const plannerResponse = await withStrictTimeout(
-      ai.models.generateContent({
-        model: plannerModel,
-        contents: plannerPrompt,
-        config: {
-          temperature: 0,
-          responseMimeType: "application/json",
-        },
-      }),
-      10_000,
-      "QueryExecutionPlanner"
-    );
+    const maxAttempts = 3;
 
-    return plannerResponse;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await withStrictTimeout(
+          ai.models.generateContent({
+            model: plannerModel,
+            contents: plannerPrompt,
+            config: {
+              temperature: 0,
+              responseMimeType: "application/json",
+            },
+          }),
+          10_000,
+          "QueryExecutionPlanner"
+        );
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : (() => {
+                try {
+                  return JSON.stringify(error);
+                } catch {
+                  return String(error);
+                }
+              })();
+
+        const isTransient =
+          /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|rate.?limit|quota|timed? ?out|timeout|ECONNRESET|ETIMEDOUT/i.test(
+            message
+          );
+
+        if (!isTransient || attempt === maxAttempts) {
+          throw error;
+        }
+
+        const delayMs = attempt * 500;
+
+        console.warn(
+          `[QueryExecutionPlanner] transient error, attempt ${attempt}/${maxAttempts}; retrying in ${delayMs}ms`,
+          message
+        );
+
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, delayMs)
+        );
+      }
+    }
+
+    throw new Error("QueryExecutionPlanner failed after retries");
   };
+
 
     const queryExecutionPlan = await buildQueryExecutionPlan(
     cleanQuestion,
