@@ -70,7 +70,6 @@ import {
   isLegacyStaticBrainRefusalText,
   resolveSelfUpgradeCapabilityQuestionReply,
   buildKeyLiveFileSystemBrowserPortalHtml,
-  KEY_COMPLETE_FILE_TREE_ASCII,
   KEY_CODEBASE_STRUCTURE_REGISTRY,
   isFramework2026SecurityTaxonomyUpgradeQuery,
   isPassiveReportTranslationReply,
@@ -4089,7 +4088,6 @@ const data = await res.json();
       !isConversationMemoryDiagnosticOrUpgradeQuery(queryText) &&
       !isExplicitHistoryRetrievalOrRecallRequest(queryText) &&
       (isKeySelfModificationRequest(queryText) ||
-        isCodebaseStructureOrFileTreeQuery(queryText) ||
         isSelfUpgradeCapabilityQuestion(queryText));
 
     const hasNoAppOrLogicGuardInClient =
