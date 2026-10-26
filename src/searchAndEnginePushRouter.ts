@@ -258,7 +258,7 @@ try {
     }
   );
 
-  const response = executeConsensusApiPayload(
+   const response = executeConsensusApiPayload(
     loopResult,
     effectiveQuestion,
     modelsList,
@@ -266,36 +266,52 @@ try {
     null
   );
 
-  recordFlowStep(
-    flowTraceId,
-   const finalAnswer = String(loopResult.finalAnswer || "").trim();
+  const finalAnswer = String(loopResult.finalAnswer || "").trim();
 
-if (!finalAnswer) {
+  if (!finalAnswer) {
+    recordFlowStep(
+      flowTraceId,
+      "Final response assembly",
+      "error",
+      {
+        sourceFile: "src/searchAndEnginePushRouter.ts",
+        sourceFunction: "pushQueryToEnginesAndConverge",
+        durationMs: Date.now() - startedAt,
+        detail: "The consensus loop returned an empty final answer.",
+        outgoing: {
+          status: "error",
+          outputChars: 0,
+          achievedAgreement: loopResult.achievedAgreement,
+          iterationsRequired: loopResult.iterationsRequired,
+        },
+      }
+    );
+
+    throw new Error(
+      "The consensus engine returned no final answer."
+    );
+  }
+
   recordFlowStep(
     flowTraceId,
     "Final response assembly",
-    "error",
+    "ok",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
-      detail: "The consensus engine returned an empty final answer.",
+      durationMs: Date.now() - startedAt,
       outgoing: {
-        status: "error",
-        outputChars: 0,
+        status: "ok",
+        outputChars: finalAnswer.length,
         achievedAgreement: loopResult.achievedAgreement,
         iterationsRequired: loopResult.iterationsRequired,
+        activeEngineCount: modelsList.length,
       },
     }
   );
 
-  finishFlowTrace(flowTraceId, "error");
-  throw new Error("The consensus engine returned no final answer.");
-}
-
-// Keep the existing response assembly and trace fields below this point.
-// Do not change self-upgrade or trace-card code.
-
-  
+  finishFlowTrace(flowTraceId, "ok");
+  return response;
 } catch (error) {
   recordFlowStep(
     flowTraceId,
