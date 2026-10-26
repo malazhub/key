@@ -7924,13 +7924,7 @@ export async function fetchGoogleSearchGrounding(
   return [];
 }
 
-export function buildKeyLiveCodebaseDiagnosticContext(
-  rawQuestion: string,
-  windowPairs: SavedQAPair[],
-  modelsList: string[],
-  achievedScore: number
-): {
-  promptInjectionBlock: string;
+
 
 
 export function resolveConversationalFlowExplanation(
