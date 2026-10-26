@@ -1183,15 +1183,7 @@ function enrichAndRepairAssistantMessage(
     if (!generatedAppHtml) {
       generatedAppHtml = buildFramework2026SelfUpgradedPortalHtml();
     }
-  } else if (isCapabilityQuestionMsg || isStructureOrFileTreeMsg) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "Key Live Structure, Folder/File-Tree Browser & Disk Self-Upgrade Studio (/api/fs/tree · /api/fs/read · /api/fs/write · /api/self-upgrade/execute)";
-    if (!generatedAppHtml) {
-      generatedAppHtml = buildKeyLiveFileSystemBrowserPortalHtml();
-    }
-      } else if (isSelfModMessage) {
+    } else if (isSelfModMessage) {
     const spec = parseKeySelfModificationSpec(rawUserAsk, selfModContextText);
     hasAppPreview = true;
     appTitle = appTitle || spec.summaryTitle;
