@@ -7931,23 +7931,7 @@ export function buildKeyLiveCodebaseDiagnosticContext(
   achievedScore: number
 ): {
   promptInjectionBlock: string;
-  engineerDiagnosticMarkdown: string;
-} {
-  const cleanQ = extractCleanUserTurnText(rawQuestion);
-  const engineerDiagnosticMarkdown = resolveSelfUpgradeCapabilityQuestionReply(
-    cleanQ
-  );
-  const promptInjectionBlock = `
-=== LIVE KEY SOURCE-CODE, FILE-TREE & SELF-UPGRADE EXECUTION CONTEXT (${achievedScore}% CONSENSUS ACROSS ${modelsList.length} ENGINES) ===
-You have direct read/write access to Key's live codebase on disk via Node.js \`fs\` endpoints (\`/api/fs/tree\`, \`/api/fs/read\`, \`/api/fs/write\`, \`/api/self-upgrade/execute\`).
-Complete Workspace File Tree:
-${KEY_COMPLETE_FILE_TREE_ASCII}
-`;
-  return {
-    promptInjectionBlock,
-    engineerDiagnosticMarkdown,
-  };
-}
+
 
 export function resolveConversationalFlowExplanation(
   rawQuery: string,
@@ -8059,14 +8043,7 @@ export function buildDeepAnalyticalResilientSynthesis(
   ) {
     return resolveConversationalFlowExplanation(rawCleanQ, windowPairs);
   }
-  if (isCodebaseDiagnosticOrLogicGapQuery(rawCleanQ)) {
-    return buildKeyLiveCodebaseDiagnosticContext(
-      rawCleanQ,
-      windowPairs,
-      modelsList,
-      achievedScore
-    ).engineerDiagnosticMarkdown;
-  }
+  
   if (
     isSelfUpgradeCapabilityQuestion(cleanQ) ||
     isTopicIsolationOrComplaintQuery(cleanQ)
@@ -9822,26 +9799,7 @@ const plannerCandidates: AdaptiveCandidate[] = [
   })),
 ];
 
-if (liveStructureGrounding.trim()) {
-  plannerCandidates.push({
-    id: "live-structure-grounding",
-    source: "live_structure",
-    title: "Live inspected Key structure",
-    content: liveStructureGrounding,
-    channelScores: {
-      semantic: 0.7,
-      bm25: 0.7,
-      entity: 0.7,
-      temporal: 0.7,
-      exactReference: 0.7,
-    },
-    score: 0.7,
-    isCurrentState: true,
-    metadata: {
-      provenance: "inspectLiveKeyStructureAndCachedState",
-    },
-  });
-}
+
 
 for (const attachment of attachments) {
   if (attachment.textContent?.trim()) {
@@ -9951,8 +9909,7 @@ if (flowTraceId) {
       outgoing: {
         queryPlanBuilt: Boolean(queryExecutionPlan),
         groundingSourceCount: groundingSources.length,
-        liveStructureContextUsed:
-          Boolean(liveStructureGrounding.trim()),
+        
         plannerCandidateCount: plannerCandidates.length,
         selectedEvidenceCount:
           adaptiveRetrievalResult.selected.length,
