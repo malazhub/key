@@ -60,9 +60,15 @@ export function routeIntent(message: string): Intent {
   }
 
   const isQuestion =
-    /^(how|what|why|when|where|who|which|can|does|is|are|explain|tell me)\b/i.test(
-      text
-    ) || text.endsWith("?");
+  /^(how|what|why|when|where|who|which|can|does|is|are|explain|tell me)\b/i.test(
+    text
+  ) || text.endsWith("?");
 
-  return isQuestion ? { type: "question", text } : { type: "chat", text };
+const isRepositoryInspectionRequest =
+  /https?:\/\/github\.com\/[^/\s]+\/[^/\s?#]+/i.test(text) &&
+  /\b(tree|structure|files|folders|architecture|inspect)\b/i.test(text);
+
+return isQuestion || isRepositoryInspectionRequest
+  ? { type: "question", text }
+  : { type: "chat", text };
 }
