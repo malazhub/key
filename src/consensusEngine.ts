@@ -10128,8 +10128,7 @@ iterationsRequired: actualRoundsCompleted,
             // Gate the structured-response request independently.
       assertDefendedQuery(promptToText(multimodalContents));
 
-            // Gate the structured-response request independently.
-      assertDefendedQuery(promptToText(multimodalContents));
+          
 
       const response = await withStrictTimeout(
         ai.models.generateContent({
