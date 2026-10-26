@@ -8038,12 +8038,7 @@ export function buildDeepAnalyticalResilientSynthesis(
     return resolveConversationalFlowExplanation(rawCleanQ, windowPairs);
   }
   
-  if (
-    isSelfUpgradeCapabilityQuestion(cleanQ) ||
-    isTopicIsolationOrComplaintQuery(cleanQ)
-  ) {
-    return resolveSelfUpgradeCapabilityQuestionReply(cleanQ);
-  }
+  
 
   // Intercept API overload / rate-limit / max-token errors pasted by the user or emitted by upstream providers
   if (
