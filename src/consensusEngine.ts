@@ -10557,11 +10557,43 @@ const combinedRefusalFeedback = combinedResultRefused
       };
     }
 
-    const agreementTargetMet = actualAgreement >= safeTarget;
-const verificationPassed = lastVerification.status === "pass";
+    
+    // Fix 3: agreement is not proof of fulfillment.
+    // A unanimous refusal must not pass for a benign current-information
+    // request, such as weather, news, or current prices.
+    const originalRequest = promptToText(multimodalContents);
 
-conformityReached =
-  agreementTargetMet && verificationPassed;
+    const requestsCurrentInformation =
+      /\b(weather|forecast|temperature|news|latest|current|currently|today|tonight|tomorrow|this week|right now|live|current price|exchange rate)\b/i
+        .test(originalRequest);
+
+    if (
+      combinedResultRefused &&
+      requestsCurrentInformation
+    ) {
+      lastVerification = {
+        status: "needs_revision",
+        feedback:
+          "All usable engine responses refused a current-information request. " +
+          "Agreement between refusals does not fulfill the request. " +
+          "Use available live evidence to answer, or clearly report that " +
+          "the required live evidence is unavailable.",
+        missingRequirements: [
+          "Provide a substantive answer to the current-information request using verified evidence, or explicitly identify the unavailable evidence.",
+          "Do not mark a unanimous refusal as successful fulfillment merely because the engines agree.",
+        ],
+      };
+    }
+
+    const agreementTargetMet =
+      actualAgreement >= safeTarget;
+
+    const verificationPassed =
+      lastVerification.status === "pass";
+
+    conformityReached =
+      agreementTargetMet && verificationPassed;
+
 
 if (flowTraceId) {
   recordFlowStep(
