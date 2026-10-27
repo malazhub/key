@@ -10681,25 +10681,52 @@ lastVerification = {
         .toLowerCase();
 
       const verifiedRepositoryEvidence =
-        adaptiveRetrievalResult.selected.filter((candidate) => {
-          if (
-            candidate.source !== "live_structure" &&
-            candidate.source !== "web_grounding"
-          ) {
-            return false;
-          }
+  adaptiveRetrievalResult.selected.filter((candidate) => {
+    if (
+      candidate.source !== "live_structure" &&
+      candidate.source !== "web_grounding"
+    ) {
+      return false;
+    }
 
-          const evidenceText = [
-            candidate.title,
-            candidate.content,
-            String(candidate.metadata?.provenance ?? ""),
-          ]
-            .join("\n")
-            .toLowerCase();
+    const evidenceText = [
+      candidate.title,
+      candidate.content,
+      String(candidate.metadata?.provenance ?? ""),
+    ]
+      .join("\n")
+      .toLowerCase();
 
-          const exactRepoPath =   new RegExp(     `(?:https?://)?(?:www\.)?github\.com/${requestedRepo.replace(/[.*+?^${}()|[\]\]/g, "\$&")}(?:/|\b)`,     "i"   );  const hasRepositoryIdentity =   exactRepoPath.test(evidenceText);  const hasActualTreeEvidence =   /(?:^|
-)\s*(?:├──|└──|│\s|["']?path["']?\s*:|(?:lib|src|app|test|tests|android|ios|web|supabase|docs)\/[^\s"'`]+)/m     .test(evidenceText);  return hasRepositoryIdentity && hasActualTreeEvidence;
-        });
+    const escapedRepo = requestedRepo.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&"
+    );
+
+    const repoIdentityPattern = new RegExp(
+      `(?:https?://)?(?:www\\.)?github\\.com/${escapedRepo}(?=/|\\b|$)`,
+      "i"
+    );
+
+    const hasRepositoryIdentity =
+      repoIdentityPattern.test(evidenceText);
+
+    const hasTreeMarkers =
+      /(?:^|\n)\s*(?:├──|└──|│\s)/m.test(evidenceText);
+
+    const hasPathEntries =
+      /(?:^|\n)\s*["']?path["']?\s*:/m.test(evidenceText) ||
+      /(?:^|\n)\s*(?:lib|src|app|test|tests|android|ios|web|supabase|docs)\/[^\s"'`]+/m.test(
+        evidenceText
+      );
+
+    const hasActualTreeEvidence =
+      hasTreeMarkers || hasPathEntries;
+
+    return (
+      hasRepositoryIdentity &&
+      hasActualTreeEvidence
+    );
+  });
 
       if (verifiedRepositoryEvidence.length === 0) {
         lastVerification = {
