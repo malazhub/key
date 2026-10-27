@@ -334,51 +334,6 @@ try {
  
 assertDefendedQuery(effectiveQuestion);
 
-if (wantsArchitectureTree(effectiveQuestion)) {
-  if (!extractGitHubRepo(effectiveQuestion)) {
-    throw new Error(
-      "A valid GitHub repository URL is required."
-    );
-  }
-
-  const architectureResult =
-    await getVerifiedArchitectureTree(effectiveQuestion);
-
-  if (!architectureResult) {
-    throw new Error(
-      "GitHub verification failed. Refusing to invent repository architecture."
-    );
-  }
-
-  recordFlowStep(
-    flowTraceId,
-    "GitHub repository tree fetched",
-    "ok",
-    {
-      sourceFile: "src/searchAndEnginePushRouter.ts",
-      sourceFunction: "pushQueryToEnginesAndConverge",
-      outgoing: architectureResult.repositoryEvidence,
-    }
-  );
-
-  finishFlowTrace(flowTraceId, "ok");
-
-  return {
-    finalAnswer: architectureResult.answer,
-    answer: architectureResult.answer,
-    achievedAgreement: 0,
-    iterationsRequired: 0,
-    activeModels: [],
-    nodeContributions: [],
-    webSearchSources: [],
-    repositoryEvidence: architectureResult.repositoryEvidence,
-    verification: {
-      passed: true,
-      method: "GitHub API tree and commit SHA",
-    },
-  };
-}
-
 recordFlowStep(
   flowTraceId,
   "Query validation",
@@ -389,12 +344,28 @@ recordFlowStep(
   }
 );
 
+const modelsList = Array.isArray(request.activeModels)
+  ? request.activeModels
+      .map((model) => String(model || "").trim())
+      .filter(Boolean)
+  : [];
 
-  const modelsList = Array.isArray(request.activeModels)
-    ? request.activeModels
-        .map((model) => String(model || "").trim())
-        .filter(Boolean)
-    : [];
+if (modelsList.length === 0) {
+  recordFlowStep(
+    flowTraceId,
+    "Engine selection validation",
+    "error",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      detail: "No engine has been selected",
+    }
+  );
+
+  throw new Error(
+    "No engine has been selected. Choose at least one engine slot."
+  );
+}
 
   if (modelsList.length === 0) {
     recordFlowStep(
