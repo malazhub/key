@@ -10,23 +10,28 @@ export interface RefusalAnalysis {
   matchedPatterns: string[];
 }
 
+
 const REFUSAL_PATTERNS: Array<{
   category: Exclude<RefusalCategory, "none">;
   pattern: RegExp;
 }> = [
   {
     category: "explicit_refusal",
-    pattern: /\b(?:i\s+)?(?:cannot|can't|won't|will not|am unable to|must decline|must refuse)\b/i,
+    pattern:
+      /\b(?:i|we)\s+(?:cannot|can't|won't|will not|am unable to|must decline|must refuse)\s+(?:help|assist|provide|share|give|create|generate|answer|fulfill|comply with)\b/i,
   },
   {
     category: "capability_limitation",
-    pattern: /\b(?:do not have access|cannot access|not able to|unable to retrieve)\b/i,
+    pattern:
+      /\b(?:i|we)\s+(?:do not|don't)\s+have access to\b|\b(?:i|we)\s+(?:cannot|can't|am unable to)\s+(?:access|retrieve|open|browse)\b/i,
   },
   {
     category: "policy_reference",
-    pattern: /\b(?:safety guidelines|usage policies|restricted|moderation|harmful)\b/i,
+    pattern:
+      /\b(?:i|we)\s+(?:cannot|can't|won't|will not)\s+(?:help|assist|provide|share|give|create|generate|answer|fulfill)\b.{0,160}\b(?:safety|policy|policies|guidelines|restricted|harmful|moderation)\b/i,
   },
 ];
+
 
 export function analyzeRefusal(response: string): RefusalAnalysis {
   const categories: RefusalCategory[] = [];
