@@ -1243,6 +1243,7 @@ export interface IncomingAttachment {
 export interface GroundingSource {
   title: string;
   uri: string;
+  summary?: string;
 }
 
 export interface EngineTokenUsage {
@@ -7783,23 +7784,35 @@ export async function fetchGoogleSearchGrounding(
         "GoogleSearchGrounding:" + model
       );
 
-      const chunks =
+            const chunks =
         resp.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
       const sources: GroundingSource[] = [];
       const seenUris = new Set<string>();
 
       for (const chunk of chunks) {
         const uri = chunk?.web?.uri;
         const title = chunk?.web?.title || uri;
+
         if (uri && !seenUris.has(uri)) {
           seenUris.add(uri);
-          sources.push({ title: String(title), uri: String(uri) });
+          sources.push({
+            title: String(title),
+            uri: String(uri),
+          });
         }
       }
 
-      if (sources.length > 0) {
+      const groundedSummary =
+        typeof resp.text === "string" ? resp.text.trim() : "";
+
+      if (groundedSummary && sources.length > 0) {
+        sources[0].summary = groundedSummary;
         return sources.slice(0, 6);
       }
+
+      // Source links without an answer are not sufficient evidence.
+      // Continue to the next available grounding model.
     } catch (err) {
       if (isQuotaOrRateLimitError(err)) {
         markModelCooldown(model, err);
