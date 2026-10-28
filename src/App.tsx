@@ -904,33 +904,33 @@ async function fetchWithStrictAbort(
   timeoutMs: number
 ): Promise<Response> {
   const controller = new AbortController();
-const startedAt = Date.now();
-let timer: ReturnType<typeof setTimeout> | undefined;
 
-const scheduleAbortCheck = () => {
-  const remaining = timeoutMs - (Date.now() - startedAt);
-
-  if (remaining <= 0) {
-    controller.abort();
-    return;
-  }
-
-  timer = setTimeout(
-    scheduleAbortCheck,
-    Math.min(remaining, 2_000_000_000)
+  const timeoutError = new DOMException(
+    `Key backend request timed out after ${timeoutMs}ms: ${url}`,
+    "TimeoutError"
   );
-};
 
-scheduleAbortCheck();
+  const timer = setTimeout(() => {
+    controller.abort(timeoutError);
+  }, timeoutMs);
+
   try {
     return await fetch(url, {
       ...(init || {}),
       signal: controller.signal,
     });
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const reason = controller.signal.reason;
+
+      throw reason instanceof Error
+        ? reason
+        : timeoutError;
     }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -943,19 +943,19 @@ async function fetchFromKeyBackend(
     apiPath.startsWith("/api/admin/deploy") ||
     apiPath.startsWith("/api/github-push-folder");
 
-  const localTimeoutMs =
-    typeof timeoutOverrideMs === "number" && timeoutOverrideMs > 0
-      ? timeoutOverrideMs
-      : isDeployRoute
-        ? 55000
-        : 35000;
+    const DEFAULT_BACKEND_TIMEOUT_MS = 180_000;
+  const DEPLOY_BACKEND_TIMEOUT_MS = 180_000;
 
-  const remoteTimeoutMs =
-    typeof timeoutOverrideMs === "number" && timeoutOverrideMs > 0
+  const configuredTimeoutMs =
+    typeof timeoutOverrideMs === "number" &&
+    timeoutOverrideMs > 0
       ? timeoutOverrideMs
       : isDeployRoute
-        ? 55000
-        : 30000;
+        ? DEPLOY_BACKEND_TIMEOUT_MS
+        : DEFAULT_BACKEND_TIMEOUT_MS;
+
+  const localTimeoutMs = configuredTimeoutMs;
+  const remoteTimeoutMs = configuredTimeoutMs;
 
   const isStaticHost =
     typeof window !== "undefined" &&
