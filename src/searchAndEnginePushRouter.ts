@@ -365,26 +365,19 @@ recordFlowStep(
   }
 );
 
-const modelsList = Array.isArray(request.activeModels)
+const requestedModels = Array.isArray(request.activeModels)
   ? request.activeModels
       .map((model) => String(model || "").trim())
       .filter(Boolean)
   : [];
 
-if (modelsList.length === 0) {
-  recordFlowStep(
-    flowTraceId,
-    "Engine selection validation",
-    "error",
-    {
-      sourceFile: "src/searchAndEnginePushRouter.ts",
-      sourceFunction: "pushQueryToEnginesAndConverge",
-      detail: "No engine has been selected",
-    }
-  );
+const modelsList = requestedModels.length > 0
+  ? requestedModels
+  : ["Gemini 2.5"];
 
+if (modelsList.length === 0) {
   throw new Error(
-    "No engine has been selected. Choose at least one engine slot."
+    "No usable AI engine is available. Configure at least one provider."
   );
 }
 
