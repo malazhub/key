@@ -186,7 +186,9 @@ function createGenAIClient(): GoogleGenAI {
 // Verified fastest healthy models prioritized first for deterministic identical response across both server & GitHub Pages
 // Current production models with Google Search grounding support.
 // Keep the first model stable/current; older preview aliases can be shut down without notice.
-export const CANDIDATE_MODELS: string[] = [];
+export const CANDIDATE_MODELS: string[] = [
+  "gemini-2.5-flash",
+];
 function getServerEnv(name: string): string {
   try {
     if (
