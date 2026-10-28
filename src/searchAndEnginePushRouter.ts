@@ -376,27 +376,21 @@ const modelsList = requestedModels.length > 0
   : ["Gemini 2.5"];
 
 if (modelsList.length === 0) {
+  recordFlowStep(
+    flowTraceId,
+    "Engine selection validation",
+    "error",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      detail: "No engine is available for this request",
+    }
+  );
+
   throw new Error(
-    "No usable AI engine is available. Configure at least one provider."
+    "No usable AI engine is available. Configure a provider before retrying."
   );
 }
-
-  if (modelsList.length === 0) {
-    recordFlowStep(
-      flowTraceId,
-      "Engine selection validation",
-      "error",
-      {
-        sourceFile: "src/searchAndEnginePushRouter.ts",
-        sourceFunction: "pushQueryToEnginesAndConverge",
-        detail: "No engine has been selected",
-      }
-    );
-
-    throw new Error(
-      "No engine has been selected. Choose at least one engine slot."
-    );
-  }
 
   recordFlowStep(
     flowTraceId,
