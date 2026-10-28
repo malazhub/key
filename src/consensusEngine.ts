@@ -10334,9 +10334,9 @@ let lastVerification: {
               responseSchema: shouldGenerateAppPreview
   ? responseSchemaConfig
   : undefined,
-signal: AbortSignal.timeout(60000), // Increased to 60s so it doesn't abort
+signal: AbortSignal.timeout(55_000),
 }),
-60000,
+60_000,
 `ConsensusRound${roundNumber}(${modelName})`
           );
 
