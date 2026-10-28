@@ -82,13 +82,9 @@ export function routeIntent(message: string): Intent {
     return { type: "question", text: "" };
   }
 
-  // Bare upgrade commands use the default instruction.
-  if (/^(?:\/)?upgrade[.!]?$/i.test(text)) {
-    return createSelfUpgradeIntent(DEFAULT_UPGRADE_INSTRUCTION);
-  }
-
-  // Only explicit /upgrade commands receive special routing.
-  // GitHub URLs, /edit-ui, and ordinary messages remain normal queries.
+  // Only an explicit /upgrade command may enter self-upgrade routing.
+  // GitHub URLs, repository questions, architecture/tree requests,
+  // /edit-ui, plain "upgrade", and all other messages remain questions.
   if (/^\/upgrade(?:\s|$)/i.test(text)) {
     const args = text.replace(/^\/upgrade\b/i, "").trim();
 
