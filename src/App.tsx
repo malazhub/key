@@ -1521,7 +1521,7 @@ function enrichAndRepairAssistantMessage(
           0
         );
         
-        const avgLat =
+                const avgLat =
           engines.length > 0
             ? Math.round(
                 engines.reduce((a, e) => a + e.latencyMs, 0) / engines.length
@@ -1529,9 +1529,16 @@ function enrichAndRepairAssistantMessage(
             : 0;
         const sorted = [...engines].sort((a, b) => a.latencyMs - b.latencyMs);
         const memOS = msg.memoryOS;
+
+        const fallbackModelName = engines[0]?.modelName || "AI Engine";
+        const totalLatencyMs = engines.reduce(
+          (maxLatency, engine) => Math.max(maxLatency, engine.latencyMs),
+          0
+        );
+
         return {
           engines,
-          totalLatencyMs: undefined,
+          totalLatencyMs,
           averageEngineLatencyMs: avgLat,
 
           fastestEngine: sorted[0]
@@ -1539,13 +1546,19 @@ function enrichAndRepairAssistantMessage(
                 modelName: sorted[0].modelName,
                 latencyMs: sorted[0].latencyMs,
               }
-            : undefined,
+            : {
+                modelName: fallbackModelName,
+                latencyMs: 0,
+              },
           slowestEngine: sorted[sorted.length - 1]
             ? {
                 modelName: sorted[sorted.length - 1].modelName,
                 latencyMs: sorted[sorted.length - 1].latencyMs,
               }
-            : undefined,
+            : {
+                modelName: fallbackModelName,
+                latencyMs: 0,
+              },
           totalPromptTokens,
           totalCompletionTokens,
           totalTokensUsed: totalPromptTokens + totalCompletionTokens,
