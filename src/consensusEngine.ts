@@ -7532,13 +7532,7 @@ export function sanitizeAndEnrichConsensusResult(
           .toString(36)
           .slice(0, 5)}`;
 
-  const metadata: ConsensusLoopMetadata = {
-  engines: engineTelemetryList,
-  totalLatencyMs,
-  averageEngineLatencyMs: avgEngineLatency,
-  // Keep the remaining fields that are backed by real execution data.
-};
-
+  
   const metadata: ConsensusLoopMetadata = {
     engines: engineTelemetryList,
     totalLatencyMs,
@@ -7548,21 +7542,26 @@ export function sanitizeAndEnrichConsensusResult(
           modelName: sortedBySpeed[0].modelName,
           latencyMs: sortedBySpeed[0].latencyMs,
         }
-      : { modelName: modelsList[0] || "AI Engine", latencyMs: 310 },
+      : {
+          modelName: modelsList[0] || "AI Engine",
+          latencyMs: 0,
+        },
     slowestEngine: sortedBySpeed[sortedBySpeed.length - 1]
       ? {
           modelName: sortedBySpeed[sortedBySpeed.length - 1].modelName,
           latencyMs: sortedBySpeed[sortedBySpeed.length - 1].latencyMs,
         }
-      : { modelName: modelsList[0] || "AI Engine", latencyMs: 680 },
+      : {
+          modelName: modelsList[0] || "AI Engine",
+          latencyMs: 0,
+        },
     totalPromptTokens,
     totalCompletionTokens,
     totalTokensUsed,
     timestamp: nowIso,
     memoryOS: memoryOSTrace,
-    keyEngineeringOS: keyEngineeringOSTrace,
-    adaptiveOrchestrationV21,
   };
+
 
   // Build versioned meta.engines map (decoupled from UI via Telemetry Normalizer, with additive v2.1 boundary fields)
   const enginesMap: Record<string, VersionedEngineExecutionRecord> = {};
