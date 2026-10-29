@@ -387,22 +387,88 @@ export async function buildQueryExecutionPlan(
         ? parsed.polarity
         : fallback.polarity;
 
-    const needs = { ...fallback.evidenceNeeds, ...(parsed.evidenceNeeds || {}) };
+    const requestedNeeds = parsed.evidenceNeeds || {};
+
+const needs = {
+  recentContext:
+    fallback.evidenceNeeds.recentContext ||
+    requestedNeeds.recentContext === true,
+
+  longTermMemory:
+    fallback.evidenceNeeds.longTermMemory ||
+    requestedNeeds.longTermMemory === true,
+
+  knowledge:
+    fallback.evidenceNeeds.knowledge ||
+    requestedNeeds.knowledge === true,
+
+  webGrounding:
+    fallback.evidenceNeeds.webGrounding ||
+    requestedNeeds.webGrounding === true,
+
+  liveStructure:
+    fallback.evidenceNeeds.liveStructure ||
+    requestedNeeds.liveStructure === true,
+
+  attachments:
+    fallback.evidenceNeeds.attachments ||
+    requestedNeeds.attachments === true,
+
+  temporal:
+    fallback.evidenceNeeds.temporal ||
+    requestedNeeds.temporal === true,
+
+  exactReference:
+    fallback.evidenceNeeds.exactReference ||
+    requestedNeeds.exactReference === true,
+
+  entityCoverage:
+    fallback.evidenceNeeds.entityCoverage ||
+    requestedNeeds.entityCoverage === true,
+};
 
     const allowed = new Set<EvidenceSource>([
       "recent_context","long_term_memory","knowledge","web_grounding",
       "live_structure","attachments","query_context",
     ]);
 
-    const requested = Array.isArray(parsed.retrieval?.sources)
-      ? parsed.retrieval.sources.filter((s): s is EvidenceSource =>
-          allowed.has(s as EvidenceSource)
-        )
-      : fallback.retrieval.sources;
+    const requestedSources: EvidenceSource[] =
+  Array.isArray(parsed.retrieval?.sources)
+    ? parsed.retrieval.sources.filter(
+        (source): source is EvidenceSource =>
+          allowed.has(source as EvidenceSource)
+      )
+    : [];
 
-    const sources = Array.from(
-      new Set(requested.length ? requested : fallback.retrieval.sources)
-    );
+const requiredSources: EvidenceSource[] = ["query_context"];
+
+if (needs.recentContext) {
+  requiredSources.push("recent_context");
+}
+
+if (needs.longTermMemory) {
+  requiredSources.push("long_term_memory");
+}
+
+if (needs.knowledge) {
+  requiredSources.push("knowledge");
+}
+
+if (needs.webGrounding) {
+  requiredSources.push("web_grounding");
+}
+
+if (needs.liveStructure) {
+  requiredSources.push("live_structure");
+}
+
+if (needs.attachments) {
+  requiredSources.push("attachments");
+}
+
+const sources = Array.from(
+  new Set([...requiredSources, ...requestedSources])
+);
 
     return {
       ...fallback,
@@ -415,9 +481,16 @@ export async function buildQueryExecutionPlan(
         ...(parsed.retrieval || {}),
         sources,
         maxCandidates: Math.max(1, Math.min(50, Number(parsed.retrieval?.maxCandidates || 24))),
-        temporal: parsed.retrieval?.temporal ?? needs.temporal,
-        entityCoverage: parsed.retrieval?.entityCoverage ?? needs.entityCoverage,
-        exactReference: parsed.retrieval?.exactReference ?? needs.exactReference,
+       temporal:
+  needs.temporal || parsed.retrieval?.temporal === true,
+
+entityCoverage:
+  needs.entityCoverage ||
+  parsed.retrieval?.entityCoverage === true,
+
+exactReference:
+  needs.exactReference ||
+  parsed.retrieval?.exactReference === true,
       },
       queryExpansions: Array.from(
         new Set(
