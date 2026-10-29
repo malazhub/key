@@ -9622,12 +9622,7 @@ export async function runSmartMemoryConsensusLoop(
 
   
 
-  const groundingPromise =
-    attachments.length === 0 && !isGreetingTarget
-      ? fetchGoogleSearchGrounding(cleanQuestion)
-      : Promise.resolve([] as GroundingSource[]);
-
-  const groundingSources = await groundingPromise;
+  
     
   const plannerModel =
     getServerEnv("KEY_QUERY_PLANNER_MODEL") ||
@@ -9701,6 +9696,16 @@ export async function runSmartMemoryConsensusLoop(
     cleanQuestion,
     plannerModelInvoker
     );
+  const requiresWebEvidence =
+  queryExecutionPlan.evidenceNeeds.webGrounding ||
+  queryExecutionPlan.retrieval.sources.includes("web_grounding");
+
+const groundingPromise: Promise<GroundingSource[]> =
+  requiresWebEvidence && !isGreetingTarget
+    ? fetchGoogleSearchGrounding(cleanQuestion)
+    : Promise.resolve([] as GroundingSource[]);
+
+const groundingSources = await groundingPromise;
 
     const plannerMemoryCandidates = buildPlannerMemoryCandidates(
   queryExecutionPlan,
@@ -9710,22 +9715,31 @@ export async function runSmartMemoryConsensusLoop(
 const plannerCandidates: AdaptiveCandidate[] = [
   ...plannerMemoryCandidates,
   ...groundingSources.map((source, index) => ({
-    id: `web-grounding-${index}`,
-    source: "web_grounding" as const,
-    title: source.title,
-    content: `${source.title}\n${source.uri}`,
-    channelScores: {
-      semantic: 0.5,
-      bm25: 0.5,
-      entity: 0,
-      temporal: 0.5,
-      exactReference: 0,
-    },
-    score: 0.5,
-    metadata: {
-      provenance: source.uri,
-    },
-  })),
+  id: `web-grounding-${index}`,
+  source: "web_grounding" as const,
+  title: source.title,
+  content: [
+    source.title,
+    source.summary,
+    source.uri,
+  ]
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0
+    )
+    .join("\n"),
+  channelScores: {
+    semantic: 0,
+    bm25: 0,
+    entity: 0,
+    temporal: 0,
+    exactReference: 0,
+  },
+  score: 0,
+  metadata: {
+    provenance: source.uri,
+  },
+})),
 ];
 
 
@@ -10852,10 +10866,7 @@ if (flowTraceId) {
       nodeContributions: [],
     };
   }
-  const timedGroundingSources = await Promise.race([
-  groundingPromise.catch(() => [] as GroundingSource[]),
-  new Promise<GroundingSource[]>((r) => setTimeout(() => r([]), 800)),
-]);
+  const timedGroundingSources = groundingSources;
 
   if (deterministicParsed) {
     const enriched = sanitizeAndEnrichConsensusResult(
