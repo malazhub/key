@@ -486,23 +486,9 @@ async function executeBrowserNativeRoute(
     }
   }
 
-    // 3. /api/admin/login, /api/admin/versions, /api/admin/upgrade
-  if (cleanPath === "/api/admin/login" && method === "POST") {
-    const cleanEmail = String(bodyObj.email || "")
-      .trim()
-      .toLowerCase();
-    const cleanPass = String(bodyObj.password || "").trim();
-    const validEmails = ["malazjanbeih@gmial.com", "malazjanbeih@gmail.com"];
-
-    if (!validEmails.includes(cleanEmail) || cleanPass !== "mjkey1971") {
-      return createJsonResponse(
-        {
-          authenticated: false,
-          error:
-            "Invalid Admin credentials. Only malazjanbeih@gmail.com with password mjkey1971 is authorized.",
-        
-    // Admin authentication must be handled by the real backend.
-  // Never authenticate an administrator in browser-side fallback code.
+    
+  // 3. Admin routes in the browser fallback must fail closed.
+  // Real authentication and GitHub operations belong on the server.
   if (cleanPath === "/api/admin/login" && method === "POST") {
     return createJsonResponse(
       {
@@ -513,7 +499,6 @@ async function executeBrowserNativeRoute(
       503
     );
   }
-
 
   if (
     cleanPath === "/api/admin/versions" ||
@@ -530,6 +515,7 @@ async function executeBrowserNativeRoute(
       503
     );
   }
+
 
   if (cleanPath === "/api/search-and-push" && method === "POST") {
     const question = String(bodyObj.question || "");
