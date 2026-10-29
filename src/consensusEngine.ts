@@ -7532,21 +7532,12 @@ export function sanitizeAndEnrichConsensusResult(
           .toString(36)
           .slice(0, 5)}`;
 
-  const keyEngineeringOSTrace = runKeyEngineeringOSPipeline(
-    question,
-    modelsList,
-    totalLatencyMs,
-    totalTokensUsed,
-    memoryOSTrace,
-    runId
-  );
-
-  const adaptiveOrchestrationV21 = runAdaptiveResponseOrchestrationV21(
-    question,
-    modelsList,
-    memoryOSTrace,
-    achieved
-  );
+  const metadata: ConsensusLoopMetadata = {
+  engines: engineTelemetryList,
+  totalLatencyMs,
+  averageEngineLatencyMs: avgEngineLatency,
+  // Keep the remaining fields that are backed by real execution data.
+};
 
   const metadata: ConsensusLoopMetadata = {
     engines: engineTelemetryList,
@@ -8058,38 +8049,7 @@ export function buildDeepAnalyticalResilientSynthesis(
       cleanQ
     );
 
-  if (isMemOSArchitectureQuery) {
-    const trace = runMemoryOperatingSystemPipeline(rawCleanQ, []);
-    const engOS = runKeyEngineeringOSPipeline(
-      rawCleanQ,
-      modelsList,
-      460,
-      4820,
-      trace,
-      "run_verified_v3"
-    );
-    const orchV21 = runAdaptiveResponseOrchestrationV21(
-      rawCleanQ,
-      modelsList,
-      trace,
-      achievedScore
-    );
-    return (
-      `### KEY v3.0 & v2.1 Consolidated — Autonomous Engineering OS, Memory OS & Adaptive Response Architecture (\`${engOS.osVersion}\` + \`${orchV21.version}\` · Golden State \`v${engOS.goldenState.version}\` · ${achievedScore}% Consensus)\n\n` +
-      `KEY operates as a **Persistent AI Engineering Operating System** and **High-Performance Multi-Engine Coordination Layer** across **${modelsList.length} AI models**:\n\n` +
-      `### 1. Adaptive Response Classification & Honest Framing (\`${orchV21.version}\`)\n` +
-      `- **7-Class Response Classifier:** Classifies every engine response before synthesis into \`ANSWER\`, \`CLARIFY\`, \`UNCERTAIN\`, \`MISUNDERSTOOD\`, \`PROVIDER_REFUSAL\`, \`ERROR\`, or \`CONFLICT\`.\n` +
-      `- **6-Case Adaptive Consensus Layer (\`synthesize(engine_outputs)\`):** Currently executing **\`${orchV21.adaptiveConsensusSynthesis.selectedCase}\`**. False refusals caused by ambiguity or missing context (\`CLARIFY\`, \`UNCERTAIN\`, \`MISUNDERSTOOD\`) trigger **Context Packet Enrichment & Intent Normalization** (re-dispatched at most ONCE). Genuine \`PROVIDER_REFUSAL\` boundaries are honored honestly with legitimate alternatives and logged to \`FAILURE_MEMORY\`.\n` +
-      `- **Normalized \`context_packet\` & Intent Extraction:** Extracts \`intent="${orchV21.intentNormalization.intent}"\`, \`task="${orchV21.intentNormalization.task}"\`, \`requested_depth="${orchV21.contextPacket.requested_depth}"\`, and \`confidence=${orchV21.intentNormalization.confidence}\`.\n\n` +
-      `### 2. Golden State, 8-Level Authority Hierarchy & 8 Memory Stores\n` +
-      `- **\`CURRENT_VERIFIED_STATE\`:** Version \`${engOS.goldenState.version}\` (Base \`${engOS.goldenState.baseVersion}\` · Commit \`${engOS.goldenState.commit}\` · Tests \`${engOS.goldenState.tests}\` · Build \`${engOS.goldenState.build}\` · Rollback \`${engOS.goldenState.rollbackVersion}\`).\n` +
-      `- **Authority Hierarchy:** \`1. Executable tests / runtime behavior → 2. Actual repository files → 3. Current project spec → 4. Explicit user requirements → 5. Active architectural decisions → 6. Verified project memory → 7. Specialist engine analysis → 8. General model priors\`.\n` +
-      `- **8 Purpose-Separated Memory Stores (\`${trace.goldenRuleFormula}\`):** \`IDENTITY_MEMORY\`, \`ARCHITECTURE_MEMORY\`, \`DECISION_MEMORY\`, \`CHANGE_MEMORY\`, \`FAILURE_MEMORY\`, \`EPISODIC_MEMORY\`, \`SEMANTIC_MEMORY\`, and \`PROCEDURAL_MEMORY\`.\n\n` +
-      `### 3. Role-Based Engine Routing & Additive Boundary Telemetry\n` +
-      `- **Coordinated Pipeline Roles:** Assigns \`Intent Analyzer\`, \`Research Engine\`, \`Reasoning Engine\`, \`Implementation Engine\`, \`Memory Specialist\`, \`Critic / Verifier\`, \`Devil's Advocate\`, and \`Synthesizer\`.\n` +
-      `- **Additive Per-Engine Telemetry:** Tracks \`runId\`, \`taskId\`, \`engineId\`, \`role\`, \`latencyMs\`, \`tokens: { prompt, completion, total, estimated }\`, \`status\`, \`refusalClass\`, \`retryCount\`, \`inputContextHash\`, and \`outputHash\`.`
-    );
-  }
+ 
 
   if (isLogicQuery || isEnhancement) {
     const spec = parseKeySelfModificationSpec(rawCleanQ);
@@ -12439,30 +12399,9 @@ export function normalizeConsensusRunToUIViewModel(
     runOrMessage?.auditRun?.runId ||
     `run_${String(runOrMessage?.id || "live").slice(-8)}`;
 
-  const memOSFallback =
-    legacyMetadata?.memoryOS ||
-    (runOrMessage?.memoryOS as MemoryOSPipelineTrace | undefined) ||
-    runMemoryOperatingSystemPipeline(questionText, []);
-
-  const keyEngineeringOS: KeyEngineeringOSTrace =
-    legacyMetadata?.keyEngineeringOS ||
-    runKeyEngineeringOSPipeline(
-      questionText,
-      normalizedEngines.map((e) => e.displayName),
-      totalLatencyMs,
-      totalTokens,
-      memOSFallback,
-      runId
-    );
-
-  const adaptiveOrchestrationV21: AdaptiveResponseTraceV21 =
-    legacyMetadata?.adaptiveOrchestrationV21 ||
-    runAdaptiveResponseOrchestrationV21(
-      questionText,
-      normalizedEngines.map((e) => e.displayName),
-      memOSFallback,
-      Number(runOrMessage?.achievedAgreement ?? 0)
-    );
+  const keyEngineeringOS = legacyMetadata?.keyEngineeringOS;
+const adaptiveOrchestrationV21 =
+  legacyMetadata?.adaptiveOrchestrationV21;
 
   return {
     schemaVersion: rawMeta?.schemaVersion ?? 1,
