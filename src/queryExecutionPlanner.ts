@@ -687,19 +687,16 @@ const bm25 = bm25Score(
         candidate.channelScores.entity || entityScore(plan.normalizedQuery, candidate)
       );
       const temporal = clamp01(
-        candidate.channelScores.temporal ||
-          (plan.retrieval.temporal &&
-          /\b(today|now|current|latest|recent|2026|yesterday|tomorrow|last|this week|this month)\b/i.test(text)
-            ? 1
-            : 0)
-      );
-      const textTokens = plannerTokens(text);
-      const exactReference = clamp01(
-        candidate.channelScores.exactReference ||
-          (plan.retrieval.exactReference &&
-          queryTokens.some((t) => textTokens.includes(t))
-            ? semantic
-            : 0)
+  plan.retrieval.temporal
+    ? candidate.channelScores.temporal
+    : 0
+);
+
+const exactReference = clamp01(
+  plan.retrieval.exactReference
+    ? candidate.channelScores.exactReference
+    : 0
+);
       );
       const score =
         0.35 * semantic +
