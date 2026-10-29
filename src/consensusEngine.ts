@@ -9747,22 +9747,22 @@ const plannerCandidates: AdaptiveCandidate[] = [
 for (const attachment of attachments) {
   if (attachment.textContent?.trim()) {
     plannerCandidates.push({
-      id: `attachment-${attachment.name}`,
-      source: "attachments",
-      title: attachment.name,
-      content: attachment.textContent,
-      cchannelScores: {
-  semantic: 0,
-  bm25: 0,
-  entity: 0,
-  temporal: 0,
-  exactReference: 0,
-},
-score: 0,
-      metadata: {
-        provenance: attachment.name,
-      },
-    });
+  id: `attachment-${attachment.name}`,
+  source: "attachments",
+  title: attachment.name,
+  content: attachment.textContent,
+  channelScores: {
+    semantic: 0,
+    bm25: 0,
+    entity: 0,
+    temporal: 0,
+    exactReference: 0,
+  },
+  score: 0,
+  metadata: {
+    provenance: attachment.name,
+  },
+});
   }
     }
     
