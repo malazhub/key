@@ -12711,14 +12711,20 @@ export function buildHistoryGraphProjection(
         messageId: rec.assistantMessageId || rec.messageId,
         nodeType: "consensus",
         label: `CONSENSUS #${rec.pairIndex} (${rec.assistantMsg.achievedAgreement || 0}%): ${shortAns}`,
-        subtitle: `${normalizedVM.totalLatencyMs}ms · ${normalizedVM.usage.totalTokens} tok · ${normalizedVM.cost.formattedUsd}`,
-        fullText: plainSummary.slice(0, 260),
-        timestamp: String(rec.assistantMsg.timestamp || rec.timestamp),
-        metrics: {
-          latencyMs: normalizedVM.totalLatencyMs,
-          totalTokens: normalizedVM.usage.totalTokens,
-          agreementScore: rec.assistantMsg.achievedAgreement || 0,
-        },
+        subtitle: `${
+  normalizedVM.totalLatencyMs > 0
+    ? `${normalizedVM.totalLatencyMs}ms`
+    : "Latency N/A"
+} · ${normalizedVM.usage.totalTokens} tok · ${normalizedVM.cost.formattedUsd}`,
+fullText: plainSummary.slice(0, 260),
+timestamp: String(rec.assistantMsg.timestamp || rec.timestamp),
+metrics: {
+  ...(normalizedVM.totalLatencyMs > 0
+    ? { latencyMs: normalizedVM.totalLatencyMs }
+    : {}),
+  totalTokens: normalizedVM.usage.totalTokens,
+  agreementScore: rec.assistantMsg.achievedAgreement || 0,
+},
         tokens: extractSemanticTokens(plainSummary).slice(0, 12),
       });
 
