@@ -9751,14 +9751,14 @@ for (const attachment of attachments) {
       source: "attachments",
       title: attachment.name,
       content: attachment.textContent,
-      channelScores: {
-        semantic: 0.8,
-        bm25: 0.8,
-        entity: 0.5,
-        temporal: 0.5,
-        exactReference: 0.8,
-      },
-      score: 0.8,
+      cchannelScores: {
+  semantic: 0,
+  bm25: 0,
+  entity: 0,
+  temporal: 0,
+  exactReference: 0,
+},
+score: 0,
       metadata: {
         provenance: attachment.name,
       },
