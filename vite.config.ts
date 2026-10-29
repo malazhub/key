@@ -6,18 +6,12 @@ import {defineConfig} from 'vite';
 
 dotenv.config();
 
-export default defineConfig(() => {
-  const rawKey = (process.env.GEMINI_API_KEY || '').trim();
-  const encodedSeed = Array.from(rawKey).map(
-    (ch, idx) => ch.charCodeAt(0) ^ ((idx * 31 + 17) & 0xff)
-  );
+
 
   return {
     base: './',
     plugins: [react(), tailwindcss()],
-    define: {
-      __KEY_ENGINE_SEED__: JSON.stringify(encodedSeed),
-    },
+    
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
