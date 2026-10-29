@@ -664,60 +664,74 @@ export function executeAdaptiveRetrieval(
   plan: QueryExecutionPlan,
   candidates: AdaptiveCandidate[]
 ): AdaptiveRetrievalResult {
-  const queryTokens = plannerTokens(plan.originalQuery);
-
   const eligibleCandidates = candidates.filter(
-  (candidate) => sourceEnabled(plan, candidate.source)
-);
+    (candidate) => sourceEnabled(plan, candidate.source)
+  );
 
-const corpusTexts = eligibleCandidates.map(
-  (candidate) => `${candidate.title} ${candidate.content}`
-);
+  const corpusTexts = eligibleCandidates.map(
+    (candidate) => `${candidate.title} ${candidate.content}`
+  );
 
-const ranked = eligibleCandidates.map((candidate) => {
-      const text = candidate.title + " " + candidate.content;
+  const ranked = eligibleCandidates
+    .map((candidate) => {
+      const text = `${candidate.title} ${candidate.content}`;
+
       const semantic = overlapScore(plan.normalizedQuery, text);
 
-const bm25 = bm25Score(
-  plan.normalizedQuery,
-  text,
-  corpusTexts
-);
-      const entity = clamp01(
-        candidate.channelScores.entity || entityScore(plan.normalizedQuery, candidate)
+      const bm25 = bm25Score(
+        plan.normalizedQuery,
+        text,
+        corpusTexts
       );
-      const temporal = clamp01(
-  plan.retrieval.temporal
-    ? candidate.channelScores.temporal
-    : 0
-);
 
-const exactReference = clamp01(
-  plan.retrieval.exactReference
-    ? candidate.channelScores.exactReference
-    : 0
-);
+      const entity = clamp01(
+        candidate.channelScores.entity ||
+          entityScore(plan.normalizedQuery, candidate)
       );
+
+      const temporal = clamp01(
+        plan.retrieval.temporal
+          ? candidate.channelScores.temporal
+          : 0
+      );
+
+      const exactReference = clamp01(
+        plan.retrieval.exactReference
+          ? candidate.channelScores.exactReference
+          : 0
+      );
+
       const score =
         0.35 * semantic +
         0.25 * bm25 +
         0.2 * entity +
         0.1 * temporal +
         0.1 * exactReference;
+
       return {
         ...candidate,
-        channelScores: { semantic, bm25, entity, temporal, exactReference },
+        channelScores: {
+          semantic,
+          bm25,
+          entity,
+          temporal,
+          exactReference,
+        },
         score,
       };
     })
     .sort((a, b) => b.score - a.score);
 
   const selected = ranked
-    .filter((c) => c.score >= 0.4)
+    .filter((candidate) => candidate.score >= 0.4)
     .slice(0, Math.min(8, plan.retrieval.maxCandidates));
 
   const sourceCounts: Record<string, number> = {};
-  for (const c of selected) sourceCounts[c.source] = (sourceCounts[c.source] || 0) + 1;
+
+  for (const candidate of selected) {
+    sourceCounts[candidate.source] =
+      (sourceCounts[candidate.source] || 0) + 1;
+  }
 
   return {
     candidates: ranked,
@@ -725,7 +739,10 @@ const exactReference = clamp01(
     sourceCounts,
     correctivePasses: 0,
     correctiveReasons: [],
-    contradictionRatio: contradictionSignal(plan.normalizedQuery, selected),
+    contradictionRatio: contradictionSignal(
+      plan.normalizedQuery,
+      selected
+    ),
   };
 }
 
