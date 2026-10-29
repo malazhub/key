@@ -8,16 +8,18 @@
     "url": "https://github.com/malazhub/key.git"
   },
   "type": "module",
+  
   "scripts": {
-    "dev": "tsx runtimeLauncher.ts",
+    "dev": "vite",
     "build": "vite build",
-    "start": "node --import tsx runtimeLauncher.ts",
-    "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "start": "vite preview --host 0.0.0.0",
+    "preview": "vite preview --host 0.0.0.0",
+    "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:planner": "node --import tsx --test src/queryExecutionPlanner.test.ts",
     "test:self": "node --import tsx src/scripts/test-self.ts"
   },
+
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
