@@ -500,23 +500,20 @@ async function executeBrowserNativeRoute(
           authenticated: false,
           error:
             "Invalid Admin credentials. Only malazjanbeih@gmail.com with password mjkey1971 is authorized.",
-        },
-        401
-      );
-    }
-
-    return createJsonResponse({
-      authenticated: true,
-      adminEmail: cleanEmail,
-      currentVersionTag: "key",
-      currentRepoUrl: "https://github.com/malazhub/key",
-      liveDeployUrl: "https://malazhub.github.io/key/",
-      nextVersionNumber: 0,
-      nextVersionTag: "key",
-      nextRepoUrl: "https://github.com/malazhub/key",
-      versions: [],
-    });
+        
+    // Admin authentication must be handled by the real backend.
+  // Never authenticate an administrator in browser-side fallback code.
+  if (cleanPath === "/api/admin/login" && method === "POST") {
+    return createJsonResponse(
+      {
+        authenticated: false,
+        error:
+          "Administrator login requires the authenticated server backend.",
+      },
+      503
+    );
   }
+
 
   if (
     cleanPath === "/api/admin/versions" ||
