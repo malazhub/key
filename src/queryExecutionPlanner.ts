@@ -578,14 +578,12 @@ export function buildPlannerMemoryCandidates(
   return history
     .filter((turn) => turn && typeof turn.content === "string" && turn.content.trim())
     .map((turn, index) => {
-      const source: EvidenceSource =
-        turn.role === "user" ? "recent_context" : "long_term_memory";
+      const source: EvidenceSource = "recent_context";
       return {
         id: "history-" + index,
         source,
         title: turn.role + " conversation turn " + (index + 1),
         content: turn.content,
-        timestampMs: Date.now() - (history.length - index) * 1000,
         channelScores: {
           semantic: 0, bm25: 0, entity: 0, temporal: 0, exactReference: 0,
         },
@@ -594,6 +592,73 @@ export function buildPlannerMemoryCandidates(
     })
     .filter((c) => sourceEnabled(plan, c.source));
 }
+function bm25Score(
+  query: string,
+  text: string,
+  corpusTexts: string[]
+): number {
+  const queryTerms = Array.from(new Set(plannerTokens(query)));
+  const documentTerms = plannerTokens(text);
+
+  const corpus = corpusTexts.map(plannerTokens);
+
+  if (
+    queryTerms.length === 0 ||
+    documentTerms.length === 0 ||
+    corpus.length === 0
+  ) {
+    return 0;
+  }
+
+  const documentCount = corpus.length;
+
+  const averageLength =
+    corpus.reduce((sum, terms) => sum + terms.length, 0) /
+    documentCount;
+
+  if (averageLength <= 0) {
+    return 0;
+  }
+
+  const k1 = 1.2;
+  const b = 0.75;
+
+  let score = 0;
+
+  for (const term of queryTerms) {
+    const termFrequency = documentTerms.filter(
+      (value) => value === term
+    ).length;
+
+    if (termFrequency === 0) {
+      continue;
+    }
+
+    const documentFrequency = corpus.filter(
+      (terms) => terms.includes(term)
+    ).length;
+
+    const inverseDocumentFrequency = Math.log(
+      1 +
+        (documentCount - documentFrequency + 0.5) /
+          (documentFrequency + 0.5)
+    );
+
+    const denominator =
+      termFrequency +
+      k1 *
+        (1 -
+          b +
+          b * (documentTerms.length / averageLength));
+
+    score +=
+      inverseDocumentFrequency *
+      ((termFrequency * (k1 + 1)) / denominator);
+  }
+
+  // Map the unbounded BM25 score into a 0–1 range for ranking.
+  return score > 0 ? score / (score + 3) : 0;
+}
 
 export function executeAdaptiveRetrieval(
   plan: QueryExecutionPlan,
@@ -601,12 +666,23 @@ export function executeAdaptiveRetrieval(
 ): AdaptiveRetrievalResult {
   const queryTokens = plannerTokens(plan.originalQuery);
 
-  const ranked = candidates
-    .filter((c) => sourceEnabled(plan, c.source))
-    .map((candidate) => {
+  const eligibleCandidates = candidates.filter(
+  (candidate) => sourceEnabled(plan, candidate.source)
+);
+
+const corpusTexts = eligibleCandidates.map(
+  (candidate) => `${candidate.title} ${candidate.content}`
+);
+
+const ranked = eligibleCandidates.map((candidate) => {
       const text = candidate.title + " " + candidate.content;
       const semantic = overlapScore(plan.normalizedQuery, text);
-      const bm25 = semantic;
+
+const bm25 = bm25Score(
+  plan.normalizedQuery,
+  text,
+  corpusTexts
+);
       const entity = clamp01(
         candidate.channelScores.entity || entityScore(plan.normalizedQuery, candidate)
       );
