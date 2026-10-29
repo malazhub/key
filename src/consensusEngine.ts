@@ -13431,9 +13431,9 @@ export function calculateSimilarity(
     return 0;
   }
 
-  if (responses.length === 1) {
-    return 100;
-  }
+ if (responses.length === 1) {
+  return 0;
+}
 
   const tokenSets =
     responses.map((response) =>
