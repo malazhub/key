@@ -1534,10 +1534,7 @@ function enrichAndRepairAssistantMessage(
           (a, e) => a + e.tokenUsage.completionTokens,
           0
         );
-        const maxLat =
-          engines.length > 0
-            ? Math.max(...engines.map((e) => e.latencyMs))
-            : 0;
+        
         const avgLat =
           engines.length > 0
             ? Math.round(
@@ -1545,15 +1542,12 @@ function enrichAndRepairAssistantMessage(
               )
             : 0;
         const sorted = [...engines].sort((a, b) => a.latencyMs - b.latencyMs);
-        const memOS =
-          msg.memoryOS ||
-          runMemoryOperatingSystemPipeline(rawUserAsk || queryRef, [], {
-            forceIsolated: isIsolatedTurn,
-          });
+        const memOS = msg.memoryOS;
         return {
           engines,
-          totalLatencyMs: maxLat,
+          totalLatencyMs: undefined,
           averageEngineLatencyMs: avgLat,
+
           fastestEngine: sorted[0]
             ? {
                 modelName: sorted[0].modelName,
