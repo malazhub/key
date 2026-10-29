@@ -8044,10 +8044,7 @@ export function buildDeepAnalyticalResilientSynthesis(
       `3. **Consolidated Enhanced Synthesis:**\n\n${priorPreviewSnippet}`;
   }
 
-  const isMemOSArchitectureQuery =
-    /\b(memory\s+operating\s+system|memos|q_[tₜ]\s*[≠!=]+|wm_[tₜ]|m_ep|m_sem|m_proc|m_wm|m_meta|m_eng|context\s+compiler|smart\s+reranker|candidate\s+merger|conflict\s+resolution|interchangeable\s+cpus|autonomous\s+persistent\s+multi-agent|engineering\s+os|golden\s+state|current_verified_state|specialist\s+roles|execution\s+journal|source-of-truth\s+hierarchy|patch-first\s+policy|adaptive\s+response\s+architecture|refusal\s+classification|provider_refusal|misunderstood|context_packet|intent\s+normalization)\b/i.test(
-      cleanQ
-    );
+  
 
  
 
@@ -12360,28 +12357,43 @@ export function normalizeConsensusRunToUIViewModel(
     legacyMetadata?.totalTokensUsed ??
     totalPromptTokens + totalCompletionTokens;
 
-  const totalLatencyMs =
-    rawMeta?.timing?.totalLatencyMs ??
-    legacyMetadata?.totalLatencyMs ??
-    (normalizedEngines.length > 0
-      ? Math.max(...normalizedEngines.map((e) => e.latencyMs))
-      : 420);
+ const reportedTotalLatencyMs = [
+  rawMeta?.timing?.totalLatencyMs,
+  legacyMetadata?.totalLatencyMs,
+].find(
+  (value): value is number =>
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0
+);
 
-  const averageEngineLatencyMs =
-    normalizedEngines.length > 0
-      ? Math.round(
-          normalizedEngines.reduce((acc, e) => acc + e.latencyMs, 0) /
-            normalizedEngines.length
-        )
-      : totalLatencyMs;
+const totalLatencyMs = reportedTotalLatencyMs ?? 0;
 
-  const sortedFastest = [...normalizedEngines].sort(
-    (a, b) => a.latencyMs - b.latencyMs
+const measuredEngineLatencies = normalizedEngines
+  .map((engine) => engine.latencyMs)
+  .filter(
+    (latency) => Number.isFinite(latency) && latency > 0
   );
-  const fastestEngineLabel = sortedFastest[0]
-    ? `${sortedFastest[0].displayName} (${sortedFastest[0].latencyMs} ms)`
-    : "N/A";
 
+const averageEngineLatencyMs = measuredEngineLatencies.length
+  ? Math.round(
+      measuredEngineLatencies.reduce(
+        (sum, latency) => sum + latency,
+        0
+      ) / measuredEngineLatencies.length
+    )
+  : 0;
+
+const sortedFastest = [...normalizedEngines]
+  .filter(
+    (engine) =>
+      Number.isFinite(engine.latencyMs) && engine.latencyMs > 0
+  )
+  .sort((a, b) => a.latencyMs - b.latencyMs);
+
+const fastestEngineLabel = sortedFastest[0]
+  ? `${sortedFastest[0].displayName} (${sortedFastest[0].latencyMs} ms)`
+  : "N/A";
   const separateCost =
     (runOrMessage?.cost as SeparateCostEstimate | undefined) ||
     calculateSeparateConsensusRunCost(totalPromptTokens, totalCompletionTokens);
@@ -12390,9 +12402,15 @@ export function normalizeConsensusRunToUIViewModel(
     rawMeta?.timing?.endedAt ||
     legacyMetadata?.timestamp ||
     new Date().toISOString();
-  const startedAt =
-    rawMeta?.timing?.startedAt ||
-    new Date(Date.now() - totalLatencyMs).toISOString();
+  const endedAtMs = Date.parse(endedAt);
+
+const startedAt =
+  rawMeta?.timing?.startedAt ||
+  (
+    totalLatencyMs > 0 && Number.isFinite(endedAtMs)
+      ? new Date(endedAtMs - totalLatencyMs).toISOString()
+      : endedAt
+  );
 
   const runId =
     rawMeta?.runId ||
