@@ -371,9 +371,7 @@ const requestedModels = Array.isArray(request.activeModels)
       .filter(Boolean)
   : [];
 
-const modelsList = requestedModels.length > 0
-  ? requestedModels
-  : ["Gemini 2.5"];
+const modelsList = requestedModels;
 
 if (modelsList.length === 0) {
   recordFlowStep(
