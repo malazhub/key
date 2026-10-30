@@ -2543,14 +2543,49 @@ export function isConversationalInquiryOrExplanationRequest(
     q
   );
 }
+export function hasExplicitNoHistoryDirective(
+  rawText: string
+): boolean {
+  const clean = normalizeUserOrthography(
+    extractCleanUserTurnText(rawText)
+  );
 
+  if (!clean) return false;
+
+  const q = (
+    stripPastedAssistantTranscripts(clean) || clean
+  ).trim();
+
+  if (!q) return false;
+
+  return (
+    /\b(?:do\s+not|don't|never)\s+(?:use|include|load|retrieve|reference|consult|send|inject)\b[\s\S]{0,80}\b(?:any\s+)?(?:past|previous|prior|earlier|old|archived)?\s*(?:chat|chats|conversation|conversations|session|sessions|history|messages?|turns?|memory|context)\b/i.test(q) ||
+
+    /\b(?:do\s+not|don't)\s+want\b[\s\S]{0,60}\b(?:use|include|load|retrieve|reference|consult|send|inject)\b[\s\S]{0,60}\b(?:past|previous|prior|earlier|old|archived)?\s*(?:chat|chats|conversation|conversations|history|messages?|turns?|memory|context)\b/i.test(q) ||
+
+    /\bwithout\s+(?:using|including|loading|retrieving|referencing|consulting)\b[\s\S]{0,60}\b(?:past|previous|prior|earlier|old|archived)?\s*(?:chat|chats|conversation|conversations|history|messages?|turns?|memory|context)\b/i.test(q) ||
+
+    /\b(?:only\s+use|use\s+only)\s+(?:the\s+)?(?:current|this)\s+(?:message|prompt|question)\b/i.test(q) ||
+
+    /\bno\s+(?:past|previous|prior|archived)?\s*(?:chat|conversation|session)?\s*(?:history|memory|context)\b/i.test(q)
+  );
+}
 export function isExplicitHistoryRetrievalOrRecallRequest(rawText: string): boolean {
   const clean = normalizeUserOrthography(extractCleanUserTurnText(rawText));
   if (!clean) return false;
   const q = (stripPastedAssistantTranscripts(clean) || clean).trim();
   if (!q) return false;
-  if (isConversationMemoryDiagnosticOrUpgradeQuery(q)) return true;
-  if (hasExplicitTopicResetDirective(q)) return false;
+
+if (
+  hasExplicitNoHistoryDirective(q) ||
+  hasExplicitTopicResetDirective(q)
+) {
+  return false;
+}
+
+if (isConversationMemoryDiagnosticOrUpgradeQuery(q)) {
+  return true;
+}
 
   return (
     /\b(?:retrieve|retrieving|recall|recalling|fetch|show|display|list|give\s+me|tell\s+me|what\s+was|what\s+were|what\s+is|repeat|summarize|access|read|find|check|remember|do\s+(?:u|you)\s+remember|did\s+(?:u|you)\s+forget|can\s+(?:u|you|key(?:\s+logic)?)\s+(?:access|retrieve|recall|see|remember|read)|do(?:es)?\s+key(?:\s+logic)?\s+(?:can\s+)?(?:access|retrieve|recall|remember|read))\b[\s\S]{0,45}\b(?:previous|prior|last|earlier|past|saved|old|our)\s+(?:conversation|conversations|chat|chats|questions?|queries|query|messages?|turns?|history|discussion|discussions|requests?|prompts?|answers?|replies)\b/i.test(
