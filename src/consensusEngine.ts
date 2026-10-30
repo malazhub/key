@@ -168,19 +168,21 @@ function getEngineApiKey(): string {
 
 function createGenAIClient(): GoogleGenAI {
   const apiKey = getEngineApiKey();
-  const isBrowser = typeof window !== "undefined";
-  return new GoogleGenAI(
-    isBrowser
-      ? { apiKey: apiKey || "browser-client-fallback" }
-      : {
-          apiKey,
-          httpOptions: {
-            headers: {
-              "User-Agent": "aistudio-build",
-            },
-          },
-        }
-  );
+
+  if (!apiKey) {
+    throw new Error(
+      "LIVE_SEARCH_NOT_CONFIGURED: GEMINI_API_KEY is missing. Live web search is unavailable."
+    );
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
 }
 
 // Verified fastest healthy models prioritized first for deterministic identical response across both server & GitHub Pages
@@ -7744,24 +7746,35 @@ export function sanitizeAndEnrichConsensusResult(
 export async function fetchGoogleSearchGrounding(
   question: string
 ): Promise<GroundingSource[]> {
-  // Enforce the gate regardless of which caller invokes search.
   assertDefendedQuery(question);
 
   if (!shouldUseGoogleSearchGrounding(question)) {
     return [];
   }
 
-  // Search grounding is latency-sensitive but 2.5s is too aggressive for real web
-  // retrieval. Try each currently available model so one retired/overloaded model
-  // cannot silently disable browsing for the whole request.
   const availableModels = getAvailableCandidateModels();
-  if (availableModels.length === 0) return [];
 
-  const ai = createGenAIClient();
+  if (availableModels.length === 0) {
+    console.error("LIVE_SEARCH_FAILED: No available grounding models.");
+    return [];
+  }
+
+  let ai: GoogleGenAI;
+
+  try {
+    ai = createGenAIClient();
+  } catch (error) {
+    console.error(
+      "LIVE_SEARCH_CONFIGURATION_ERROR:",
+      redactProviderError(error)
+    );
+    return [];
+  }
+
+  let lastError: unknown = null;
 
   for (const model of availableModels) {
     try {
-            // Gate the query before sending it to the grounding model.
       assertDefendedQuery(question);
 
       const resp = await withStrictTimeout(
@@ -7772,11 +7785,11 @@ export async function fetchGoogleSearchGrounding(
             tools: [{ googleSearch: {} }],
           },
         }),
-        10000,
+        15000,
         "GoogleSearchGrounding:" + model
       );
 
-            const chunks =
+      const chunks =
         resp.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 
       const sources: GroundingSource[] = [];
@@ -7786,11 +7799,15 @@ export async function fetchGoogleSearchGrounding(
         const uri = chunk?.web?.uri;
         const title = chunk?.web?.title || uri;
 
-        if (uri && !seenUris.has(uri)) {
+        if (
+          typeof uri === "string" &&
+          /^https?:\/\//i.test(uri) &&
+          !seenUris.has(uri)
+        ) {
           seenUris.add(uri);
           sources.push({
             title: String(title),
-            uri: String(uri),
+            uri,
           });
         }
       }
@@ -7803,14 +7820,22 @@ export async function fetchGoogleSearchGrounding(
         return sources.slice(0, 6);
       }
 
-      // Source links without an answer are not sufficient evidence.
-      // Continue to the next available grounding model.
-    } catch (err) {
-      if (isQuotaOrRateLimitError(err)) {
-        markModelCooldown(model, err);
+      lastError = new Error(
+        `Model ${model} returned no usable grounded answer and source links.`
+      );
+    } catch (error) {
+      lastError = error;
+
+      if (isQuotaOrRateLimitError(error)) {
+        markModelCooldown(model, error);
       }
     }
   }
+
+  console.error(
+    "LIVE_SEARCH_FAILED:",
+    redactProviderError(lastError || "No usable search results returned.")
+  );
 
   return [];
 }
@@ -9783,10 +9808,26 @@ const correctiveCandidates: AdaptiveCandidate[] = correctiveFacts.map(
 return correctiveCandidates;
   }
     );
-    const plannerExecutionContext = compileExecutionContext(
+   const plannerExecutionContext = compileExecutionContext(
   cleanQuestion,
   queryExecutionPlan,
-  adaptiveRetrievalResult.selected
+  adaptiveRetrievalResult.selected,
+  groundingSources.map((source) => ({
+    source: "web_grounding" as const,
+    title: source.title,
+    content: [
+      source.summary,
+      source.uri,
+    ]
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0
+      )
+      .join("\n"),
+    score: 1,
+    provenance: source.uri,
+    trust: "retrieved" as const,
+  }))
 );
 
 if (flowTraceId) {
@@ -10646,13 +10687,34 @@ lastVerification = {
     }
    
     const agreementTargetMet =
-      actualAgreement >= safeTarget;
+  actualAgreement >= safeTarget;
 
-    const verificationPassed =
-      lastVerification.status === "pass";
+const liveEvidenceRequirementMet =
+  !requiresWebEvidence ||
+  groundingSources.length > 0;
 
-    conformityReached =
-      agreementTargetMet && verificationPassed;
+if (
+  requiresWebEvidence &&
+  groundingSources.length === 0
+) {
+  lastVerification = {
+    status: "unverified",
+    feedback:
+      "Live web evidence could not be retrieved. The answer cannot be verified as current.",
+    missingRequirements: [
+      "Successful live web retrieval is required for this request.",
+      "At least one usable source with a URL is required.",
+      "Do not claim that current information was checked.",
+    ],
+  };
+}
+
+const verificationPassed =
+  lastVerification.status === "pass" &&
+  liveEvidenceRequirementMet;
+
+conformityReached =
+  agreementTargetMet && verificationPassed;
 
 
 if (flowTraceId) {
