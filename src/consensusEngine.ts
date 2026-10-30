@@ -9605,88 +9605,11 @@ export async function runSmartMemoryConsensusLoop(
 
   
     
-  const plannerModel =
-    getServerEnv("KEY_QUERY_PLANNER_MODEL") ||
-    getServerEnv("GEMINI_QUERY_PLANNER_MODEL") ||
-    getServerEnv("GEMINI_MODEL") ||
-    getOrderedCandidateModels()[0] ||
-    "gemini-2.5-flash";
+  const queryExecutionPlan =
+  await buildQueryExecutionPlan(cleanQuestion);
+  const requiresWebEvidence = false;
 
-   
-  const plannerModelInvoker = async (
-    plannerPrompt: string
-  ): Promise<unknown> => {
-    // Gate every planner request before it reaches Gemini.
-    assertDefendedQuery(plannerPrompt);
-
-    const maxAttempts = 3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await withStrictTimeout(
-          ai.models.generateContent({
-            model: plannerModel,
-            contents: plannerPrompt,
-            config: {
-              temperature: 0,
-              responseMimeType: "application/json",
-            },
-          }),
-          10_000,
-          "QueryExecutionPlanner"
-        );
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : (() => {
-                try {
-                  return JSON.stringify(error);
-                } catch {
-                  return String(error);
-                }
-              })();
-
-        const isTransient =
-          /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|rate.?limit|quota|timed? ?out|timeout|ECONNRESET|ETIMEDOUT/i.test(
-            message
-          );
-
-        if (!isTransient || attempt === maxAttempts) {
-          throw error;
-        }
-
-        const delayMs = attempt * 500;
-
-        console.warn(
-          `[QueryExecutionPlanner] transient error, attempt ${attempt}/${maxAttempts}; retrying in ${delayMs}ms`,
-          message
-        );
-
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, delayMs)
-        );
-      }
-    }
-
-    throw new Error("QueryExecutionPlanner failed after retries");
-  };
-
-
-    const queryExecutionPlan = await buildQueryExecutionPlan(
-    cleanQuestion,
-    plannerModelInvoker
-    );
-  const requiresWebEvidence =
-  queryExecutionPlan.evidenceNeeds.webGrounding ||
-  queryExecutionPlan.retrieval.sources.includes("web_grounding");
-
-const groundingPromise: Promise<GroundingSource[]> =
-  requiresWebEvidence && !isGreetingTarget
-    ? fetchGoogleSearchGrounding(cleanQuestion)
-    : Promise.resolve([] as GroundingSource[]);
-
-const groundingSources = await groundingPromise;
+const groundingSources: GroundingSource[] = [];
 
     const plannerMemoryCandidates = buildPlannerMemoryCandidates(
   queryExecutionPlan,
