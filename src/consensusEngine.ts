@@ -8916,40 +8916,52 @@ const includeKeyInternalContext =
       overlapRatio >= SEMANTIC_OVERLAP_THRESHOLD ||
       qu.intent === "imperative_command");
 
-  const activeTiers: Array<
+    const activeTiers: Array<
     "RECENT_CONTEXT" | "LONG_TERM_MEMORY" | "KNOWLEDGE"
   > = [];
+
   if (doINeedHistory) {
-  activeTiers.push("RECENT_CONTEXT");
-  activeTiers.push("LONG_TERM_MEMORY");
-}
+    activeTiers.push("RECENT_CONTEXT");
+  }
 
-if (includeKeyInternalContext) {
-  activeTiers.push("KNOWLEDGE");
-}
+  if (includeKeyInternalContext) {
+    activeTiers.push("LONG_TERM_MEMORY");
+    activeTiers.push("KNOWLEDGE");
+  }
 
-  const routingMode: MemoryRouterDecision["routingMode"] = !doINeedHistory
-    ? "ISOLATED_FRESH_TURN"
-    : hasStrongConvRef
-    ? "ANCHORED_ACTION_LINEAGE"
-    : qu.intent === "imperative_command"
-    ? "HYBRID_MULTI_TIER_MEMORY"
-    : "RECENT_WORKING_CONTEXT";
+  const hasAuthorizedMemoryRetrieval =
+    doINeedHistory || includeKeyInternalContext;
 
-  const retrievalBudget = !doINeedHistory
-    ? 0
-    : hasStrongConvRef
-    ? Math.min(5, Math.max(2, recentPairs.length))
-    : Math.min(10, Math.max(3, recentPairs.length + 2));
+  const routingMode: MemoryRouterDecision["routingMode"] =
+    !hasAuthorizedMemoryRetrieval
+      ? "ISOLATED_FRESH_TURN"
+      : includeKeyInternalContext
+      ? "HYBRID_MULTI_TIER_MEMORY"
+      : hasStrongConvRef
+      ? "ANCHORED_ACTION_LINEAGE"
+      : qu.intent === "imperative_command"
+      ? "HYBRID_MULTI_TIER_MEMORY"
+      : "RECENT_WORKING_CONTEXT";
+
+  const retrievalBudget =
+    !hasAuthorizedMemoryRetrieval
+      ? 0
+      : includeKeyInternalContext && !doINeedHistory
+      ? 6
+      : hasStrongConvRef
+      ? Math.min(5, Math.max(2, recentPairs.length))
+      : Math.min(10, Math.max(3, recentPairs.length + 2));
 
   const memoryRouter: MemoryRouterDecision = {
     doINeedHistory,
     routingMode,
     activeTiers,
     retrievalBudget,
-    rationale: !doINeedHistory
-      ? `Router determined history is NOT needed (intent="${qu.intent}", isolated fresh session enforced).`
-      : `Router activated [${activeTiers.join(
+    rationale: !hasAuthorizedMemoryRetrieval
+      ? "No conversational or KEY-internal retrieval was authorized."
+      : includeKeyInternalContext && !doINeedHistory
+      ? "KEY-internal retrieval authorized independently of conversational history."
+      : `Memory retrieval activated [${activeTiers.join(
           " + "
         )}] with mode="${routingMode}" and adaptive budget=${retrievalBudget}.`,
   };
@@ -8958,29 +8970,8 @@ if (includeKeyInternalContext) {
   // Tier 1: RECENT CONTEXT (current chat turns)
   // Tier 2: LONG-TERM MEMORY (persistent working memory facts & continuous state S_t)
   // Tier 3: KNOWLEDGE (KEY_CODEBASE_STRUCTURE_REGISTRY & system architecture docs)
-  const rawCandidates: MemoryCandidateRecord[] = [];
+    const rawCandidates: MemoryCandidateRecord[] = [];
   const nowMs = Date.now();
-  const keyQuery = String(qu.rawQuery || "");
-
-const explicitlyTargetsKeyInternals =
-  /\b(?:key(?:'s)?|this app|our app|this repository|our repository|this codebase|our codebase|key repo|key codebase)\b/i.test(
-    keyQuery
-  );
-
-const requestsInternalTechnicalDetail =
-  isCodebaseStructureOrFileTreeQuery(keyQuery) ||
-  isCodebaseDiagnosticOrLogicGapQuery(keyQuery) ||
-  isLogicOrArchitectureQuery(keyQuery) ||
-  /\b(?:architecture|implementation|source code|internal logic|codebase|repository|file tree)\b/i.test(
-    keyQuery
-  );
-
-const includeKeyInternalContext =
-  isKeySelfModificationRequest(keyQuery) ||
-  (
-    explicitlyTargetsKeyInternals &&
-    requestsInternalTechnicalDetail
-  );
 
   if (doINeedHistory) {
     recentPairs.forEach((pair, idx) => {
@@ -9011,33 +9002,7 @@ const includeKeyInternalContext =
       });
     });
 
-    // Long-Term Memory records (Persistent Markov State S_t & extracted facts)
-    rawCandidates.push({
-      id: `ltm-markov-state-vector`,
-      tier: "LONG_TERM_MEMORY",
-      title: `Persistent Continuous Upgrade State Vector (S_t = Φ(S_{t-1}, Δ_t))`,
-      content: `Persistent UI & structural customization state across sessions including headerTitleColors, headerTitleAlign, customHeaderTitle, and active 10-engine consensus configuration.`,
-      entities: [
-        "Key",
-        "headerTitleColors",
-        "headerTitleAlign",
-        "Red",
-        "Yellow",
-        "Blue",
-      ],
-      timestampMs: nowMs - 30_000,
-      supersededBy: null,
-      isSuperseded: false,
-      channelScores: {
-        semantic: 0,
-        keywordBM25: 0,
-        entity: 0,
-        temporal: 0,
-        exactReference: 0,
-      },
-      mergedScore: 0,
-      rerankedScore: 0,
-    });
+    
   }
 
   // KEY internal knowledge is available only for explicitly
@@ -9067,12 +9032,13 @@ if (includeKeyInternalContext) {
           temporal: 0,
           exactReference: 0,
         },
-        mergedScore: 0,
+                mergedScore: 0,
         rerankedScore: 0,
       });
     });
+}
 
-  // Stage 3: PARALLEL 5-CHANNEL SEARCH (semantic, keyword/BM25, entity, temporal, exact reference)
+  // Stage 3: PARALLEL 5-CHANNEL SEARCH (semantic, BM25, entity, temporal, exact reference)
   const queryTokens = extractSemanticTokens(qu.normalizedQuery);
   const queryEntitySet = new Set(qu.entities.map((e) => e.toLowerCase()));
   let semanticHits = 0;
@@ -9575,71 +9541,45 @@ export async function runSmartMemoryConsensusLoop(
     priorityGate,
   } = resolvedContext;
 
-  let strictQueryPriority = resolvedContext.strictQueryPriority;
-  let contextMode = resolvedContext.contextMode;
-  let payloadSentToEngines = resolvedContext.payloadSentToEngines;
-  let cumulativeSpec = resolvedContext.cumulativeSpec;
+    const strictQueryPriority =
+    resolvedContext.strictQueryPriority;
 
-  // Semantic Similarity Gate against previous chat history (threshold < 0.2):
-  const rawHistoryMemory = buildCumulativeMemoryBank(
-    Array.isArray(history) ? history : []
-  );
-  const recentOverlapStats = calculateRecentTurnTokenOverlap(
-    cleanQuestion,
-    rawHistoryMemory.windowPairs,
-    3
-  );
+  const contextMode =
+    resolvedContext.contextMode;
+
+  const payloadSentToEngines =
+    resolvedContext.payloadSentToEngines;
+
+  const cumulativeSpec =
+    resolvedContext.cumulativeSpec;
+
+  // One authorized source for all active-session context.
+  const authorizedActiveHistory: HistoryTurn[] =
+    strictQueryPriority
+      ? []
+      : effectiveHistory;
+
+  const rawHistoryMemory =
+    buildCumulativeMemoryBank(
+      authorizedActiveHistory
+    );
+
+  // Semantic overlap is a retrieval signal, not an isolation rule.
+  const recentOverlapStats =
+    calculateRecentTurnTokenOverlap(
+      cleanQuestion,
+      rawHistoryMemory.windowPairs,
+      3
+    );
+
   const tokenOverlapRatioWithSaved = Math.max(
     recentOverlapStats.overlapRatio,
     recentOverlapStats.fullHistoryOverlapRatio
   );
+
   const isExplicitHistoryRecallTarget =
-    !isGreetingTarget && isExplicitHistoryRetrievalOrRecallRequest(cleanQuestion);
-
-  const isBelowSemanticOverlapThreshold =
-    !isExplicitHistoryRecallTarget &&
-    rawHistoryMemory.windowPairs.length === 0 &&
-    (!priorityGate.maintainHistory ||
-      (tokenOverlapRatioWithSaved < SEMANTIC_OVERLAP_THRESHOLD &&
-        !isCodebaseDiagnosticOrLogicGapQuery(cleanQuestion) &&
-        !isReferentialFollowUpToRecentTurn(cleanQuestion) &&
-        !relation.isCorrectionOrRepetition));
-
-  // Definitive `isStandaloneQuery` Flag:
-  // Isolates when there are 0 prior turns, or when the user sends a standalone greeting,
-  // or when the user explicitly commands a topic reset.
-  // Low lexical overlap does NOT mean that conversation history is irrelevant.
-  // Keep history unless this is genuinely a greeting, there is no history,
-  // or the user explicitly requests a topic reset.
-  const isStandaloneQuery: boolean =
-    !isExplicitHistoryRecallTarget &&
-    (
-      rawHistoryMemory.windowPairs.length === 0 ||
-      isStandaloneGreetingOrSmallTalk(cleanQuestion) ||
-      isGreetingTarget ||
-      hasExplicitTopicResetDirective(cleanQuestion)
-    );
-
-  if (isStandaloneQuery) {
-    strictQueryPriority = true;
-    contextMode = "NEW_QUERY_ONLY";
-    payloadSentToEngines = QueryContextManager.purgeHistoryFromPayload(
-      payloadSentToEngines,
-      isolatedPayloadSentToEngines
-    );
-
-    // Do not mutate the canonical history or archive.
-    // These arrays represent this execution's context only.
-    windowPairs.length = 0;
-    effectiveHistory.length = 0;
-    cumulativeSpec = undefined;
-    relation.hasRelation = false;
-    relation.contextMode = "NEW_QUERY_ONLY";
-    relation.historyMatchScore = 0;
-    relation.matchedPairIndices = [];
-    relation.payloadSentToEngines = payloadSentToEngines;
-    relation.workingMemoryFacts = [];
-  }
+    !strictQueryPriority &&
+    isExplicitHistoryRetrievalOrRecallRequest(cleanQuestion);
 
   // Execute the 6-Stage Memory Operating System Pipeline around the model
   const memoryOSTrace = runMemoryOperatingSystemPipeline(
