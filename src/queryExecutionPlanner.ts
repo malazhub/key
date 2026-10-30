@@ -202,9 +202,6 @@ function defaultNeeds(
   const history =
     /\b(previous|prior|earlier|last turn|conversation|history|remember|again|before|we discussed|you said)\b/.test(q);
 
-  const web =
-    /\b(latest|today|current|recent|news|price|weather|live|2026|this week|search the web|internet)\b/.test(q);
-
   const temporal =
     /\b(today|now|currently|current|latest|recent|yesterday|tomorrow|last week|this week|this month|2026|before|after)\b/.test(q);
 
@@ -215,9 +212,9 @@ function defaultNeeds(
     recentContext: history || exact,
     longTermMemory: history,
     knowledge: true,
-    webGrounding: web,
+    webGrounding: false,
     liveStructure: codebase,
-    attachments: false,
+    attachments: true,
     temporal,
     exactReference: exact,
     entityCoverage: true,
