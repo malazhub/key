@@ -4515,7 +4515,9 @@ const data = await res.json();
             adminUpgradeMode: isActualAdminUpgradeTask,
             nextVersionTag: "key",
             githubToken: discoveredToken || undefined,
-            strictQueryPriority: hasExplicitTopicResetDirective(queryText),
+           strictQueryPriority:
+          hasExplicitTopicResetDirective(queryText) ||
+          hasExplicitNoHistoryDirective(queryText),
             attachments: attachmentsToSend.map((a) => ({
               name: a.name,
               mimeType: a.mimeType,
