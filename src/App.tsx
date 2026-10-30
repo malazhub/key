@@ -4300,10 +4300,10 @@ const data = await res.json();
       stripPastedAssistantTranscripts(queryText) || queryText;
 
     const isDeployCommandQuery =
-      !hasNoAppOrLogicGuardInClient &&
-      /\b(deploy|force\s+git|commit\s+force|force\s+deploy|foce\s+deploy|malazhub\/key|malazhub\.github\.io)\b/i.test(
-        strippedQueryForDeploy
-      );
+  isAdminAuthenticated &&
+  /^(?:(?:please|kindly)\s+)?(?:(?:(?:can|could|would)\s+you|i\s+(?:want|need)\s+you\s+to)\s+)?(?:deploy|force[\s-]+deploy|force[\s-]+push|push\s+to\s+github|publish)\b/i.test(
+    strippedQueryForDeploy.trim()
+  );
 
     const clientRelationCheck = computeClientRelationWithPrevious(
       queryText,
