@@ -28,7 +28,6 @@ export type EvidenceSource =
   | "long_term_memory"
   | "knowledge"
   | "web_grounding"
-  | "live_structure"
   | "attachments"
   | "query_context";
 
@@ -47,7 +46,6 @@ export interface QueryExecutionPlan {
     longTermMemory: boolean;
     knowledge: boolean;
     webGrounding: boolean;
-    liveStructure: boolean;
     attachments: boolean;
     temporal: boolean;
     exactReference: boolean;
@@ -115,8 +113,7 @@ export type CorrectiveRetrievalReason =
   | "MISSING_RECENT_CONTEXT"
   | "MISSING_LONG_TERM_MEMORY"
   | "MISSING_KNOWLEDGE"
-  | "MISSING_WEB_EVIDENCE"
-  | "MISSING_LIVE_STRUCTURE"
+  |   | "MISSING_WEB_EVIDENCE"
   | "MISSING_TEMPORAL_EVIDENCE"
   | "MISSING_ENTITY_COVERAGE"
   | "MISSING_EXACT_REFERENCE"
@@ -139,7 +136,6 @@ const SOURCE_POLICY: Record<EvidenceSource, boolean> = {
   long_term_memory: true,
   knowledge: true,
   web_grounding: true,
-  live_structure: true,
   attachments: true,
   query_context: true,
 };
@@ -205,21 +201,12 @@ function defaultNeeds(
 
   const exact =
     /\b(this|that|these|those|it|the above|the previous|same|exact|line|function|file)\b/.test(q);
-const explicitlyTargetsKeyInternals =
-  /\b(?:key(?:'s)?|this app|our app|this repository|our repository|this codebase|our codebase)\b/i.test(q);
 
-const requestsInternalTechnicalDetail =
-  /\b(?:codebase|repository|repo|file tree|directory|folders?|source files?|source code|architecture|implementation|internal logic|code)\b/i.test(q);
-
-const allowLiveStructure =
-  explicitlyTargetsKeyInternals &&
-  requestsInternalTechnicalDetail;
   return {
     recentContext: history || exact,
     longTermMemory: history,
     knowledge: true,
     webGrounding: false,
-   liveStructure: allowLiveStructure,
     attachments: true,
     temporal,
     exactReference: exact,
@@ -324,12 +311,11 @@ function fallbackPlan(query: string, reason?: string): QueryExecutionPlan {
   const polarity = fallbackPolarity(normalized);
   const needs = defaultNeeds(normalized);
 
-  const entries: Array<[EvidenceSource, boolean]> = [
+    const entries: Array<[EvidenceSource, boolean]> = [
     ["recent_context", needs.recentContext],
     ["long_term_memory", needs.longTermMemory],
     ["knowledge", needs.knowledge],
     ["web_grounding", needs.webGrounding],
-    ["live_structure", needs.liveStructure],
     ["attachments", needs.attachments],
     ["query_context", true],
   ];
@@ -409,8 +395,7 @@ const needs = {
     fallback.evidenceNeeds.webGrounding ||
     requestedNeeds.webGrounding === true,
 
-  liveStructure:
-  fallback.evidenceNeeds.liveStructure,
+  
 
   attachments:
     fallback.evidenceNeeds.attachments ||
@@ -429,20 +414,20 @@ const needs = {
     requestedNeeds.entityCoverage === true,
 };
 
-    const allowed = new Set<EvidenceSource>([
-      "recent_context","long_term_memory","knowledge","web_grounding",
-      "live_structure","attachments","query_context",
+        const allowed = new Set<EvidenceSource>([
+      "recent_context",
+      "long_term_memory",
+      "knowledge",
+      "web_grounding",
+      "attachments",
+      "query_context",
     ]);
 
     const requestedSources: EvidenceSource[] =
   Array.isArray(parsed.retrieval?.sources)
     ? parsed.retrieval.sources.filter(
-        (source): source is EvidenceSource =>
-          allowed.has(source as EvidenceSource) &&
-          (
-            source !== "live_structure" ||
-            needs.liveStructure
-          )
+                (source): source is EvidenceSource =>
+          allowed.has(source as EvidenceSource)
       )
     : [];
 
@@ -464,9 +449,7 @@ if (needs.webGrounding) {
   requiredSources.push("web_grounding");
 }
 
-if (needs.liveStructure) {
-  requiredSources.push("live_structure");
-}
+
 
 if (needs.attachments) {
   requiredSources.push("attachments");
@@ -780,11 +763,7 @@ export function determineCorrectiveRetrievalReason(
   )
     return "MISSING_WEB_EVIDENCE";
 
-  if (
-    plan.evidenceNeeds.liveStructure &&
-    !result.selected.some((c) => c.source === "live_structure")
-  )
-    return "MISSING_LIVE_STRUCTURE";
+ 
 
   if (
     plan.retrieval.temporal &&
