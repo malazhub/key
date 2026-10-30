@@ -8037,8 +8037,9 @@ export function buildDeepAnalyticalResilientSynthesis(
   }
 
   const isTopicIsolation = isTopicIsolationOrComplaintQuery(cleanQ);
-  const isEnhancement = isEnhancementOrRevisionRequest(cleanQ);
-  const isLogicQuery =
+const isEnhancement =
+  isKeySelfModificationRequest(rawCleanQ) &&
+  isEnhancementOrRevisionRequest(cleanQ);  const isLogicQuery =
     isTopicIsolation ||
     isLogicOrArchitectureQuery(cleanQ) ||
     /\b(key\s+logic|current\s+logic|ai\s+logic|ur\s+logic|your\s+logic|other\s+ai\s+logic|modifications?\s+on\s+key\s+logic|chang(?:e|ed)\s+(?:the\s+)?key\s+logic|do(?:es)?\s+key\s+now\s+respond|logic\s+gap|30\s+revision|50\s+revision|revise\s+\d+\s+times|comparison\s+fasten\w*|better\s+than\s+(?:the\s+)?previous|worst\s+reply|non\s+solv\w*\s+any\s+logic)\b/i.test(
@@ -8048,7 +8049,7 @@ export function buildDeepAnalyticalResilientSynthesis(
   const lastPair =
     windowPairs.length > 0 ? windowPairs[windowPairs.length - 1] : null;
 
-  if (isEnhancement && lastPair && !isLogicQuery) {
+  if (isEnhancement && lastPair) {
     const priorAsk = lastPair.userQuery.trim();
     const priorAns = lastPair.agreedAnswer
       .replace(/^###\s+Response to[^\n]+\n*/i, "")
@@ -8072,7 +8073,7 @@ export function buildDeepAnalyticalResilientSynthesis(
 
  
 
-  if (isLogicQuery || isEnhancement) {
+  if (isEnhancement) {
     const spec = parseKeySelfModificationSpec(rawCleanQ);
     const all30StepsList = (spec.revisionReport?.steps || [])
       .map(
@@ -8887,6 +8888,10 @@ export function runMemoryOperatingSystemPipeline(
   // Tier 3: KNOWLEDGE (KEY_CODEBASE_STRUCTURE_REGISTRY & system architecture docs)
   const rawCandidates: MemoryCandidateRecord[] = [];
   const nowMs = Date.now();
+  const includeKeyInternalContext =
+  !isConversationalInquiryOrExplanationRequest(qu.rawQuery) &&
+  !isSelfUpgradeCapabilityQuestion(qu.rawQuery) &&
+  isKeySelfModificationRequest(qu.rawQuery);
 
   if (doINeedHistory) {
     recentPairs.forEach((pair, idx) => {
