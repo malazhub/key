@@ -8377,38 +8377,57 @@ export class QueryContextManager {
     const isolatedPayloadSentToEngines =
       forceIsolatedPayloadSentToEngines(cleanQuestion);
 
-    const priorRawHistoryLength = Array.isArray(history) ? history.length : 0;
-    const { allPairsCount: rawAllPairsCount } = buildCumulativeMemoryBank(
-      Array.isArray(history) ? history : []
-    );
+   const sanitizedInputHistory: HistoryTurn[] =
+  Array.isArray(history) ? history : [];
 
-    const isGreetingTarget = isStandaloneGreetingOrSmallTalk(cleanQuestion);
-    const isTopicIsolationTarget =
-      isTopicIsolationOrComplaintQuery(cleanQuestion);
-    const isCapabilityQuestionTarget =
-      !isGreetingTarget && isSelfUpgradeCapabilityQuestion(cleanQuestion);
-    const isEnhancementTarget =
-      !isGreetingTarget &&
-      !isTopicIsolationTarget &&
-      !isCapabilityQuestionTarget &&
-      isEnhancementOrRevisionRequest(cleanQuestion);
+const hasActiveHistory = sanitizedInputHistory.some(
+  (turn) =>
+    (turn.role === "user" || turn.role === "assistant") &&
+    typeof turn.content === "string" &&
+    turn.content.trim().length > 0
+);
 
-    const isEarlyTopicIsolationOrGreeting = isGreetingTarget;
+const { allPairsCount: rawAllPairsCount } =
+  buildCumulativeMemoryBank(sanitizedInputHistory);
 
-    const isMandatoryIsolatedTurn =
-      isGreetingTarget ||
-      hasExplicitTopicResetDirective(cleanQuestion);
+const isGreetingTarget =
+  isStandaloneGreetingOrSmallTalk(cleanQuestion);
+
+const isTopicIsolationTarget =
+  isTopicIsolationOrComplaintQuery(cleanQuestion);
+
+const isCapabilityQuestionTarget =
+  !isGreetingTarget &&
+  isSelfUpgradeCapabilityQuestion(cleanQuestion);
+
+const isEnhancementTarget =
+  !isGreetingTarget &&
+  !isTopicIsolationTarget &&
+  !isCapabilityQuestionTarget &&
+  isEnhancementOrRevisionRequest(cleanQuestion);
+
+// A greeting only starts with no prior context when the active chat
+// actually contains no messages.
+const isEarlyTopicIsolationOrGreeting =
+  isGreetingTarget && !hasActiveHistory;
+
+// Only explicit user instructions may suppress an existing session.
+const isMandatoryIsolatedTurn =
+  options?.strictQueryPriority === true ||
+  hasExplicitTopicResetDirective(cleanQuestion) ||
+  hasExplicitNoHistoryDirective(cleanQuestion);
 
     // 1. If `isStandaloneGreetingOrSmallTalk` or `isTopicIsolationOrComplaintQuery` evaluates to true,
     // force `contextMode = "NEW_QUERY_ONLY"` and purge all previous history from `payloadSentToEngines`.
     if (isEarlyTopicIsolationOrGreeting || isMandatoryIsolatedTurn) {
-      const isolationReason = isGreetingTarget
-        ? "isStandaloneGreetingOrSmallTalk=true"
-        : isTopicIsolationTarget
-        ? "isTopicIsolationOrComplaintQuery=true"
-        : isCapabilityQuestionTarget
-        ? "isSelfUpgradeCapabilityQuestion=true"
-        : "hasExplicitTopicResetDirective=true";
+      const isolationReason =
+  options?.strictQueryPriority === true
+    ? "caller_explicit_history_suppression"
+    : hasExplicitNoHistoryDirective(cleanQuestion)
+    ? "explicit_no_history_directive"
+    : hasExplicitTopicResetDirective(cleanQuestion)
+    ? "explicit_topic_reset"
+    : "greeting_without_active_session_history";
 
       const purgedPayload = forceIsolatedPayloadSentToEngines(cleanQuestion);
 
@@ -8433,7 +8452,9 @@ export class QueryContextManager {
         isCapabilityQuestionTarget,
         isEnhancementTarget,
         isEarlyTopicIsolationOrGreeting,
-        isMandatoryIsolatedTurn: true,
+        isMandatoryIsolatedTurn:
+  isMandatoryIsolatedTurn ||
+  isEarlyTopicIsolationOrGreeting,
         payloadSentToEngines: purgedPayload,
         windowPairs: [],
         effectiveHistory: [],
@@ -8886,10 +8907,13 @@ export function runMemoryOperatingSystemPipeline(
     "RECENT_CONTEXT" | "LONG_TERM_MEMORY" | "KNOWLEDGE"
   > = [];
   if (doINeedHistory) {
-    activeTiers.push("RECENT_CONTEXT");
-    activeTiers.push("LONG_TERM_MEMORY");
-  }
+  activeTiers.push("RECENT_CONTEXT");
+  activeTiers.push("LONG_TERM_MEMORY");
+}
+
+if (includeKeyInternalContext) {
   activeTiers.push("KNOWLEDGE");
+}
 
   const routingMode: MemoryRouterDecision["routingMode"] = !doINeedHistory
     ? "ISOLATED_FRESH_TURN"
@@ -8923,10 +8947,27 @@ export function runMemoryOperatingSystemPipeline(
   // Tier 3: KNOWLEDGE (KEY_CODEBASE_STRUCTURE_REGISTRY & system architecture docs)
   const rawCandidates: MemoryCandidateRecord[] = [];
   const nowMs = Date.now();
-  const includeKeyInternalContext =
-  !isConversationalInquiryOrExplanationRequest(qu.rawQuery) &&
-  !isSelfUpgradeCapabilityQuestion(qu.rawQuery) &&
-  isKeySelfModificationRequest(qu.rawQuery);
+  const keyQuery = String(qu.rawQuery || "");
+
+const explicitlyTargetsKeyInternals =
+  /\b(?:key(?:'s)?|this app|our app|this repository|our repository|this codebase|our codebase|key repo|key codebase)\b/i.test(
+    keyQuery
+  );
+
+const requestsInternalTechnicalDetail =
+  isCodebaseStructureOrFileTreeQuery(keyQuery) ||
+  isCodebaseDiagnosticOrLogicGapQuery(keyQuery) ||
+  isLogicOrArchitectureQuery(keyQuery) ||
+  /\b(?:architecture|implementation|source code|internal logic|codebase|repository|file tree)\b/i.test(
+    keyQuery
+  );
+
+const includeKeyInternalContext =
+  isKeySelfModificationRequest(keyQuery) ||
+  (
+    explicitlyTargetsKeyInternals &&
+    requestsInternalTechnicalDetail
+  );
 
   if (doINeedHistory) {
     recentPairs.forEach((pair, idx) => {
@@ -8986,7 +9027,9 @@ export function runMemoryOperatingSystemPipeline(
     });
   }
 
-  // Knowledge Tier records (External & Architectural Knowledge)
+  // KEY internal knowledge is available only for explicitly
+// authorized KEY architecture and codebase questions.
+if (includeKeyInternalContext) {
   Object.values(KEY_CODEBASE_STRUCTURE_REGISTRY)
     .slice(0, 5)
     .forEach((entry, kIdx) => {
@@ -9587,13 +9630,13 @@ export async function runSmartMemoryConsensusLoop(
 
   // Execute the 6-Stage Memory Operating System Pipeline around the model
   const memoryOSTrace = runMemoryOperatingSystemPipeline(
-    cleanQuestion,
-    Array.isArray(history) ? history : [],
-    {
-      forceIsolated: isStandaloneQuery,
-      tokenOverlapRatio: tokenOverlapRatioWithSaved,
-    }
-  );
+  cleanQuestion,
+  authorizedActiveHistory,
+  {
+    forceIsolated: strictQueryPriority,
+    tokenOverlapRatio: tokenOverlapRatioWithSaved,
+  }
+);
 
   const attachments = Array.isArray(options?.attachments)
     ? options.attachments
@@ -9653,7 +9696,7 @@ const groundingSources: GroundingSource[] = [];
 
     const plannerMemoryCandidates = buildPlannerMemoryCandidates(
   queryExecutionPlan,
-  Array.isArray(history) ? history : []
+  authorizedActiveHistory
 );
 
 const plannerCandidates: AdaptiveCandidate[] = [
@@ -9725,11 +9768,11 @@ for (const attachment of attachments) {
       `Corrective retrieval pass: ${pass}`,
     ].join("\n");
 
-    const correctiveMemoryTrace = runMemoryOperatingSystemPipeline(
+   const correctiveMemoryTrace = runMemoryOperatingSystemPipeline(
   correctiveQuery,
-  Array.isArray(history) ? history : [],
+  authorizedActiveHistory,
   {
-    forceIsolated: isStandaloneQuery,
+    forceIsolated: strictQueryPriority,
     tokenOverlapRatio: tokenOverlapRatioWithSaved,
   }
 );
@@ -9865,7 +9908,26 @@ PERMANENT LIVE LOGIC DIRECTIVES (LIVE, QUERY-DRIVEN, EVIDENCE-BASED ANSWERS):
    - If the user's query asks a strict Yes/No question, begin with a direct "Yes" or "No" when the available evidence supports that answer. Follow it with a clear, accurate explanation. If the answer cannot be established, state that limitation instead of guessing.
    - If the user's query refers to the previous conversation or asks to revise a previous response (e.g., "revise your previous response", "based on our last conversation", "give me a short clear answer"), use the IMMEDIATELY PRECEDING CONVERSATION TURN and the LIVE SESSION CONVERSATION MEMORY TRANSCRIPT provided below when relevant. Preserve the user's latest instructions and correct earlier mistakes rather than repeating them.
    - Always prioritize the user's current request. Use previous conversation context only when it is relevant to understanding or completing that request.
+ACTIVE SESSION CONTINUITY:
 
+1. The ACTIVE KEY SESSION TRANSCRIPT is the chronological history
+   of the current chat, not a set of instructions that must all
+   be followed.
+2. Preserve active-session context by default, including when the
+   current question changes topics or has low semantic similarity.
+3. Use previous messages when they clarify requirements, decisions,
+   references, corrections, constraints, or unresolved work.
+4. The current user request has priority over conflicting older
+   user instructions.
+5. A newer instruction may supersede an older instruction, but
+   it does not erase the older message from the conversation.
+6. Never import a different chat or archived conversation unless
+   a separate archive-retrieval operation has been authorized.
+7. When an explicit no-history instruction is supplied, do not use
+   active-session history or archived history for that request.
+8. If context compaction or truncation occurs, state that accurately.
+   Never claim that the complete transcript was included when it
+   was not.
 3. ACCURACY AND EVIDENCE:
    - Never invent facts, file paths, repository contents, URLs, quotations, sources, tool results, test results, or claims of successful execution.
    - Use reliable retrieved evidence when the request requires verification or current information.
@@ -9908,9 +9970,12 @@ PERMANENT LIVE LOGIC DIRECTIVES (LIVE, QUERY-DRIVEN, EVIDENCE-BASED ANSWERS):
     );
   }
 
-  if (isMemoryOrHistoryInquiry || (!strictQueryPriority && activeConversationPairs.length > 0)) {
-    promptSections.push(liveConversationMemoryBlock);
-  }
+  if (
+  !strictQueryPriority &&
+  authorizedActiveHistory.length > 0
+) {
+  promptSections.push(liveConversationMemoryBlock);
+}
 
  
 
