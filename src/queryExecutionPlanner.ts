@@ -205,13 +205,21 @@ function defaultNeeds(
 
   const exact =
     /\b(this|that|these|those|it|the above|the previous|same|exact|line|function|file)\b/.test(q);
+const explicitlyTargetsKeyInternals =
+  /\b(?:key(?:'s)?|this app|our app|this repository|our repository|this codebase|our codebase)\b/i.test(q);
 
+const requestsInternalTechnicalDetail =
+  /\b(?:codebase|repository|repo|file tree|directory|folders?|source files?|source code|architecture|implementation|internal logic|code)\b/i.test(q);
+
+const allowLiveStructure =
+  explicitlyTargetsKeyInternals &&
+  requestsInternalTechnicalDetail;
   return {
     recentContext: history || exact,
     longTermMemory: history,
     knowledge: true,
     webGrounding: false,
-    liveStructure: false,
+   liveStructure: allowLiveStructure,
     attachments: true,
     temporal,
     exactReference: exact,
@@ -402,8 +410,7 @@ const needs = {
     requestedNeeds.webGrounding === true,
 
   liveStructure:
-    fallback.evidenceNeeds.liveStructure ||
-    requestedNeeds.liveStructure === true,
+  fallback.evidenceNeeds.liveStructure,
 
   attachments:
     fallback.evidenceNeeds.attachments ||
@@ -431,7 +438,11 @@ const needs = {
   Array.isArray(parsed.retrieval?.sources)
     ? parsed.retrieval.sources.filter(
         (source): source is EvidenceSource =>
-          allowed.has(source as EvidenceSource)
+          allowed.has(source as EvidenceSource) &&
+          (
+            source !== "live_structure" ||
+            needs.liveStructure
+          )
       )
     : [];
 
