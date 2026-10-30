@@ -8973,12 +8973,15 @@ const includeKeyInternalContext =
     const rawCandidates: MemoryCandidateRecord[] = [];
   const nowMs = Date.now();
 
-  if (doINeedHistory) {
+    if (doINeedHistory) {
     recentPairs.forEach((pair, idx) => {
       const nextPair = recentPairs[idx + 1];
       const isSuperseded =
         Boolean(nextPair) &&
-        doesCurrentQuerySupersedeSavedPair(nextPair.userQuery, pair.userQuery);
+        doesCurrentQuerySupersedeSavedPair(
+          nextPair.userQuery,
+          pair.userQuery
+        );
 
       rawCandidates.push({
         id: `recent-turn-${pair.pairIndex}`,
@@ -8988,7 +8991,9 @@ const includeKeyInternalContext =
         content: `${pair.userQuery} ${(pair.agreedAnswer || "").slice(0, 260)}`,
         entities: extractSemanticTokens(pair.userQuery).slice(0, 6),
         timestampMs: nowMs - (recentPairs.length - idx) * 60_000,
-        supersededBy: isSuperseded ? `recent-turn-${nextPair.pairIndex}` : null,
+        supersededBy: isSuperseded
+          ? `recent-turn-${nextPair.pairIndex}`
+          : null,
         isSuperseded,
         channelScores: {
           semantic: 0,
@@ -9001,8 +9006,37 @@ const includeKeyInternalContext =
         rerankedScore: 0,
       });
     });
+  }
 
-    
+  // KEY persistent state is separate from ordinary chat history.
+  // Only explicitly authorized KEY-internal queries can retrieve it.
+  if (includeKeyInternalContext) {
+    rawCandidates.push({
+      id: "ltm-markov-state-vector",
+      tier: "LONG_TERM_MEMORY",
+      title: "Persistent Continuous Upgrade State Vector (S_t = Φ(S_{t-1}, Δ_t))",
+      content: "Persistent UI and structural customization state across sessions including headerTitleColors, headerTitleAlign, customHeaderTitle, and active 10-engine consensus configuration.",
+      entities: [
+        "Key",
+        "headerTitleColors",
+        "headerTitleAlign",
+        "Red",
+        "Yellow",
+        "Blue",
+      ],
+      timestampMs: nowMs - 30_000,
+      supersededBy: null,
+      isSuperseded: false,
+      channelScores: {
+        semantic: 0,
+        keywordBM25: 0,
+        entity: 0,
+        temporal: 0,
+        exactReference: 0,
+      },
+      mergedScore: 0,
+      rerankedScore: 0,
+    });
   }
 
   // KEY internal knowledge is available only for explicitly
