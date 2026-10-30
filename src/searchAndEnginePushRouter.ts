@@ -262,8 +262,7 @@ export async function executeKeySearchPipeline(
     };
   }
 
-  const webSearchSources =
-    await fetchGoogleSearchGrounding(cleanQuestion);
+  const webSearchSources: GroundingSource[] = [];
 
   if (traceId) {
     recordFlowStep(
