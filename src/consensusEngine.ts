@@ -9906,6 +9906,7 @@ PERMANENT LIVE LOGIC DIRECTIVES (LIVE, QUERY-DRIVEN, EVIDENCE-BASED ANSWERS):
    - If the user's query asks a strict Yes/No question, begin with a direct "Yes" or "No" when the available evidence supports that answer. Follow it with a clear, accurate explanation. If the answer cannot be established, state that limitation instead of guessing.
    - If the user's query refers to the previous conversation or asks to revise a previous response (e.g., "revise your previous response", "based on our last conversation", "give me a short clear answer"), use the IMMEDIATELY PRECEDING CONVERSATION TURN and the LIVE SESSION CONVERSATION MEMORY TRANSCRIPT provided below when relevant. Preserve the user's latest instructions and correct earlier mistakes rather than repeating them.
    - Always prioritize the user's current request. Use previous conversation context only when it is relevant to understanding or completing that request.
+
 HISTORY AUTHORIZATION (STRICT DEFAULT):
 
 1. Treat each new user request as an independent task by default.
@@ -9923,7 +9924,10 @@ HISTORY AUTHORIZATION (STRICT DEFAULT):
    archive-retrieval operation has been explicitly authorized.
 8. If context compaction or truncation occurs, state that accurately.
    Never claim that the complete transcript was included.
+`;
+
   const promptSections: string[] = [];
+
 
   if (isGreetingTarget) {
     promptSections.push(
