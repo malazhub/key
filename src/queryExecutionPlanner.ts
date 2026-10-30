@@ -196,9 +196,7 @@ function defaultNeeds(
 ): QueryExecutionPlan["evidenceNeeds"] {
   const q = normalizePlannerText(query).toLowerCase();
 
-  const codebase =
-    /\b(key|repository|repo|github|file|files|source|code|server\.ts|consensusengine|app\.tsx|router|implementation|codebase)\b/.test(q);
-
+  
   const history =
     /\b(previous|prior|earlier|last turn|conversation|history|remember|again|before|we discussed|you said)\b/.test(q);
 
@@ -213,7 +211,7 @@ function defaultNeeds(
     longTermMemory: history,
     knowledge: true,
     webGrounding: false,
-    liveStructure: codebase,
+    liveStructure: false,
     attachments: true,
     temporal,
     exactReference: exact,
