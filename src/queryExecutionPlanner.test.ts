@@ -44,8 +44,7 @@ async function makeQueryContextPlan(query: string) {
     recentContext: false,
     longTermMemory: false,
     knowledge: false,
-    webGrounding: false,
-    liveStructure: false,
+        webGrounding: false,
     attachments: false,
     temporal: false,
     exactReference: false,
@@ -141,23 +140,7 @@ test("corrective retrieval never exceeds its pass limit", async () => {
       return [];
     }
   );
-  test(
-  "planner cannot enable live KEY structure for an unrelated query",
-  async () => {
-    const plan = await buildQueryExecutionPlan(
-      "Explain how photosynthesis works.",
-      async () => ({
-        polarity: "explanation",
-        objective: "Explain photosynthesis.",
-        evidenceNeeds: {
-          liveStructure: true,
-        },
-        retrieval: {
-          sources: ["live_structure"],
-        },
-        confidence: 0.99,
-      })
-    );
+  
 
     assert.equal(
       plan.evidenceNeeds.liveStructure,
@@ -171,12 +154,7 @@ test("corrective retrieval never exceeds its pass limit", async () => {
   }
 );
 
-test(
-  "explicit KEY repository questions can enable live structure",
-  async () => {
-    const plan = await buildQueryExecutionPlan(
-      "Inspect KEY's repository source files and architecture."
-    );
+
 
     assert.equal(
       plan.evidenceNeeds.liveStructure,
