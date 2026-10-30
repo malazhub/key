@@ -9486,11 +9486,8 @@ if (includeKeyInternalContext) {
 }
 
 /**
- * Live Structure & Cached-State Inspector for Permanent Live Logic:
- * Dynamically inspects both:
- * 1) The Permanent Structure on GitHub (`https://github.com/malazhub/key`) and Live Disk Workspace (`/api/fs/tree`, `/api/fs/read`)
- * 2) Any Cached / Staged Structure not yet saved to GitHub (`key_self_upgrade_state.json`, `src/selfUpgradeRegistry.json`, `src/mirroredKeyState.json`, and browser localStorage overrides)
- * Never returns a canned answer; instead builds a real-time inspection grounding block for the AI engines.
+ * Runs the standard multi-engine consensus pipeline for the supplied
+ * user question, using the configured history, engines, and options.
  */
 
 
