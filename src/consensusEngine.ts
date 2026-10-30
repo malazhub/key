@@ -8387,8 +8387,11 @@ const hasActiveHistory = sanitizedInputHistory.some(
     turn.content.trim().length > 0
 );
 
-const { allPairsCount: rawAllPairsCount } =
-  buildCumulativeMemoryBank(sanitizedInputHistory);
+const {
+  allPairsCount: rawAllPairsCount,
+  windowPairs: rawWindowPairs,
+  droppedOldestCount,
+} = buildCumulativeMemoryBank(sanitizedInputHistory);
 
 const isGreetingTarget =
   isStandaloneGreetingOrSmallTalk(cleanQuestion);
@@ -8473,87 +8476,75 @@ const isMandatoryIsolatedTurn =
       };
     }
 
-    // 2. Semantic Comparison & Logical Priority Gate between current `userQuery` and saved conversation pairs
-    const sanitizedInputHistory: HistoryTurn[] = Array.isArray(history)
-      ? history
-      : [];
-    const {
-      allPairsCount: activePairsCount,
-      windowPairs: rawWindowPairs,
-      droppedOldestCount,
-    } = buildCumulativeMemoryBank(sanitizedInputHistory);
-    const allPairsCount = Math.max(rawAllPairsCount, activePairsCount);
+    // 2. Measure semantic relationships without allowing semantic
+// similarity to erase an authorized active chat session.
 
-    const rawRelation = calculateMathematicalRelationWithPrevious(
-      cleanQuestion,
-      rawWindowPairs
-    );
+const allPairsCount = rawAllPairsCount;
 
-    const priorityGate = QueryContextManager.evaluateSemanticPriorityGate(
-      cleanQuestion,
-      rawWindowPairs,
-      rawRelation
-    );
+const rawRelation =
+  calculateMathematicalRelationWithPrevious(
+    cleanQuestion,
+    rawWindowPairs
+  );
 
-    // Logical Priority Gate:
-    // If the current query is a new, independent topic (`!priorityGate.maintainHistory`), ALWAYS force `strictQueryPriority = true`
-    // and `contextMode = "NEW_QUERY_ONLY"`, even if a caller passed `strictQueryPriority: false`.
-    // Conversely, if the query is a referential follow-up ("how did u do that", "no technical reply, i need the logic flow")
-    // or codebase diagnostic continuity, maintain history (`strictQueryPriority = false`).
-    const strictQueryPriority: boolean = !priorityGate.maintainHistory
-      ? true
-      : isGreetingTarget || hasExplicitTopicResetDirective(cleanQuestion)
-      ? true
-      : false;
+// This gate remains useful for semantic diagnostics and
+// supplemental retrieval. It is NOT the session-history authority.
+const priorityGate =
+  QueryContextManager.evaluateSemanticPriorityGate(
+    cleanQuestion,
+    rawWindowPairs,
+    rawRelation
+  );
 
-    const windowPairs: SavedQAPair[] = strictQueryPriority
-      ? []
-      : rawWindowPairs;
-    const effectiveHistory: HistoryTurn[] = strictQueryPriority
-      ? []
-      : sanitizedInputHistory;
+// Active history is suppressed only by an explicit instruction,
+// or when there is genuinely no active session history.
+const strictQueryPriority =
+  !hasActiveHistory ||
+  isMandatoryIsolatedTurn;
 
-        // HONESTY GUARD — Step 6 must never claim MERGED_WITH_SAVED when
-    // there is no real saved context to merge with. If the caller asked
-    // for merged history but there are zero saved pairs, refuse.
-    if (
-      !strictQueryPriority &&
-      priorityGate.maintainHistory &&
-      rawWindowPairs.length === 0
-    ) {
-      throw new Error(
-        "Step6: priorityGate.maintainHistory=true but rawWindowPairs.length===0. " +
-          "Refusing to fabricate MERGED_WITH_SAVED with zero saved files. " +
-          "Fix REPO_ROOT / context loader or set strictQueryPriority=true explicitly."
-      );
-    }
+const windowPairs: SavedQAPair[] =
+  strictQueryPriority ? [] : rawWindowPairs;
 
-    const relation: MathematicalRelationResult = strictQueryPriority
-      ? {
-          hasRelation: false,
-          contextMode: "NEW_QUERY_ONLY",
-          historyMatchScore: 0,
-          matchedPairIndices: [],
-          payloadSentToEngines: isolatedPayloadSentToEngines,
-          isCorrectionOrRepetition: false,
-          cumulativeUserSpecification: isolatedPayloadSentToEngines,
-          workingMemoryFacts: [],
-        }
-      : rawRelation;
+const effectiveHistory: HistoryTurn[] =
+  strictQueryPriority ? [] : sanitizedInputHistory;
 
-    const contextMode: "MERGED_WITH_SAVED" | "NEW_QUERY_ONLY" =
-      strictQueryPriority ? "NEW_QUERY_ONLY" : relation.contextMode;
-    const payloadSentToEngines: string = strictQueryPriority
-      ? QueryContextManager.purgeHistoryFromPayload(
-          relation.payloadSentToEngines,
-          isolatedPayloadSentToEngines
-        )
-      : relation.payloadSentToEngines;
-    const cumulativeSpec =
-      !strictQueryPriority && relation.hasRelation
-        ? relation.cumulativeUserSpecification
-        : undefined;
+// Preserve actual semantic measurements.
+// Never fabricate relation scores or claim semantic overlap.
+const relation: MathematicalRelationResult =
+  strictQueryPriority
+    ? {
+        hasRelation: false,
+        contextMode: "NEW_QUERY_ONLY",
+        historyMatchScore: 0,
+        matchedPairIndices: [],
+        payloadSentToEngines:
+          isolatedPayloadSentToEngines,
+        isCorrectionOrRepetition: false,
+        cumulativeUserSpecification:
+          isolatedPayloadSentToEngines,
+        workingMemoryFacts: [],
+      }
+    : rawRelation;
 
+// This is the overall request context mode.
+// Active history is subsequently included as a chronological
+// transcript, even when semantic relation detection finds no match.
+const contextMode:
+  | "MERGED_WITH_SAVED"
+  | "NEW_QUERY_ONLY" =
+    strictQueryPriority
+      ? "NEW_QUERY_ONLY"
+      : "MERGED_WITH_SAVED";
+
+const payloadSentToEngines =
+  strictQueryPriority
+    ? isolatedPayloadSentToEngines
+    : rawRelation.payloadSentToEngines;
+
+const cumulativeSpec =
+  !strictQueryPriority && rawRelation.hasRelation
+    ? rawRelation.cumulativeUserSpecification
+    : undefined;
     return {
       cleanQuestion,
       isolatedPayloadSentToEngines,
@@ -8882,7 +8873,29 @@ export function runMemoryOperatingSystemPipeline(
     Array.isArray(history) ? history : []
   );
   const recentPairs = memBank.windowPairs;
+// Authorize KEY-specific internal state independently from
+// retrieval of the user's ordinary conversational history.
+const keyQuery = String(qu.rawQuery || "");
 
+const explicitlyTargetsKeyInternals =
+  /\b(?:key(?:'s)?|this app|our app|this repository|our repository|this codebase|our codebase|key repo|key codebase)\b/i.test(
+    keyQuery
+  );
+
+const requestsInternalTechnicalDetail =
+  isCodebaseStructureOrFileTreeQuery(keyQuery) ||
+  isCodebaseDiagnosticOrLogicGapQuery(keyQuery) ||
+  isLogicOrArchitectureQuery(keyQuery) ||
+  /\b(?:architecture|implementation|source code|internal logic|codebase|repository|file tree)\b/i.test(
+    keyQuery
+  );
+
+const includeKeyInternalContext =
+  isKeySelfModificationRequest(keyQuery) ||
+  (
+    explicitlyTargetsKeyInternals &&
+    requestsInternalTechnicalDetail
+  );
   // Stage 2: MEMORY ROUTER ("Do I need history?")
   const hasStrongConvRef =
     qu.conversationRefs.hasDeicticRef ||
@@ -9871,23 +9884,33 @@ if (flowTraceId) {
   );
 }
 
-  const activeConversationPairs =
-    rawHistoryMemory.windowPairs.length > 0
-      ? rawHistoryMemory.windowPairs
-      : windowPairs;
+  // Completed Q&A pairs remain useful for previous-turn operations.
+const activeConversationPairs =
+  rawHistoryMemory.windowPairs;
 
-  const liveConversationMemoryBlock =
-    activeConversationPairs.length > 0
-      ? `=== LIVE SESSION CONVERSATION MEMORY TRANSCRIPT (${activeConversationPairs.length} COMPLETED TURN(S) IN CURRENT THREAD) ===\n` +
-        activeConversationPairs
-          .map((p, idx) => {
-            const isRecent = idx >= activeConversationPairs.length - 2;
-            const maxChars = isRecent ? 3500 : 1200;
-            return `Turn #${p.pairIndex}:\n  User Ask: "${p.userQuery}"\n  Key Agreed Reply: "${(p.agreedAnswer || "").slice(0, maxChars)}"`;
-          })
-          .join("\n\n")
-      : `=== LIVE SESSION CONVERSATION MEMORY TRANSCRIPT ===\nNo previous turns exist in this conversation thread yet (0 prior turns).`;
-
+// The actual engine transcript comes from the authorized raw messages.
+// This preserves unanswered user messages and exact chronology.
+const liveConversationMemoryBlock =
+  authorizedActiveHistory.length > 0
+    ? [
+        "=== ACTIVE KEY SESSION TRANSCRIPT ===",
+        "The following messages belong exclusively to the current chat.",
+        "Messages are in chronological order.",
+        JSON.stringify(
+          authorizedActiveHistory.map((turn, index) => ({
+            sequence: index + 1,
+            role: turn.role,
+            content: turn.content,
+          })),
+          null,
+          2
+        ),
+        "=== END ACTIVE KEY SESSION TRANSCRIPT ===",
+      ].join("\n\n")
+    : [
+        "=== ACTIVE KEY SESSION ===",
+        "No previous messages exist in this chat.",
+      ].join("\n");
   const lastSavedPair =
     !strictQueryPriority && activeConversationPairs.length > 0
       ? activeConversationPairs[activeConversationPairs.length - 1]
