@@ -1248,6 +1248,22 @@ export interface GroundingSource {
   title: string;
   uri: string;
   summary?: string;
+
+  // Actual bytes decoded as text from the source.
+  content?: string;
+
+  // Confirms retrieval of content, not the truth of every claim.
+  retrievalVerified?: boolean;
+
+  // Original URL supplied by the user or discovered by search.
+  requestedUri?: string;
+
+  // GitHub provenance, when applicable.
+  commitSha?: string;
+  defaultBranch?: string;
+  treeComplete?: boolean;
+  filesRetrieved?: number;
+  filesAvailable?: number;
 }
 
 export interface EngineTokenUsage {
@@ -9662,12 +9678,22 @@ export async function runSmartMemoryConsensusLoop(
     await buildQueryExecutionPlan(cleanQuestion);
 
   const requiresWebEvidence =
-    shouldUseGoogleSearchGrounding(cleanQuestion);
+  shouldUseGoogleSearchGrounding(cleanQuestion);
 
-  const groundingSources: GroundingSource[] =
-    requiresWebEvidence
-      ? await fetchGoogleSearchGrounding(cleanQuestion)
-      : [];
+// Search is discovery only. Search summaries and URLs are not proof.
+const discoverySources: GroundingSource[] =
+  requiresWebEvidence
+    ? await fetchGoogleSearchGrounding(cleanQuestion)
+    : [];
+
+// Fetch the actual external source contents.
+let groundingSources: GroundingSource[] =
+  requiresWebEvidence
+    ? await fetchVerifiedExternalEvidence(
+        cleanQuestion,
+        discoverySources
+      )
+    : [];
 
   
 if (requiresWebEvidence) {
@@ -9748,6 +9774,63 @@ for (const attachment of attachments) {
   queryExecutionPlan,
   initialAdaptiveResult,
   async (reason, pass) => {
+    if (reason === "MISSING_WEB_EVIDENCE") {
+  const retriedSources =
+    await fetchVerifiedExternalEvidence(
+      cleanQuestion,
+      discoverySources
+    );
+
+  const knownSources = new Set(
+    groundingSources.map(
+      (source) => source.requestedUri || source.uri
+    )
+  );
+
+  const newSources = retriedSources.filter(
+    (source) =>
+      !knownSources.has(source.requestedUri || source.uri)
+  );
+
+  groundingSources = [
+    ...groundingSources,
+    ...newSources,
+  ];
+
+  return newSources.map((source, index) => ({
+    id: `corrective-verified-web-${pass}-${index}`,
+    source: "web_grounding" as const,
+    title: source.title,
+    content: [
+      source.title,
+      `SOURCE URL: ${source.uri}`,
+      source.commitSha
+        ? `COMMIT SHA: ${source.commitSha}`
+        : "",
+      source.content,
+    ]
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0
+      )
+      .join("\n"),
+    channelScores: {
+      semantic: 0.9,
+      bm25: 0.9,
+      entity: 0.9,
+      temporal: 0.9,
+      exactReference: 0.9,
+    },
+    score: 0.95,
+    metadata: {
+      provenance: source.uri,
+      retrievalVerified: source.retrievalVerified === true,
+      correctivePass: pass,
+      correctiveReason: reason,
+      commitSha: source.commitSha || null,
+    },
+  }));
+}
     const correctiveQuery = [
       cleanQuestion,
       `Corrective retrieval reason: ${reason}`,
@@ -10525,6 +10608,14 @@ const combinedRefusalFeedback = combinedResultRefused
   "Apply the same verification process to every topic. Do not create special pass/fail rules for repository, tree, or architecture questions.",
   "Check correctness, relevance, completeness, reasoning, and evidence.",
   "Agreement between engines and confident wording do not prove correctness.",
+  "Only actual retrieved source content can support claims that an external source was inspected.",
+"A search result URL or AI-generated search summary is discovery information, not retrieved source content.",
+"For GitHub repository claims, inspect the supplied repository tree, commit SHA, and actual retrieved file contents.",
+"Distinguish a complete repository tree from a truncated or partial tree.",
+"Distinguish files listed in a tree from files whose contents were actually retrieved.",
+"Never infer file contents, architecture, dependencies, or implementation details from filenames alone.",
+"If the requested source was not retrieved, return unverified.",
+"If source retrieval is partial, explicitly limit claims to the retrieved material.",
   "Return pass only when every material requirement is addressed and claims are adequately supported or qualified.",
   "If a material claim is unsupported, contradictory, incomplete, or uncertain, return needs_revision or unverified.",
   "Never invent facts, sources, calculations, measurements, file paths, repository contents, or verification results.",
@@ -10701,9 +10792,44 @@ lastVerification = {
     const agreementTargetMet =
   actualAgreement >= safeTarget;
 
+const agreementTargetMet =
+  actualAgreement >= safeTarget;
+
+// A URL or search summary alone cannot satisfy this condition.
 const liveEvidenceRequirementMet =
   !requiresWebEvidence ||
-  groundingSources.length > 0;
+  hasRequiredExternalSourceCoverage(
+    cleanQuestion,
+    groundingSources
+  );
+
+if (
+  requiresWebEvidence &&
+  !liveEvidenceRequirementMet
+) {
+  lastVerification = {
+    status: "unverified",
+    feedback:
+      "External source retrieval or requested-source coverage failed. " +
+      "Search result URLs and generated summaries are not sufficient evidence. " +
+      "The answer must not claim that the requested source was inspected.",
+    missingRequirements: [
+      "Retrieve actual source content.",
+      "Verify that the retrieved content belongs to the requested source.",
+      "For GitHub repositories, establish the default branch and commit SHA.",
+      "Retrieve the repository tree and relevant file contents.",
+      "Do not present incomplete retrieval as a complete repository inspection.",
+      "Do not claim factual verification based only on model agreement.",
+    ],
+  };
+}
+
+const verificationPassed =
+  lastVerification.status === "pass" &&
+  liveEvidenceRequirementMet;
+
+conformityReached =
+  agreementTargetMet && verificationPassed;
 
 if (
   requiresWebEvidence &&
