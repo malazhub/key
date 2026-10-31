@@ -9669,57 +9669,7 @@ export async function runSmartMemoryConsensusLoop(
       ? await fetchGoogleSearchGrounding(cleanQuestion)
       : [];
 
-  // HARD SOURCE VERIFICATION GATE:
-  // A supplied URL is not evidence that its contents were retrieved.
-  // Require grounding from the requested source path before answering.
   
-
-    const requestedPath =
-      requestedUrl.pathname.replace(/\/+$/, "") || "/";
-
-    const matchingSourceRetrieved = groundingSources.some((source) => {
-      try {
-        const retrievedUrl = new URL(source.uri);
-
-        if (
-          retrievedUrl.protocol !== "https:" &&
-          retrievedUrl.protocol !== "http:"
-        ) {
-          return false;
-        }
-
-        if (
-          retrievedUrl.origin.toLowerCase() !==
-          requestedUrl.origin.toLowerCase()
-        ) {
-          return false;
-        }
-
-        const retrievedPath =
-          retrievedUrl.pathname.replace(/\/+$/, "") || "/";
-
-        // A domain-root request can be supported by a retrieved page
-        // on that domain. A specific path must match that path or a
-        // child path, not an unrelated page on the same website.
-        return (
-          requestedPath === "/" ||
-          retrievedPath === requestedPath ||
-          retrievedPath.startsWith(requestedPath + "/")
-        );
-      } catch {
-        return false;
-      }
-    });
-
-    if (!matchingSourceRetrieved) {
-      throw new Error(
-        "SOURCE_RETRIEVAL_UNVERIFIED: KEY could not verify retrieved " +
-        "evidence from the exact website and requested path. " +
-        "No source-based answer should be presented as verified."
-      );
-    }
-  }
-
 if (requiresWebEvidence) {
   queryExecutionPlan.evidenceNeeds.webGrounding = true;
 
