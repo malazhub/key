@@ -7893,7 +7893,306 @@ export async function fetchGoogleSearchGrounding(
 }
 
 
+function getGitHubTarget(
+  question: string,
+  sources: GroundingSource[]
+): {
+  owner: string;
+  repo: string;
+  ref?: string;
+  path?: string;
+  isFile: boolean;
+} | null {
+  const urls = [
+    ...Array.from(
+      question.matchAll(/https:\/\/github\.com\/[^\s"'<>]+/gi)
+    ).map((match) => match[0]),
+    ...sources.map((source) => source.uri),
+  ];
 
+  for (const value of urls) {
+    try {
+      const url = new URL(value.replace(/[),.;]+$/g, ""));
+
+      if (url.hostname !== "github.com" || url.protocol !== "https:") {
+        continue;
+      }
+
+      const parts = url.pathname.split("/").filter(Boolean);
+
+      if (parts.length < 2) continue;
+
+      const kind = parts[2];
+
+      return {
+        owner: parts[0],
+        repo: parts[1].replace(/\.git$/i, ""),
+        ref:
+          kind === "blob" || kind === "tree"
+            ? parts[3]
+            : undefined,
+        path:
+          kind === "blob" || kind === "tree"
+            ? parts.slice(4).join("/")
+            : undefined,
+        isFile: kind === "blob",
+      };
+    } catch {
+      // Ignore malformed URLs.
+    }
+  }
+
+  return null;
+}
+
+export async function fetchVerifiedExternalEvidence(
+  question: string,
+  discoverySources: GroundingSource[]
+): Promise<GroundingSource[]> {
+  assertDefendedQuery(question);
+
+  const target = getGitHubTarget(question, discoverySources);
+
+  // This adapter verifies GitHub sources only.
+  // Other external sources must not be marked as inspected.
+  if (!target) return [];
+
+  try {
+    const api =
+      `https://api.github.com/repos/${encodeURIComponent(target.owner)}` +
+      `/${encodeURIComponent(target.repo)}`;
+
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+
+    const token = getServerEnv("GITHUB_TOKEN");
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const getJson = async <T,>(url: string): Promise<T> => {
+      const response = await withStrictTimeout(
+        fetch(url, {
+          headers,
+          redirect: "error",
+        }),
+        15000,
+        "GitHubSourceRetrieval"
+      );
+
+      if (!response.ok) {
+        throw new Error(`GitHub returned HTTP ${response.status}`);
+      }
+
+      return response.json() as Promise<T>;
+    };
+
+    const repository = await getJson<{
+      full_name: string;
+      default_branch: string;
+    }>(api);
+
+    const ref = target.ref || repository.default_branch;
+
+    const commit = await getJson<{ sha: string }>(
+      `${api}/commits/${encodeURIComponent(ref)}`
+    );
+
+    const treeResult = await getJson<{
+      truncated?: boolean;
+      tree?: Array<{
+        path: string;
+        type: string;
+        mode?: string;
+        size?: number;
+      }>;
+    }>(
+      `${api}/git/trees/${encodeURIComponent(commit.sha)}?recursive=1`
+    );
+
+    const tree = treeResult.tree || [];
+    const treeComplete = treeResult.truncated !== true;
+
+    const eligible = tree.filter(
+      (entry) =>
+        entry.type === "blob" &&
+        entry.mode !== "120000" &&
+        /\.(ts|tsx|js|jsx|json|md|mdx|py|go|rs|java|css|html|yml|yaml|toml)$/i.test(
+          entry.path
+        ) &&
+        typeof entry.size === "number" &&
+        entry.size > 0 &&
+        entry.size <= 80000
+    );
+
+    if (
+      target.isFile &&
+      target.path &&
+      !eligible.some((entry) => entry.path === target.path)
+    ) {
+      throw new Error(`Requested file not found: ${target.path}`);
+    }
+
+    const candidates = target.isFile
+      ? eligible.filter((entry) => entry.path === target.path)
+      : eligible.filter((entry) => {
+          if (!target.path) return true;
+          return (
+            entry.path === target.path ||
+            entry.path.startsWith(`${target.path}/`)
+          );
+        });
+
+    const terms = question
+      .toLowerCase()
+      .split(/[^a-z0-9_.-]+/)
+      .filter((term) => term.length >= 3);
+
+    const selected = candidates
+      .map((entry) => ({
+        entry,
+        score:
+          terms.filter((term) =>
+            entry.path.toLowerCase().includes(term)
+          ).length +
+          (/readme|package\.json|tsconfig/i.test(entry.path) ? 3 : 0),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, target.isFile ? 1 : 15);
+
+    const retrieved: Array<{ path: string; content: string }> = [];
+
+    for (const item of selected) {
+      const rawUrl =
+        `https://raw.githubusercontent.com/${target.owner}/${target.repo}` +
+        `/${commit.sha}/` +
+        item.entry.path
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/");
+
+      try {
+        const response = await withStrictTimeout(
+          fetch(rawUrl, { redirect: "error" }),
+          15000,
+          `GitHubFile:${item.entry.path}`
+        );
+
+        if (!response.ok) continue;
+
+        const content = await response.text();
+
+        if (content.trim()) {
+          retrieved.push({
+            path: item.entry.path,
+            content: content.slice(0, 40000),
+          });
+        }
+      } catch (error) {
+        console.error(
+          "GITHUB_FILE_RETRIEVAL_FAILED:",
+          item.entry.path,
+          redactProviderError(error)
+        );
+      }
+    }
+
+    const requestedFileRetrieved =
+      !target.isFile ||
+      retrieved.some((file) => file.path === target.path);
+
+    const verified =
+      treeComplete &&
+      retrieved.length > 0 &&
+      requestedFileRetrieved;
+
+    const content = [
+      `REPOSITORY: ${repository.full_name}`,
+      `DEFAULT BRANCH: ${repository.default_branch}`,
+      `COMMIT SHA: ${commit.sha}`,
+      `TREE COMPLETE: ${treeComplete}`,
+      `FILES RETRIEVED: ${retrieved.length}`,
+      "",
+      "TREE PATHS:",
+      ...tree.slice(0, 1000).map((entry) => entry.path),
+      "",
+      ...retrieved.map(
+        (file) =>
+          `===== FILE: ${file.path} =====\n${file.content}\n===== END FILE =====`
+      ),
+      "",
+      "LIMITATION: Only the file contents displayed above were retrieved.",
+    ].join("\n");
+
+    return [
+      {
+        title: `${repository.full_name} source inspection`,
+        uri: `https://github.com/${target.owner}/${target.repo}/tree/${commit.sha}`,
+        content,
+        requestedUri: `https://github.com/${target.owner}/${target.repo}`,
+        retrievalVerified: verified,
+        commitSha: commit.sha,
+        defaultBranch: repository.default_branch,
+        treeComplete,
+        filesRetrieved: retrieved.length,
+        filesAvailable: selected.length,
+      },
+    ];
+  } catch (error) {
+    console.error(
+      "VERIFIED_SOURCE_RETRIEVAL_FAILED:",
+      redactProviderError(error)
+    );
+    return [];
+  }
+}
+
+export function hasRequiredExternalSourceCoverage(
+  question: string,
+  sources: GroundingSource[]
+): boolean {
+  const target = getGitHubTarget(question, sources);
+
+  if (!target) {
+    return sources.some(
+      (source) =>
+        source.retrievalVerified === true &&
+        typeof source.content === "string" &&
+        source.content.trim().length > 0
+    );
+  }
+
+  const source = sources.find((item) => {
+    try {
+      const url = new URL(item.uri);
+      const parts = url.pathname.split("/").filter(Boolean);
+
+      return (
+        url.hostname === "github.com" &&
+        parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
+        parts[1]?.toLowerCase() === target.repo.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (
+    !source ||
+    source.retrievalVerified !== true ||
+    !source.content ||
+    source.treeComplete !== true ||
+    !source.filesRetrieved
+  ) {
+    return false;
+  }
+
+  if (target.isFile && target.path) {
+    return source.content.includes(`===== FILE: ${target.path} =====`);
+  }
+
+  return true;
+}
 
 export function resolveConversationalFlowExplanation(
   rawQuery: string,
@@ -10789,13 +11088,11 @@ lastVerification = {
       };
     }
    
-    const agreementTargetMet =
-  actualAgreement >= safeTarget;
+    
 
 const agreementTargetMet =
   actualAgreement >= safeTarget;
 
-// A URL or search summary alone cannot satisfy this condition.
 const liveEvidenceRequirementMet =
   !requiresWebEvidence ||
   hasRequiredExternalSourceCoverage(
@@ -10803,24 +11100,20 @@ const liveEvidenceRequirementMet =
     groundingSources
   );
 
-if (
-  requiresWebEvidence &&
-  !liveEvidenceRequirementMet
-) {
+if (requiresWebEvidence && !liveEvidenceRequirementMet) {
   lastVerification = {
     status: "unverified",
     feedback:
-      "External source retrieval or requested-source coverage failed. " +
-      "Search result URLs and generated summaries are not sufficient evidence. " +
-      "The answer must not claim that the requested source was inspected.",
+      "The requested external source was not retrieved and verified. " +
+      "Search summaries and source URLs alone are not evidence.",
     missingRequirements: [
       "Retrieve actual source content.",
-      "Verify that the retrieved content belongs to the requested source.",
-      "For GitHub repositories, establish the default branch and commit SHA.",
-      "Retrieve the repository tree and relevant file contents.",
-      "Do not present incomplete retrieval as a complete repository inspection.",
-      "Do not claim factual verification based only on model agreement.",
+      "Verify that the content belongs to the requested source.",
+      "For GitHub, establish the branch and commit SHA.",
+      "Retrieve the requested file contents.",
+      "Disclose partial or incomplete inspection.",
     ],
+    refusalJustified: false,
   };
 }
 
@@ -10830,30 +11123,6 @@ const verificationPassed =
 
 conformityReached =
   agreementTargetMet && verificationPassed;
-
-if (
-  requiresWebEvidence &&
-  groundingSources.length === 0
-) {
-  lastVerification = {
-    status: "unverified",
-    feedback:
-      "Live web evidence could not be retrieved. The answer cannot be verified as current.",
-    missingRequirements: [
-      "Successful live web retrieval is required for this request.",
-      "At least one usable source with a URL is required.",
-      "Do not claim that current information was checked.",
-    ],
-  };
-}
-
-const verificationPassed =
-  lastVerification.status === "pass" &&
-  liveEvidenceRequirementMet;
-
-conformityReached =
-  agreementTargetMet && verificationPassed;
-
 
 if (flowTraceId) {
   recordFlowStep(
