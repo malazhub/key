@@ -10016,11 +10016,12 @@ const plannerCandidates: AdaptiveCandidate[] = [
   id: `web-grounding-${index}`,
   source: "web_grounding" as const,
   title: source.title,
-  content: [
-    source.title,
-    source.summary,
-    source.uri,
-  ]
+ content: [
+  source.title,
+  source.summary,
+  source.uri,
+  source.content?.slice(0, 80_000),
+]
     .filter(
       (value): value is string =>
         typeof value === "string" && value.trim().length > 0
