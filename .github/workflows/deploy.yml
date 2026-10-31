@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-            - name: Query planner tests
+              - name: Query planner tests
         run: npm run test:planner
 
       - name: Version 8 self-tests
