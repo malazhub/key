@@ -9564,21 +9564,34 @@ export async function runSmartMemoryConsensusLoop(
     priorityGate,
   } = resolvedContext;
 
-    const strictQueryPriority =
+      const strictQueryPriority =
     resolvedContext.strictQueryPriority;
 
-  const contextMode =
-    resolvedContext.contextMode;
+  // An explicitly supplied URL defines the external source for this turn.
+  // Do not allow unrelated conversation history to become competing evidence.
+  const explicitSourceUrl =
+    cleanQuestion
+      .match(/https?:\/\/[^\s<>"'`]+/i)?.[0]
+      ?.replace(/[),.;!?]+$/, "") ?? null;
 
-  const payloadSentToEngines =
-    resolvedContext.payloadSentToEngines;
+  const sourceIsolatedTurn =
+    strictQueryPriority || Boolean(explicitSourceUrl);
+
+  const contextMode = sourceIsolatedTurn
+    ? ("NEW_QUERY_ONLY" as const)
+    : resolvedContext.contextMode;
+
+  const payloadSentToEngines = sourceIsolatedTurn
+    ? cleanQuestion
+    : resolvedContext.payloadSentToEngines;
 
   const cumulativeSpec =
     resolvedContext.cumulativeSpec;
 
   // One authorized source for all active-session context.
+  // Explicit external-source requests do not inherit unrelated chat history.
   const authorizedActiveHistory: HistoryTurn[] =
-    strictQueryPriority
+    sourceIsolatedTurn
       ? []
       : effectiveHistory;
 
@@ -9664,16 +9677,76 @@ export async function runSmartMemoryConsensusLoop(
 
   
     
-  const queryExecutionPlan =
-  await buildQueryExecutionPlan(cleanQuestion);
+    const queryExecutionPlan =
+    await buildQueryExecutionPlan(cleanQuestion);
 
-const requiresWebEvidence =
-  shouldUseGoogleSearchGrounding(cleanQuestion);
+  const requiresWebEvidence =
+    shouldUseGoogleSearchGrounding(cleanQuestion);
 
-const groundingSources: GroundingSource[] =
-  requiresWebEvidence
-    ? await fetchGoogleSearchGrounding(cleanQuestion)
-    : [];
+  const groundingSources: GroundingSource[] =
+    requiresWebEvidence
+      ? await fetchGoogleSearchGrounding(cleanQuestion)
+      : [];
+
+  // HARD SOURCE VERIFICATION GATE:
+  // A supplied URL is not evidence that its contents were retrieved.
+  // Require grounding from the requested source path before answering.
+  if (explicitSourceUrl) {
+    let requestedUrl: URL;
+
+    try {
+      requestedUrl = new URL(explicitSourceUrl);
+    } catch {
+      throw new Error(
+        "SOURCE_RETRIEVAL_UNVERIFIED: The supplied URL is invalid."
+      );
+    }
+
+    const requestedPath =
+      requestedUrl.pathname.replace(/\/+$/, "") || "/";
+
+    const matchingSourceRetrieved = groundingSources.some((source) => {
+      try {
+        const retrievedUrl = new URL(source.uri);
+
+        if (
+          retrievedUrl.protocol !== "https:" &&
+          retrievedUrl.protocol !== "http:"
+        ) {
+          return false;
+        }
+
+        if (
+          retrievedUrl.origin.toLowerCase() !==
+          requestedUrl.origin.toLowerCase()
+        ) {
+          return false;
+        }
+
+        const retrievedPath =
+          retrievedUrl.pathname.replace(/\/+$/, "") || "/";
+
+        // A domain-root request can be supported by a retrieved page
+        // on that domain. A specific path must match that path or a
+        // child path, not an unrelated page on the same website.
+        return (
+          requestedPath === "/" ||
+          retrievedPath === requestedPath ||
+          retrievedPath.startsWith(requestedPath + "/")
+        );
+      } catch {
+        return false;
+      }
+    });
+
+    if (!matchingSourceRetrieved) {
+      throw new Error(
+        "SOURCE_RETRIEVAL_UNVERIFIED: KEY could not verify retrieved " +
+        "evidence from the exact website and requested path. " +
+        "No source-based answer should be presented as verified."
+      );
+    }
+  }
 
 if (requiresWebEvidence) {
   queryExecutionPlan.evidenceNeeds.webGrounding = true;
@@ -9889,8 +9962,8 @@ const liveConversationMemoryBlock =
         "=== ACTIVE KEY SESSION ===",
         "No previous messages exist in this chat.",
       ].join("\n");
-  const lastSavedPair =
-    !strictQueryPriority && activeConversationPairs.length > 0
+    const lastSavedPair =
+    !sourceIsolatedTurn && activeConversationPairs.length > 0
       ? activeConversationPairs[activeConversationPairs.length - 1]
       : null;
 
@@ -9945,7 +10018,7 @@ HISTORY AUTHORIZATION (STRICT DEFAULT):
     promptSections.push(
       `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===\nUser Message: "${cleanQuestion}"\nInstruction: Respond naturally and directly to this greeting in real time.`
     );
-  } else if (!strictQueryPriority && relation.hasRelation) {
+  } else if (!sourceIsolatedTurn && relation.hasRelation) {
     promptSections.push(
       `=== CURRENT USER QUERY (HIGHEST PRIORITY) ===\n"${cleanQuestion}"${attachmentNamesSummary}\n\n=== COMBINED CONTEXT PAYLOAD ===\n${payloadSentToEngines}`
     );
@@ -9961,10 +10034,10 @@ HISTORY AUTHORIZATION (STRICT DEFAULT):
     );
   }
 
-  if (
-  !strictQueryPriority &&
-  authorizedActiveHistory.length > 0
-) {
+   if (
+    !sourceIsolatedTurn &&
+    authorizedActiveHistory.length > 0
+  ) {
   promptSections.push(liveConversationMemoryBlock);
 }
 
