@@ -40,8 +40,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Lint and typecheck
-        run: npm run lint
+            - name: Query planner tests
+        run: npm run test:planner
 
       - name: Version 8 self-tests
         run: npm run test:self
