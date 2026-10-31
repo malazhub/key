@@ -4487,7 +4487,16 @@ const data = await res.json();
         consensusHeaders["x-admin-email"] = adminEmailInput.trim().toLowerCase();
         consensusHeaders["x-admin-password"] = adminPassInput;
       }
+    const hasExplicitGitHubRepositoryUrl =
+  /https?:\/\/github\.com\/[^/\s?#]+\/[^/\s?#]+/i.test(queryText);
 
+const isExplicitUpgradeCommand =
+  /^\/upgrade(?:\s|$)/i.test(queryText);
+
+const shouldSendConversationHistory =
+  isExplicitUpgradeCommand ||
+  isSelfModQuery ||
+  (!hasExplicitGitHubRepositoryUrl && clientRelationCheck.hasRelation);
       const response = await fetchFromKeyBackend(
         "/api/consensus-chat",
         {
@@ -4499,12 +4508,16 @@ const data = await res.json();
             // Explicitly preserve the immediately previous unanswered
             // user turn. The backend uses this only for silence/no-response
             // recovery and never treats it as ordinary history.
-            pendingQuestion: pendingUnansweredQuestion || undefined,
-
-            history: previousMessages.map((m) => ({
+            pendingQuestion: shouldSendConversationHistory
+          ? pendingUnansweredQuestion || undefined
+          : undefined,
+        
+        history: shouldSendConversationHistory
+          ? previousMessages.map((m) => ({
               role: m.role,
               content: m.content,
-            })),
+            }))
+          : [],
             activeModels,
             targetAgreement: target,
             buildAppMode: Boolean(
@@ -4516,8 +4529,9 @@ const data = await res.json();
             nextVersionTag: "key",
             githubToken: discoveredToken || undefined,
            strictQueryPriority:
-          hasExplicitTopicResetDirective(queryText) ||
-          hasExplicitNoHistoryDirective(queryText),
+  !shouldSendConversationHistory ||
+  hasExplicitTopicResetDirective(queryText) ||
+  hasExplicitNoHistoryDirective(queryText),
             attachments: attachmentsToSend.map((a) => ({
               name: a.name,
               mimeType: a.mimeType,
