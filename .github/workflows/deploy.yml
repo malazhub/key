@@ -37,7 +37,7 @@ jobs:
       - name: Update npm
         run: npm install -g npm@11.6.0
 
-            - name: Install dependencies
+      - name: Install dependencies
         run: npm install
 
       - name: Query planner tests
