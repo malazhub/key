@@ -44,7 +44,7 @@ async function makeQueryContextPlan(query: string) {
     recentContext: false,
     longTermMemory: false,
     knowledge: false,
-        webGrounding: false,
+    webGrounding: false,
     attachments: false,
     temporal: false,
     exactReference: false,
@@ -140,33 +140,6 @@ test("corrective retrieval never exceeds its pass limit", async () => {
       return [];
     }
   );
-  
-
-    assert.equal(
-      plan.evidenceNeeds.liveStructure,
-      false
-    );
-
-    assert.equal(
-      plan.retrieval.sources.includes("live_structure"),
-      false
-    );
-  }
-);
-
-
-
-    assert.equal(
-      plan.evidenceNeeds.liveStructure,
-      true
-    );
-
-    assert.equal(
-      plan.retrieval.sources.includes("live_structure"),
-      true
-    );
-  }
-);
 
   assert.ok(retrievalCalls <= MAX_CORRECTIVE_PASSES);
   assert.ok(result.correctivePasses <= MAX_CORRECTIVE_PASSES);
