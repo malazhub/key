@@ -4335,16 +4335,7 @@ const isSelfModQuery =
   !hasNoAppOrLogicGuardInClient &&
   isKeySelfModificationRequest(queryText, priorUserHistoryPipe);
 
-    const priorUserHistoryPipe =
-      !hasNoAppOrLogicGuardInClient && clientRelationCheck.hasRelation
-        ? previousMessages
-            .filter((m) => m.role === "user")
-            .map((m) => m.content)
-            .join(" | ")
-        : "";
-    const isSelfModQuery =
-      !hasNoAppOrLogicGuardInClient &&
-      isKeySelfModificationRequest(queryText, priorUserHistoryPipe);
+    
     if (isSelfModQuery) {
       const selfSpec = parseKeySelfModificationSpec(
         queryText,
