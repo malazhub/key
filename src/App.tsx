@@ -4307,9 +4307,33 @@ const data = await res.json();
   );
 
     const clientRelationCheck = computeClientRelationWithPrevious(
-      queryText,
-      previousMessages
-    );
+  queryText,
+  previousMessages
+);
+
+const hasExplicitGitHubRepositoryUrl =
+  /https?:\/\/github\.com\/[^/\s?#]+\/[^/\s?#]+/i.test(queryText);
+
+const isExplicitUpgradeCommand =
+  /^\/upgrade(?:\s|$)/i.test(queryText.trim());
+
+const isExternalRepositoryQuery =
+  hasExplicitGitHubRepositoryUrl && !isExplicitUpgradeCommand;
+
+const priorUserHistoryPipe =
+  !isExternalRepositoryQuery &&
+  !hasNoAppOrLogicGuardInClient &&
+  clientRelationCheck.hasRelation
+    ? previousMessages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join(" | ")
+    : "";
+
+const isSelfModQuery =
+  !isExternalRepositoryQuery &&
+  !hasNoAppOrLogicGuardInClient &&
+  isKeySelfModificationRequest(queryText, priorUserHistoryPipe);
 
     const priorUserHistoryPipe =
       !hasNoAppOrLogicGuardInClient && clientRelationCheck.hasRelation
