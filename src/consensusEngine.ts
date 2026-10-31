@@ -10187,12 +10187,15 @@ return correctiveCandidates;
   cleanQuestion,
   queryExecutionPlan,
   adaptiveRetrievalResult.selected,
-  content: [
-  source.title,
-  source.summary,
-  source.uri,
-  source.content?.slice(0, 80_000),
-]
+  groundingSources.map((source) => ({
+    source: "web_grounding" as const,
+    title: source.title,
+    content: [
+      source.title,
+      source.summary,
+      source.uri,
+      source.content?.slice(0, 80_000),
+    ]
       .filter(
         (value): value is string =>
           typeof value === "string" && value.trim().length > 0
