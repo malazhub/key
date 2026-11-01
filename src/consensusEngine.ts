@@ -8221,8 +8221,7 @@ export async function fetchVerifiedExternalEvidence(
         implementationSourceRetrieved
       );
 
-    const isRepositoryInspection =
-      !target.isFile && !target.path;
+   
 
     const repositoryEvidenceComplete =
       !isRepositoryInspection ||
