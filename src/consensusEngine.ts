@@ -8247,30 +8247,7 @@ export async function fetchVerifiedExternalEvidence(
       `DEFAULT BRANCH: ${repository.default_branch}`,
       `COMMIT SHA: ${commit.sha}`,
       `TREE COMPLETE: ${treeComplete}`,
-      `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
-      `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
-      `FILES RETRIEVED: ${retrieved.length}`,
-      `REPOSITORY INSPECTION: ${isRepositoryInspection}`,
-      `REPOSITORY INSPECTION EVIDENCE COMPLETE: ${repositoryEvidenceComplete}`,
-      `ARCHITECTURE INSPECTION: ${isArchitectureInspection}`,
-      `PROJECT MANIFEST OR README RETRIEVED: ${manifestOrReadmeRetrieved}`,
-      `IMPLEMENTATION SOURCE RETRIEVED: ${implementationSourceRetrieved}`,
-      `ARCHITECTURE EVIDENCE COMPLETE: ${architectureEvidenceComplete}`,
-      "",
-      "RETRIEVED FILE PATHS:",
-      ...retrieved.map((file) => file.path),
-      "",
-      "TREE PATHS:",
-      ...scopedTree.slice(0, treePathLimit).map((entry) => entry.path),
-      "",
-      ...retrieved.map(
-        (file) =>
-          `===== FILE: ${file.path} =====\n${file.content}\n===== END FILE =====`
-      ),
-      "",
-      "LIMITATION: Only the file contents displayed above were retrieved. A complete tree does not mean every file's contents were inspected.",
-    ].join("\n");
-
+     
             `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
       `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
       `FILES RETRIEVED: ${retrieved.length}`,
