@@ -4502,12 +4502,10 @@ const shouldSendConversationHistory =
           ? pendingUnansweredQuestion || undefined
           : undefined,
         
-        history: shouldSendConversationHistory
-          ? previousMessages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            }))
-          : [],
+        history: previousMessages.map((m) => ({
+  role: m.role,
+  content: m.content,
+})),
             activeModels,
             targetAgreement: target,
             buildAppMode: Boolean(
@@ -4518,8 +4516,7 @@ const shouldSendConversationHistory =
             adminUpgradeMode: isActualAdminUpgradeTask,
             nextVersionTag: "key",
             githubToken: discoveredToken || undefined,
-           strictQueryPriority:
-  !shouldSendConversationHistory ||
+          strictQueryPriority:
   hasExplicitTopicResetDirective(queryText) ||
   hasExplicitNoHistoryDirective(queryText),
             attachments: attachmentsToSend.map((a) => ({
