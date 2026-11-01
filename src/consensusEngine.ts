@@ -8411,22 +8411,7 @@ export function hasRequiredExternalSourceCoverage(
   return inspection.inspectionComplete === true;
 }
 
-  const source = sources.find((item) => {
-    try {
-      const url = new URL(item.uri);
-      const parts = url.pathname.split("/").filter(Boolean);
 
-      return (
-        url.protocol === "https:" &&
-        url.hostname === "github.com" &&
-        parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
-        parts[1]?.replace(/\.git$/i, "").toLowerCase() ===
-          target.repo.toLowerCase()
-      );
-    } catch {
-      return false;
-    }
-  });
 
   if (
     !source ||
