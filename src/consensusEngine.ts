@@ -2901,7 +2901,6 @@ export function isReferentialFollowUpToRecentTurn(rawText: string): boolean {
   }
   return (
     isExplicitHistoryRetrievalOrRecallRequest(q) ||
-    isConversationalInquiryOrExplanationRequest(q) ||
     /\b(how\s+did\s+(?:u|you)\s+do\s+(?:that|it|this)|how\s+(?:u|you)\s+(?:do|did)\s+(?:that|it|this)|no\s+i\s+said|i\s+said\s+no\s+technical|i\s+do\s+not\s+want\s+(?:the\s+)?technical|i\s+want\s+the\s+(?:logic\s+)?flow|i\s+need\s+the\s+(?:logic\s+)?flow|explain\s+(?:that|it|this)|how\s+was\s+(?:that|it)\s+done|why\s+did\s+(?:u|you)\s+do\s+(?:that|it)|in\s+simple\s+(?:words|terms|steps)|step\s+by\s+step\s+how\s+(?:u|you))\b/i.test(
       q
     )
@@ -4319,12 +4318,11 @@ export function calculateMathematicalRelationWithPrevious(
 
   const isReferentialFollowUp = isReferentialFollowUpToRecentTurn(cleanQ);
 
-  const isExplicitPriorTurnReference =
+    const isExplicitPriorTurnReference =
     !hasTopicReset &&
     !isTopicIsolationComplaint &&
     !isStrictYesNoOrSingleWordQuery(cleanQ) &&
     (isReferentialFollowUp ||
-      isCodebaseDiagnosticOrLogicGapQuery(cleanQ) ||
       /\b(did\s+(?:u|you)\s+(?:fix|do|apply|change|update|modify|answer|respond|complete)|how\s+did\s+(?:u|you)\s+do|how\s+(?:u|you)\s+do\s+(?:that|it)|fix\s+or\s+(?:not|nto)|if\s+(?:not|nto)\s+repeat|repeat\s+(?:it|that|the\s+previous|previous)|(?:not|nto)\s+respond(?:ed)?\s+my\s+question|previous\s+(?:said|convesation|conversation|question|querry|query|chat|discussion|ask|request|turn|reply|answer)|where\s+(?:is\s+|are\s+|the\s+)?(?:app|application|simulation|car|color\w*|preview)|where\s+did\s+(?:u|you)\s+put|how\s+to\s+test|what\s+about\s+(?:the\s+)?color\w*|from\s+previous)\b/i.test(
         effectiveQueryForMatching
       ));
@@ -8622,17 +8620,7 @@ export class QueryContextManager {
       };
     }
 
-    if (isCodebaseDiagnosticOrLogicGapQuery(cleanQ)) {
-      return {
-        maintainHistory: true,
-        isNewIndependentTopic: false,
-        recentTurnOverlapScore,
-        maxSavedOverlapScore: Math.max(maxSavedOverlapScore, 90),
-        sharedRecentTokenCount,
-        gateReason: "codebase_diagnostic_continuity",
-      };
-    }
-
+    
     const allMatchedPairsSupersededByCurrent =
       rawRelation.hasRelation &&
       rawRelation.matchedPairIndices.length > 0 &&
@@ -8651,21 +8639,7 @@ export class QueryContextManager {
       };
     }
 
-    const hasHighSemanticOverlap =
-      rawRelation.hasRelation &&
-      rawRelation.contextMode === "MERGED_WITH_SAVED" &&
-      rawRelation.historyMatchScore >= 45;
-
-    if (hasHighSemanticOverlap) {
-  return {
-    maintainHistory: true,
-    isNewIndependentTopic: false,
-    recentTurnOverlapScore,
-    maxSavedOverlapScore: rawRelation.historyMatchScore,
-    sharedRecentTokenCount,
-    gateReason: "strong_semantic_continuity_detected",
-  };
-}
+   
 
     return {
       maintainHistory: false,
@@ -8673,7 +8647,7 @@ export class QueryContextManager {
       recentTurnOverlapScore,
       maxSavedOverlapScore: 0,
       sharedRecentTokenCount,
-      gateReason: "new_independent_topic_low_semantic_overlap",
+            gateReason: "no_explicit_reference_to_saved_turn",
     };
   }
 
@@ -8728,7 +8702,6 @@ const isEarlyTopicIsolationOrGreeting =
 
 // Only explicit user instructions may suppress an existing session.
 const isMandatoryIsolatedTurn =
-  options?.strictQueryPriority === true ||
   hasExplicitTopicResetDirective(cleanQuestion) ||
   hasExplicitNoHistoryDirective(cleanQuestion);
 
@@ -8736,9 +8709,7 @@ const isMandatoryIsolatedTurn =
     // force `contextMode = "NEW_QUERY_ONLY"` and purge all previous history from `payloadSentToEngines`.
     if (isEarlyTopicIsolationOrGreeting || isMandatoryIsolatedTurn) {
       const isolationReason =
-  options?.strictQueryPriority === true
-    ? "caller_explicit_history_suppression"
-    : hasExplicitNoHistoryDirective(cleanQuestion)
+  hasExplicitNoHistoryDirective(cleanQuestion)
     ? "explicit_no_history_directive"
     : hasExplicitTopicResetDirective(cleanQuestion)
     ? "explicit_topic_reset"
