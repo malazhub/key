@@ -8071,20 +8071,21 @@ export async function fetchVerifiedExternalEvidence(
       .split(/[^a-z0-9_.-]+/)
       .filter((term) => term.length >= 3);
 
+   
     const isManifestOrReadme = (path: string): boolean =>
-      /(^|\/)(readme(?:\.[^/]*)?|package\.json|tsconfig(?:\.[^/]*)?\.json|pubspec\.yaml|cargo\.toml|go\.mod|pyproject\.toml|requirements\.txt|pom\.xml|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|composer\.json|gemfile|mix\.exs|makefile|dockerfile)$/i.test(
+      /(^|\/)(readme(?:\.[^/]*)?|package(?:-lock)?\.json|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|tsconfig(?:\.[^/]*)?\.json|pubspec\.yaml|cargo\.toml|go\.(mod|sum)|pyproject\.toml|requirements(?:-[^/]*)?\.txt|setup\.(py|cfg)|pipfile|poetry\.lock|pom\.xml|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|composer\.json|gemfile|mix\.exs|makefile|dockerfile|deno\.jsonc?|cmakelists\.txt|[^/]+\.csproj|[^/]+\.sln)$/i.test(
         path
       );
 
     const isImplementationFile = (path: string): boolean =>
-      /(^|\/)(src|lib|app|apps|packages|cmd|internal|server|client|frontend|backend)(\/|$)/i.test(
+      /\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|go|rs|java|kt|kts|dart|swift|rb|php|cs|c|cc|cpp|cxx|h|hh|hpp|hxx|scala|sc|ex|exs|hs|lhs|ml|mli|clj|cljs|cljc|vue|svelte|sql|sh|bash|ps1|pl|r|lua|elm|fs|fsx)$/i.test(
         path
-      ) ||
-      /(^|\/)(main|index|server|app|application|program)\.[^.]+$/i.test(
+      ) &&
+      !/(^|\/)(__tests__|tests?|spec|fixtures|coverage|dist|build|vendor|node_modules)(\/|$)/i.test(
         path
       );
 
-    const selected = candidates
+    const rankedCandidates = candidates
       .map((entry) => {
         const path = entry.path;
         const lowerPath = path.toLowerCase();
@@ -8093,8 +8094,16 @@ export async function fetchVerifiedExternalEvidence(
           lowerPath.includes(term)
         ).length;
 
-        if (isManifestOrReadme(path)) score += 100;
-        if (isImplementationFile(path)) score += 80;
+        if (isManifestOrReadme(path)) score += 120;
+        if (isImplementationFile(path)) score += 100;
+
+        if (
+          /(^|\/)(src|lib|app|apps|packages|cmd|internal|server|client|frontend|backend)(\/|$)/i.test(
+            path
+          )
+        ) {
+          score += 40;
+        }
 
         if (
           /(^|\/)(config|configuration|routes|router|controllers|services|models|components|modules|providers|middleware)(\/|$)/i.test(
@@ -8109,13 +8118,46 @@ export async function fetchVerifiedExternalEvidence(
             path
           )
         ) {
-          score -= 50;
+          score -= 80;
         }
 
         return { entry, score };
       })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, target.isFile ? 1 : isArchitectureInspection ? 24 : 15);
+      .sort((a, b) => b.score - a.score);
+
+    const isRepositoryInspection =
+      !target.isFile && !target.path;
+
+    const requiredManifest = isRepositoryInspection
+      ? rankedCandidates.find(({ entry }) =>
+          isManifestOrReadme(entry.path)
+        )
+      : undefined;
+
+    const requiredImplementation = !target.isFile
+      ? rankedCandidates.find(({ entry }) =>
+          isImplementationFile(entry.path)
+        )
+      : undefined;
+
+    const selectedPool = [
+      ...(requiredManifest ? [requiredManifest] : []),
+      ...(requiredImplementation ? [requiredImplementation] : []),
+      ...rankedCandidates,
+    ];
+
+    const selected = Array.from(
+      new Map(
+        selectedPool.map((item) => [
+          item.entry.path,
+          item,
+        ] as const)
+      ).values()
+    ).slice(
+      0,
+      target.isFile ? 1 : isArchitectureInspection ? 24 : 15
+    );
+
 
     const retrieved: Array<{ path: string; content: string }> = [];
 
@@ -8157,6 +8199,7 @@ export async function fetchVerifiedExternalEvidence(
       }
     }
 
+    
     const requestedFileRetrieved =
       !target.isFile ||
       retrieved.some((file) => file.path === target.path);
@@ -8169,8 +8212,20 @@ export async function fetchVerifiedExternalEvidence(
       isImplementationFile(file.path)
     );
 
-       const architectureEvidenceComplete =
+    const architectureEvidenceComplete =
       !isArchitectureInspection ||
+      (
+        treeComplete &&
+        treePathListingComplete &&
+        manifestOrReadmeRetrieved &&
+        implementationSourceRetrieved
+      );
+
+    const isRepositoryInspection =
+      !target.isFile && !target.path;
+
+    const repositoryEvidenceComplete =
+      !isRepositoryInspection ||
       (
         treeComplete &&
         treePathListingComplete &&
@@ -8182,13 +8237,40 @@ export async function fetchVerifiedExternalEvidence(
       treeComplete &&
       retrieved.length > 0 &&
       requestedFileRetrieved &&
-      architectureEvidenceComplete;
+      architectureEvidenceComplete &&
+      repositoryEvidenceComplete;
 
+
+    
     const content = [
       `REPOSITORY: ${repository.full_name}`,
       `DEFAULT BRANCH: ${repository.default_branch}`,
       `COMMIT SHA: ${commit.sha}`,
       `TREE COMPLETE: ${treeComplete}`,
+      `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
+      `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
+      `FILES RETRIEVED: ${retrieved.length}`,
+      `REPOSITORY INSPECTION: ${isRepositoryInspection}`,
+      `REPOSITORY INSPECTION EVIDENCE COMPLETE: ${repositoryEvidenceComplete}`,
+      `ARCHITECTURE INSPECTION: ${isArchitectureInspection}`,
+      `PROJECT MANIFEST OR README RETRIEVED: ${manifestOrReadmeRetrieved}`,
+      `IMPLEMENTATION SOURCE RETRIEVED: ${implementationSourceRetrieved}`,
+      `ARCHITECTURE EVIDENCE COMPLETE: ${architectureEvidenceComplete}`,
+      "",
+      "RETRIEVED FILE PATHS:",
+      ...retrieved.map((file) => file.path),
+      "",
+      "TREE PATHS:",
+      ...scopedTree.slice(0, treePathLimit).map((entry) => entry.path),
+      "",
+      ...retrieved.map(
+        (file) =>
+          `===== FILE: ${file.path} =====\n${file.content}\n===== END FILE =====`
+      ),
+      "",
+      "LIMITATION: Only the file contents displayed above were retrieved. A complete tree does not mean every file's contents were inspected.",
+    ].join("\n");
+
             `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
       `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
       `FILES RETRIEVED: ${retrieved.length}`,
@@ -8233,6 +8315,7 @@ export async function fetchVerifiedExternalEvidence(
     return [];
   }
 }
+
 
 
 export function hasRequiredExternalSourceCoverage(
@@ -8283,7 +8366,6 @@ export function hasRequiredExternalSourceCoverage(
     return false;
   }
 
-  // Direct file requests must contain the exact requested file.
   if (target.isFile && target.path) {
     return source.content.includes(
       `===== FILE: ${target.path} =====`
@@ -8295,6 +8377,21 @@ export function hasRequiredExternalSourceCoverage(
     /\b(architecture|architectural|structure|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
       question
     );
+
+  if (!target.isFile && !target.path) {
+    const requiredEvidence = [
+      "TREE COMPLETE: true",
+      "TREE PATH LIST COMPLETE: true",
+      "REPOSITORY INSPECTION: true",
+      "REPOSITORY INSPECTION EVIDENCE COMPLETE: true",
+      "PROJECT MANIFEST OR README RETRIEVED: true",
+      "IMPLEMENTATION SOURCE RETRIEVED: true",
+    ];
+
+    return requiredEvidence.every((marker) =>
+      source.content!.includes(marker)
+    );
+  }
 
   if (isArchitectureInspection) {
     const requiredEvidence = [
@@ -8313,6 +8410,7 @@ export function hasRequiredExternalSourceCoverage(
 
   return true;
 }
+
 
 
 export function resolveConversationalFlowExplanation(
