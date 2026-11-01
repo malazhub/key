@@ -7882,58 +7882,6 @@ export async function fetchGoogleSearchGrounding(
 }
 
 
- GitHubTarget | null {
-  const urls = [
-    ...Array.from(
-      question.matchAll(/https:\/\/github\.com\/[^\s"'<>]+/gi)
-    ).map((match) => match[0]),
-    ...sources.map((source) => source.uri),
-    ...sources.map((source) => source.requestedUri || ""),
-  ];
-
-  for (const value of urls) {
-    try {
-      const url = new URL(value.replace(/[),.;]+$/g, ""));
-
-      if (
-        url.protocol !== "https:" ||
-        url.hostname.toLowerCase() !== "github.com"
-      ) {
-        continue;
-      }
-
-      const parts = url.pathname.split("/").filter(Boolean);
-
-      if (parts.length < 2) continue;
-
-      const owner = decodeURIComponent(parts[0]);
-      const repo = decodeURIComponent(parts[1]).replace(/\.git$/i, "");
-      const kind = parts[2];
-
-      if (kind === "tree" || kind === "blob") {
-        return {
-          owner,
-          repo,
-          kind,
-          requestedRefAndPath: parts.slice(3).map(decodeURIComponent),
-          isFile: kind === "blob",
-        };
-      }
-
-      return {
-        owner,
-        repo,
-        kind: "repository",
-        requestedRefAndPath: [],
-        isFile: false,
-      };
-    } catch {
-      // Ignore malformed URLs.
-    }
-  }
-
-  return null;
-}
 
 export async function fetchVerifiedExternalEvidence(
   question: string,
