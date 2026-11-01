@@ -8292,44 +8292,7 @@ export function hasRequiredExternalSourceCoverage(
   return source.content.includes("REPOSITORY TREE:");
 }
 
-  const isArchitectureInspection =
-    !target.isFile &&
-    /\b(architecture|architectural|structure|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
-      question
-    );
-
-  if (!target.isFile && !target.path) {
-    const requiredEvidence = [
-      "TREE COMPLETE: true",
-      "TREE PATH LIST COMPLETE: true",
-      "REPOSITORY INSPECTION: true",
-      "REPOSITORY INSPECTION EVIDENCE COMPLETE: true",
-      "PROJECT MANIFEST OR README RETRIEVED: true",
-      "IMPLEMENTATION SOURCE RETRIEVED: true",
-    ];
-
-    return requiredEvidence.every((marker) =>
-      source.content!.includes(marker)
-    );
-  }
-
-  if (isArchitectureInspection) {
-    const requiredEvidence = [
-      "TREE COMPLETE: true",
-      "TREE PATH LIST COMPLETE: true",
-      "ARCHITECTURE INSPECTION: true",
-      "PROJECT MANIFEST OR README RETRIEVED: true",
-      "IMPLEMENTATION SOURCE RETRIEVED: true",
-      "ARCHITECTURE EVIDENCE COMPLETE: true",
-    ];
-
-    return requiredEvidence.every((marker) =>
-      source.content!.includes(marker)
-    );
-  }
-
-  return true;
-}
+ 
 
 
 
