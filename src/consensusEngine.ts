@@ -8411,58 +8411,6 @@ export function hasRequiredExternalSourceCoverage(
   return inspection.inspectionComplete === true;
 }
 
-
-
-  if (
-    !source ||
-    source.retrievalVerified !== true ||
-    !source.content ||
-    source.treeComplete !== true ||
-    !source.commitSha ||
-    !/^[a-f0-9]{40}$/i.test(source.commitSha) ||
-    !source.defaultBranch ||
-    !source.content.includes(`COMMIT SHA: ${source.commitSha}`) ||
-    !source.content.includes("TREE COMPLETE: true") ||
-    !source.content.includes("CONTENT RETRIEVAL COMPLETE: true") ||
-    !source.content.includes("INSPECTION COMPLETE: true")
-  ) {
-    return false;
-  }
-
-  // Only accept files whose actual contents were retrieved.
-  const fileMatches = Array.from(
-    source.content.matchAll(
-      /===== FILE: ([^\n]+) =====\n([\s\S]*?)\n===== END FILE =====/g
-    )
-  );
-
-  if (fileMatches.length === 0) {
-    return false;
-  }
-
-  const retrievedPaths = new Set(
-    fileMatches.map((match) => match[1])
-  );
-
-  if (target.isFile && target.path) {
-    return retrievedPaths.has(target.path);
-  }
-
-  if (target.path) {
-    return Array.from(retrievedPaths).some(
-      (path) =>
-        path === target.path ||
-        path.startsWith(`${target.path}/`)
-    );
-  }
-
-  return true;
-}
-
- 
-
-
-
 export function resolveConversationalFlowExplanation(
   rawQuery: string,
   windowPairs: SavedQAPair[]
