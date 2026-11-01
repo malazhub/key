@@ -1644,18 +1644,7 @@ function buildInstantClientAppFromContext(
     };
   }
 
-  // 1. Direct GitHub Force-Deploy & Live AI Key Portal
-  if (
-    /\b(malazhub\/key|malazhub\.github\.io|commit\s+force|force\s+git|deploy\s+key\s+structure)\b/i.test(
-      cleanQ
-    )
-  ) {
-    return {
-      title:
-        "Key — Direct GitHub Force-Deploy & Live AI Key Portal (https://github.com/malazhub/key → https://malazhub.github.io/key/)",
-      html: buildClientKey1ZeroDivergenceHtml(),
-    };
-  }
+ 
 
   const safeTitle = (
     existingAppTitle || `Live Application Preview: ${cleanQ.slice(0, 55)}`
@@ -4311,17 +4300,12 @@ const data = await res.json();
   previousMessages
 );
 
-const hasExplicitGitHubRepositoryUrl =
-  /https?:\/\/github\.com\/[^/\s?#]+\/[^/\s?#]+/i.test(queryText);
-
-const isExplicitUpgradeCommand =
-  /^\/upgrade(?:\s|$)/i.test(queryText.trim());
-
-const isExternalRepositoryQuery =
-  hasExplicitGitHubRepositoryUrl && !isExplicitUpgradeCommand;
+const clientRelationCheck = computeClientRelationWithPrevious(
+  queryText,
+  previousMessages
+);
 
 const priorUserHistoryPipe =
-  !isExternalRepositoryQuery &&
   !hasNoAppOrLogicGuardInClient &&
   clientRelationCheck.hasRelation
     ? previousMessages
@@ -4331,7 +4315,6 @@ const priorUserHistoryPipe =
     : "";
 
 const isSelfModQuery =
-  !isExternalRepositoryQuery &&
   !hasNoAppOrLogicGuardInClient &&
   isKeySelfModificationRequest(queryText, priorUserHistoryPipe);
 
@@ -4502,16 +4485,13 @@ const isSelfModQuery =
         consensusHeaders["x-admin-email"] = adminEmailInput.trim().toLowerCase();
         consensusHeaders["x-admin-password"] = adminPassInput;
       }
-    const hasExplicitGitHubRepositoryUrl =
-  /https?:\/\/github\.com\/[^/\s?#]+\/[^/\s?#]+/i.test(queryText);
-
-const isExplicitUpgradeCommand =
-  /^\/upgrade(?:\s|$)/i.test(queryText);
+    const isExplicitUpgradeCommand =
+  /^\/upgrade(?:\s|$)/i.test(queryText.trim());
 
 const shouldSendConversationHistory =
   isExplicitUpgradeCommand ||
   isSelfModQuery ||
-  (!hasExplicitGitHubRepositoryUrl && clientRelationCheck.hasRelation);
+  clientRelationCheck.hasRelation;
       const response = await fetchFromKeyBackend(
         "/api/consensus-chat",
         {
