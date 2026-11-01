@@ -108,11 +108,15 @@ function sanitizeTracePayload(value: unknown): unknown {
   if (value === undefined || value === null) return value;
 
   if (typeof value === "string") {
-    return { type: "text", chars: value.length };
+    return value.length > 300 ? value.slice(0, 300) + "… (truncated)" : value;
   }
 
   if (Array.isArray(value)) {
-    return { type: "array", items: value.length };
+    return value.map((item) =>
+      typeof item === "string" && item.length > 100
+        ? item.slice(0, 100) + "…"
+        : item
+    );
   }
 
   if (typeof value !== "object") {
@@ -120,23 +124,19 @@ function sanitizeTracePayload(value: unknown): unknown {
   }
 
   const data = value as Record<string, unknown>;
-  const safeData: Record<string, unknown> = {};
+  const cleanData: Record<string, unknown> = {};
 
   for (const [key, item] of Object.entries(data)) {
-    if (
-      SAFE_FIELDS.has(key) &&
-      (typeof item === "string" ||
-        typeof item === "number" ||
-        typeof item === "boolean")
-    ) {
-      safeData[key] =
-        typeof item === "string" ? item.slice(0, 80) : item;
+    if (/token|password|secret|auth|key/i.test(key) && typeof item === "string") {
+      cleanData[key] = "●●●●●●●● (redacted)";
+    } else if (typeof item === "string" && item.length > 250) {
+      cleanData[key] = item.slice(0, 250) + "… (truncated)";
+    } else {
+      cleanData[key] = item;
     }
   }
 
-  return Object.keys(safeData).length > 0
-    ? safeData
-    : { type: "object", fieldCount: Object.keys(data).length };
+  return cleanData;
 }
 export interface FlowEvent {
   id: number;
@@ -373,22 +373,46 @@ export function formatFlowTrace(trace: FlowTrace | undefined): string {
 
   const summary = summarizeFlowTrace(trace);
 
-return [
-  "# Query Trace",
-  "",
-  `- Trace ID: ${trace.id}`,
-  `- Overall status: ${trace.status}`,
-  `- Total events: ${summary.totalEvents}`,
-  `- Provider attempts: ${summary.providerAttempts}`,
-  `- Retries: ${summary.retries}`,
-  `- Rounds: ${summary.rounds}`,
-  `- Errors: ${summary.errors}`,
-  "",
-  "# Complete Event History",
-  "",
-  ...trace.events.map(
-    (event) =>
-      `${event.id}. ${event.at} | ${event.status} | ${event.step}`,
-  ),
-].join("\n");
+  const formattedEvents = trace.events.map((event) => {
+    const lines: string[] = [
+      `### Step ${event.id}: ${event.step} [${event.status.toUpperCase()}]`,
+      `- **Timestamp:** \`${event.at}\``,
+    ];
+
+    if (event.sourceFile) {
+      lines.push(
+        `- **Source:** \`${event.sourceFile}${event.sourceFunction ? ` → ${event.sourceFunction}()` : ""}\``
+      );
+    }
+
+    if (event.incoming !== undefined) {
+      lines.push(
+        `- **Incoming:**\n\`\`\`json\n${JSON.stringify(event.incoming, null, 2)}\n\`\`\``
+      );
+    }
+
+    if (event.outgoing !== undefined) {
+      lines.push(
+        `- **Outgoing:**\n\`\`\`json\n${JSON.stringify(event.outgoing, null, 2)}\n\`\`\``
+      );
+    }
+
+    if (event.decision) {
+      lines.push(`- **Decision / Logic:** ${event.decision}`);
+    }
+
+    return lines.join("\n");
+  });
+
+  return [
+    `# 🔍 Key 100% Accurate Execution Trace`,
+    ``,
+    `| Trace ID | Query | Overall Status | Total Steps |`,
+    `| :--- | :--- | :--- | :--- |`,
+    `| \`${trace.id}\` | "${trace.query}" | **${trace.status.toUpperCase()}** | ${trace.events.length} |`,
+    ``,
+    `---`,
+    ``,
+    formattedEvents.join("\n\n---\n\n"),
+  ].join("\n");
 }
