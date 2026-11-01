@@ -1244,32 +1244,6 @@ export interface IncomingAttachment {
   kind: "image" | "video" | "file";
 }
 
-export interface GitHubTreeEntryEvidence {
-  path: string;
-  type: "blob" | "tree" | "commit";
-  mode?: string;
-  sha: string;
-  size?: number;
-}
-
-export interface GitHubFileEvidence {
-  path: string;
-  sha: string;
-  sizeBytes: number;
-  content: string;
-  contentRetrieved: boolean;
-  isText: boolean;
-}
-
-export interface GitHubInspectionStatus {
-  requestedScope: "repository" | "directory" | "file" | "commit";
-  resolvedRef: string;
-  resolvedCommitSha: string;
-  treeComplete: boolean;
-  contentComplete: boolean;
-  inspectionComplete: boolean;
-  partialReasons: string[];
-}
 
 export interface GroundingSource {
   title: string;
@@ -1285,10 +1259,7 @@ export interface GroundingSource {
   filesRetrieved?: number;
   filesAvailable?: number;
 
-  githubTreeEntries?: GitHubTreeEntryEvidence[];
-  githubFiles?: GitHubFileEvidence[];
-  githubInspection?: GitHubInspectionStatus;
-}
+  }
 
 export interface EngineTokenUsage {
   promptTokens: number;
