@@ -1244,26 +1244,50 @@ export interface IncomingAttachment {
   kind: "image" | "video" | "file";
 }
 
+export interface GitHubTreeEntryEvidence {
+  path: string;
+  type: "blob" | "tree" | "commit";
+  mode?: string;
+  sha: string;
+  size?: number;
+}
+
+export interface GitHubFileEvidence {
+  path: string;
+  sha: string;
+  sizeBytes: number;
+  content: string;
+  contentRetrieved: boolean;
+  isText: boolean;
+}
+
+export interface GitHubInspectionStatus {
+  requestedScope: "repository" | "directory" | "file" | "commit";
+  resolvedRef: string;
+  resolvedCommitSha: string;
+  treeComplete: boolean;
+  contentComplete: boolean;
+  inspectionComplete: boolean;
+  partialReasons: string[];
+}
+
 export interface GroundingSource {
   title: string;
   uri: string;
   summary?: string;
-
-  // Actual bytes decoded as text from the source.
   content?: string;
-
-  // Confirms retrieval of content, not the truth of every claim.
   retrievalVerified?: boolean;
-
-  // Original URL supplied by the user or discovered by search.
   requestedUri?: string;
 
-  // GitHub provenance, when applicable.
   commitSha?: string;
   defaultBranch?: string;
   treeComplete?: boolean;
   filesRetrieved?: number;
   filesAvailable?: number;
+
+  githubTreeEntries?: GitHubTreeEntryEvidence[];
+  githubFiles?: GitHubFileEvidence[];
+  githubInspection?: GitHubInspectionStatus;
 }
 
 export interface EngineTokenUsage {
@@ -7887,28 +7911,36 @@ export async function fetchGoogleSearchGrounding(
 }
 
 
-function getGitHubTarget(
-  question: string,
-  sources: GroundingSource[]
-): {
+type GitHubTarget = {
   owner: string;
   repo: string;
+  kind: "repository" | "tree" | "blob";
+  requestedRefAndPath: string[];
   ref?: string;
   path?: string;
   isFile: boolean;
-} | null {
+};
+
+function getGitHubTarget(
+  question: string,
+  sources: GroundingSource[]
+): GitHubTarget | null {
   const urls = [
     ...Array.from(
       question.matchAll(/https:\/\/github\.com\/[^\s"'<>]+/gi)
     ).map((match) => match[0]),
     ...sources.map((source) => source.uri),
+    ...sources.map((source) => source.requestedUri || ""),
   ];
 
   for (const value of urls) {
     try {
       const url = new URL(value.replace(/[),.;]+$/g, ""));
 
-      if (url.hostname !== "github.com" || url.protocol !== "https:") {
+      if (
+        url.protocol !== "https:" ||
+        url.hostname.toLowerCase() !== "github.com"
+      ) {
         continue;
       }
 
@@ -7916,20 +7948,26 @@ function getGitHubTarget(
 
       if (parts.length < 2) continue;
 
+      const owner = decodeURIComponent(parts[0]);
+      const repo = decodeURIComponent(parts[1]).replace(/\.git$/i, "");
       const kind = parts[2];
 
+      if (kind === "tree" || kind === "blob") {
+        return {
+          owner,
+          repo,
+          kind,
+          requestedRefAndPath: parts.slice(3).map(decodeURIComponent),
+          isFile: kind === "blob",
+        };
+      }
+
       return {
-        owner: parts[0],
-        repo: parts[1].replace(/\.git$/i, ""),
-        ref:
-          kind === "blob" || kind === "tree"
-            ? parts[3]
-            : undefined,
-        path:
-          kind === "blob" || kind === "tree"
-            ? parts.slice(4).join("/")
-            : undefined,
-        isFile: kind === "blob",
+        owner,
+        repo,
+        kind: "repository",
+        requestedRefAndPath: [],
+        isFile: false,
       };
     } catch {
       // Ignore malformed URLs.
@@ -7980,7 +8018,45 @@ export async function fetchVerifiedExternalEvidence(
       default_branch: string;
     }>(api);
 
-    const ref = target.ref || repository.default_branch;
+    const requestedParts = target.requestedRefAndPath || [];
+
+let ref = repository.default_branch;
+let requestedPath = "";
+
+if (requestedParts.length > 0) {
+  let resolved = false;
+
+  for (
+    let length = requestedParts.length;
+    length >= 1;
+    length--
+  ) {
+    const candidate = requestedParts.slice(0, length).join("/");
+
+    try {
+      await getJson(
+        `${api}/commits/${encodeURIComponent(candidate)}`
+      );
+
+      ref = candidate;
+      requestedPath = requestedParts.slice(length).join("/");
+      resolved = true;
+      break;
+    } catch {
+      // Try a shorter candidate ref.
+    }
+  }
+
+  if (!resolved) {
+    throw new Error(
+      "The explicitly requested GitHub branch or commit could not be resolved."
+    );
+  }
+}
+
+if (target.kind === "repository") {
+  ref = repository.default_branch;
+}
 
     const commit = await getJson<{
       sha: string;
@@ -8083,7 +8159,7 @@ export async function fetchVerifiedExternalEvidence(
       throw new Error(`Requested file not found: ${target.path}`);
     }
 
-    const retrieved: Array<{ path: string; content: string }> = [];
+    const githubFiles: GitHubFileEvidence[] = [];
     const downloadedPaths = new Set<string>();
     let consumedBytes = 0;
     let contentComplete = true;
@@ -8259,6 +8335,81 @@ export function hasRequiredExternalSourceCoverage(
         source.content.trim().length > 0
     );
   }
+
+  const source = sources.find((item) => {
+    try {
+      const url = new URL(item.uri);
+      const parts = url.pathname.split("/").filter(Boolean);
+
+      return (
+        url.hostname === "github.com" &&
+        parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
+        parts[1]?.replace(/\.git$/i, "").toLowerCase() ===
+          target.repo.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  if (
+    !source ||
+    !source.githubInspection ||
+    !/^[a-f0-9]{40}$/i.test(
+      source.githubInspection.resolvedCommitSha
+    ) ||
+    source.githubInspection.resolvedCommitSha !== source.commitSha ||
+    !Array.isArray(source.githubTreeEntries) ||
+    !Array.isArray(source.githubFiles)
+  ) {
+    return false;
+  }
+
+  const inspection = source.githubInspection;
+
+  if (!inspection.treeComplete) {
+    return false;
+  }
+
+  const requestedPath = target.path || "";
+
+  if (target.isFile && requestedPath) {
+    const exists = source.githubTreeEntries.some(
+      (entry) =>
+        entry.type === "blob" &&
+        entry.path === requestedPath
+    );
+
+    const retrieved = source.githubFiles.some(
+      (file) =>
+        file.path === requestedPath &&
+        file.contentRetrieved &&
+        file.isText &&
+        file.content.trim().length > 0
+    );
+
+    return exists && retrieved;
+  }
+
+  if (requestedPath) {
+    const directoryExists = source.githubTreeEntries.some(
+      (entry) =>
+        entry.type === "tree" &&
+        entry.path === requestedPath
+    );
+
+    const filesRetrieved = source.githubFiles.some(
+      (file) =>
+        file.path.startsWith(`${requestedPath}/`) &&
+        file.contentRetrieved &&
+        file.isText
+    );
+
+    return directoryExists && filesRetrieved;
+  }
+
+  return inspection.inspectionComplete === true;
+}
 
   const source = sources.find((item) => {
     try {
@@ -11080,11 +11231,7 @@ const combinedRefusalFeedback = combinedResultRefused
 properties: {
   status: {
     type: Type.STRING,
-    enum: [
-      "pass",
-      "needs_revision",
-      "unverified",
-    ],
+    enum: ["pass", "needs_revision", "unverified"],
   },
   feedback: {
     type: Type.STRING,
@@ -11098,12 +11245,25 @@ properties: {
   refusalJustified: {
     type: Type.BOOLEAN,
   },
+  claimEvidence: {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        claim: { type: Type.STRING },
+        path: { type: Type.STRING },
+        quote: { type: Type.STRING },
+      },
+      required: ["claim", "path", "quote"],
+    },
+  },
 },
 required: [
   "status",
   "feedback",
   "missingRequirements",
   "refusalJustified",
+  "claimEvidence",
 ],
 
             },
@@ -11137,7 +11297,18 @@ if (
   !parsedVerification.missingRequirements.every(
     (item: unknown) => typeof item === "string"
   ) ||
-  typeof parsedVerification.refusalJustified !== "boolean"
+  typeof parsedVerification.refusalJustified !== "boolean" ||
+  !Array.isArray(parsedVerification.claimEvidence) ||
+  !parsedVerification.claimEvidence.every(
+    (item: any) =>
+      item &&
+      typeof item.claim === "string" &&
+      item.claim.trim().length > 0 &&
+      typeof item.path === "string" &&
+      item.path.trim().length > 0 &&
+      typeof item.quote === "string" &&
+      item.quote.trim().length > 0
+  )
 ) {
   throw new Error(
     "Invalid fulfillment-verifier response structure"
@@ -11296,7 +11467,36 @@ if (flowTraceId) {
         }
       }
 
-      const finalAnswer = answers[bestIndex];
+      const githubTarget = getGitHubTarget(
+  cleanQuestion,
+  groundingSources
+);
+
+const githubSource = githubTarget
+  ? groundingSources.find((source) => {
+      const inspection = source.githubInspection;
+
+      return (
+        inspection &&
+        source.commitSha === inspection.resolvedCommitSha &&
+        source.githubTreeEntries &&
+        source.githubFiles &&
+        source.uri.toLowerCase().includes(
+          `${githubTarget.owner}/${githubTarget.repo}`.toLowerCase()
+        )
+      );
+    })
+  : undefined;
+
+const finalAnswer = githubTarget
+  ? githubSource
+    ? buildRepositoryInspectionResult(
+        cleanQuestion,
+        githubSource
+      )
+    : "Repository inspection could not be verified. " +
+      "The requested repository evidence was unavailable."
+  : answers[bestIndex];
 
       deterministicParsed = {
         finalAnswer,
