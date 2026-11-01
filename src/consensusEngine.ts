@@ -7188,11 +7188,7 @@ export function buildFallbackInteractivePortalHtml(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  const isKeyUpgrade = /malazhub\/key|mjkey1971/i.test(question || "");
-  if (isKeyUpgrade) {
-    return buildKey1ZeroDivergencePortalHtml();
-  }
-
+  
 
 
   return `<!DOCTYPE html>
