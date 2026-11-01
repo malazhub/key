@@ -7992,7 +7992,7 @@ export async function fetchVerifiedExternalEvidence(
       `${api}/commits/${encodeURIComponent(ref)}`
     );
 
-    const treeResult = await getJson<{
+        const treeResult = await getJson<{
       truncated?: boolean;
       tree?: Array<{
         path: string;
@@ -8004,16 +8004,43 @@ export async function fetchVerifiedExternalEvidence(
       `${api}/git/trees/${encodeURIComponent(commit.sha)}?recursive=1`
     );
 
-        const isArchitectureInspection =
-      /\b(architecture|architecture tree|file tree|directory tree|folder structure|project layout|repository layout|repository structure|codebase structure)\b/i.test(
+    // Normalize the GitHub response before accessing its tree.
+    const tree = Array.isArray(treeResult.tree)
+      ? treeResult.tree
+      : [];
+
+    // Never claim a complete tree when GitHub reports truncation.
+    const treeComplete =
+      Array.isArray(treeResult.tree) &&
+      treeResult.truncated !== true;
+
+    // Architecture inspection applies to repositories and directories,
+    // not individual file requests.
+    const isArchitectureInspection =
+      !target.isFile &&
+      /\b(architecture|architectural|structure|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
         question
       );
 
-    const eligible = tree.filter(
+    // Keep the inspected path scope consistent with the requested URL.
+    const scopedTree = target.path
+      ? tree.filter(
+          (entry) =>
+            entry.path === target.path ||
+            entry.path.startsWith(`${target.path}/`)
+        )
+      : tree;
+
+    // The current response includes at most 1,000 paths.
+    const treePathLimit = 1000;
+    const treePathListingComplete =
+      scopedTree.length <= treePathLimit;
+
+        const eligible = scopedTree.filter(
       (entry) =>
         entry.type === "blob" &&
         entry.mode !== "120000" &&
-        /\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|py|go|rs|java|kt|kts|dart|swift|rb|php|cs|c|h|cpp|hpp|vue|svelte|sql|sh|ex|exs|scala|css|html|xml|yml|yaml|toml|ini|gradle|properties)$/i.test(
+        /\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|go|rs|java|kt|kts|dart|swift|rb|php|cs|c|cc|cpp|cxx|h|hh|hpp|hxx|scala|sc|ex|exs|hs|lhs|ml|mli|clj|cljs|cljc|vue|svelte|sql|sh|bash|ps1|css|html|xml|yml|yaml|toml|ini|gradle|properties|json|md|mdx|txt|ipynb|tf|proto|graphql|gql|pl|r|lua|elm|fs|fsx)$/i.test(
           entry.path
         ) &&
         typeof entry.size === "number" &&
@@ -8142,9 +8169,14 @@ export async function fetchVerifiedExternalEvidence(
       isImplementationFile(file.path)
     );
 
-    const architectureEvidenceComplete =
+       const architectureEvidenceComplete =
       !isArchitectureInspection ||
-      (manifestOrReadmeRetrieved && implementationSourceRetrieved);
+      (
+        treeComplete &&
+        treePathListingComplete &&
+        manifestOrReadmeRetrieved &&
+        implementationSourceRetrieved
+      );
 
     const verified =
       treeComplete &&
@@ -8157,6 +8189,8 @@ export async function fetchVerifiedExternalEvidence(
       `DEFAULT BRANCH: ${repository.default_branch}`,
       `COMMIT SHA: ${commit.sha}`,
       `TREE COMPLETE: ${treeComplete}`,
+            `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
+      `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
       `FILES RETRIEVED: ${retrieved.length}`,
       `ARCHITECTURE INSPECTION: ${isArchitectureInspection}`,
       `PROJECT MANIFEST OR README RETRIEVED: ${manifestOrReadmeRetrieved}`,
@@ -8167,7 +8201,7 @@ export async function fetchVerifiedExternalEvidence(
       ...retrieved.map((file) => file.path),
       "",
       "TREE PATHS:",
-      ...tree.slice(0, 1000).map((entry) => entry.path),
+            ...scopedTree         .slice(0, treePathLimit)         .map((entry) => entry.path),
       "",
       ...retrieved.map(
         (file) =>
@@ -8188,7 +8222,7 @@ export async function fetchVerifiedExternalEvidence(
         defaultBranch: repository.default_branch,
         treeComplete,
         filesRetrieved: retrieved.length,
-        filesAvailable: selected.length,
+        filesAvailable: candidates.length,
       },
     ];
   } catch (error) {
@@ -8199,6 +8233,7 @@ export async function fetchVerifiedExternalEvidence(
     return [];
   }
 }
+
 
 export function hasRequiredExternalSourceCoverage(
   question: string,
@@ -8221,6 +8256,7 @@ export function hasRequiredExternalSourceCoverage(
       const parts = url.pathname.split("/").filter(Boolean);
 
       return (
+        url.protocol === "https:" &&
         url.hostname === "github.com" &&
         parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
         parts[1]?.toLowerCase() === target.repo.toLowerCase()
@@ -8235,27 +8271,35 @@ export function hasRequiredExternalSourceCoverage(
     source.retrievalVerified !== true ||
     !source.content ||
     source.treeComplete !== true ||
-    !source.filesRetrieved
+    !source.filesRetrieved ||
+    !source.commitSha ||
+    !/^[a-f0-9]{40}$/i.test(source.commitSha) ||
+    !source.defaultBranch ||
+    !source.content.includes(`COMMIT SHA: ${source.commitSha}`) ||
+    !source.content.includes(
+      `DEFAULT BRANCH: ${source.defaultBranch}`
+    )
   ) {
     return false;
   }
 
-  // Verify the exact requested file for direct file requests.
+  // Direct file requests must contain the exact requested file.
   if (target.isFile && target.path) {
     return source.content.includes(
       `===== FILE: ${target.path} =====`
     );
   }
 
-  // Apply architecture requirements only to repository inspections.
   const isArchitectureInspection =
     !target.isFile &&
-    /\b(architecture|architectural|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
+    /\b(architecture|architectural|structure|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
       question
     );
 
   if (isArchitectureInspection) {
     const requiredEvidence = [
+      "TREE COMPLETE: true",
+      "TREE PATH LIST COMPLETE: true",
       "ARCHITECTURE INSPECTION: true",
       "PROJECT MANIFEST OR README RETRIEVED: true",
       "IMPLEMENTATION SOURCE RETRIEVED: true",
@@ -8269,6 +8313,7 @@ export function hasRequiredExternalSourceCoverage(
 
   return true;
 }
+
 
 export function resolveConversationalFlowExplanation(
   rawQuery: string,
