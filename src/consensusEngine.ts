@@ -7946,9 +7946,6 @@ export async function fetchVerifiedExternalEvidence(
   assertDefendedQuery(question);
 
   const target = getGitHubTarget(question, discoverySources);
-
-  // This adapter verifies GitHub sources only.
-  // Other external sources must not be marked as inspected.
   if (!target) return [];
 
   try {
@@ -7966,10 +7963,7 @@ export async function fetchVerifiedExternalEvidence(
 
     const getJson = async <T,>(url: string): Promise<T> => {
       const response = await withStrictTimeout(
-        fetch(url, {
-          headers,
-          redirect: "error",
-        }),
+        fetch(url, { headers, redirect: "error" }),
         15000,
         "GitHubSourceRetrieval"
       );
@@ -7988,184 +7982,132 @@ export async function fetchVerifiedExternalEvidence(
 
     const ref = target.ref || repository.default_branch;
 
-    const commit = await getJson<{ sha: string }>(
-      `${api}/commits/${encodeURIComponent(ref)}`
+    const commit = await getJson<{
+      sha: string;
+      commit: {
+        tree: {
+          sha: string;
+        };
+      };
+    }>(`${api}/commits/${encodeURIComponent(ref)}`);
+
+    if (!commit.commit?.tree?.sha) {
+      throw new Error("GitHub did not return the commit tree SHA");
+    }
+
+    // This is an operational retrieval budget, not a language or
+    // repository-type assumption. Configure it per deployment.
+    const configuredBudget = Number(
+      getServerEnv("GITHUB_INSPECTION_MAX_CONTENT_BYTES") || 10000000
     );
 
-        const treeResult = await getJson<{
-      truncated?: boolean;
-      tree?: Array<{
-        path: string;
-        type: string;
-        mode?: string;
-        size?: number;
-      }>;
-    }>(
-      `${api}/git/trees/${encodeURIComponent(commit.sha)}?recursive=1`
-    );
+    const maxContentBytes =
+      Number.isFinite(configuredBudget) && configuredBudget > 0
+        ? configuredBudget
+        : 10000000;
 
-    // Normalize the GitHub response before accessing its tree.
-    const tree = Array.isArray(treeResult.tree)
-      ? treeResult.tree
-      : [];
+    type GitTreeEntry = {
+      path: string;
+      type: string;
+      mode?: string;
+      size?: number;
+      sha: string;
+    };
 
-    // Never claim a complete tree when GitHub reports truncation.
-    const treeComplete =
-      Array.isArray(treeResult.tree) &&
-      treeResult.truncated !== true;
+    // Walk individual Git trees instead of relying on GitHub's
+    // potentially truncated recursive tree response.
+    const pendingTrees: Array<{ sha: string; prefix: string }> = [
+      { sha: commit.commit.tree.sha, prefix: "" },
+    ];
 
-    // Architecture inspection applies to repositories and directories,
-    // not individual file requests.
-    const isArchitectureInspection =
-      !target.isFile &&
-      /\b(architecture|architectural|structure|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
-        question
-      );
+    const visitedTrees = new Set<string>();
+    const allEntries: GitTreeEntry[] = [];
+    let treeComplete = true;
 
-    // Keep the inspected path scope consistent with the requested URL.
-    const scopedTree = target.path
-      ? tree.filter(
+    while (pendingTrees.length > 0) {
+      const current = pendingTrees.shift()!;
+
+      if (visitedTrees.has(current.sha)) continue;
+      visitedTrees.add(current.sha);
+
+      const result = await getJson<{
+        truncated?: boolean;
+        tree?: GitTreeEntry[];
+      }>(`${api}/git/trees/${encodeURIComponent(current.sha)}`);
+
+      if (!Array.isArray(result.tree) || result.truncated === true) {
+        treeComplete = false;
+      }
+
+      for (const entry of result.tree || []) {
+        const fullPath = current.prefix
+          ? `${current.prefix}/${entry.path}`
+          : entry.path;
+
+        const normalized: GitTreeEntry = {
+          ...entry,
+          path: fullPath,
+        };
+
+        allEntries.push(normalized);
+
+        if (entry.type === "tree") {
+          pendingTrees.push({
+            sha: entry.sha,
+            prefix: fullPath,
+          });
+        }
+      }
+    }
+
+    const scopedEntries = target.path
+      ? allEntries.filter(
           (entry) =>
             entry.path === target.path ||
             entry.path.startsWith(`${target.path}/`)
         )
-      : tree;
+      : allEntries;
 
-    // The current response includes at most 1,000 paths.
-    const treePathLimit = 1000;
-    const treePathListingComplete =
-      scopedTree.length <= treePathLimit;
-
-        const eligible = scopedTree.filter(
+    const blobs = scopedEntries.filter(
       (entry) =>
         entry.type === "blob" &&
         entry.mode !== "120000" &&
-        /\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|go|rs|java|kt|kts|dart|swift|rb|php|cs|c|cc|cpp|cxx|h|hh|hpp|hxx|scala|sc|ex|exs|hs|lhs|ml|mli|clj|cljs|cljc|vue|svelte|sql|sh|bash|ps1|css|html|xml|yml|yaml|toml|ini|gradle|properties|json|md|mdx|txt|ipynb|tf|proto|graphql|gql|pl|r|lua|elm|fs|fsx)$/i.test(
-          entry.path
-        ) &&
-        typeof entry.size === "number" &&
-        entry.size > 0 &&
-        entry.size <= 80000
+        entry.mode !== "160000"
     );
 
     if (
       target.isFile &&
       target.path &&
-      !eligible.some((entry) => entry.path === target.path)
+      !blobs.some((entry) => entry.path === target.path)
     ) {
       throw new Error(`Requested file not found: ${target.path}`);
     }
 
-    const candidates = target.isFile
-      ? eligible.filter((entry) => entry.path === target.path)
-      : eligible.filter((entry) => {
-          if (!target.path) return true;
-          return (
-            entry.path === target.path ||
-            entry.path.startsWith(`${target.path}/`)
-          );
-        });
-
-    const terms = question
-      .toLowerCase()
-      .split(/[^a-z0-9_.-]+/)
-      .filter((term) => term.length >= 3);
-
-   
-    const isManifestOrReadme = (path: string): boolean =>
-      /(^|\/)(readme(?:\.[^/]*)?|package(?:-lock)?\.json|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|tsconfig(?:\.[^/]*)?\.json|pubspec\.yaml|cargo\.toml|go\.(mod|sum)|pyproject\.toml|requirements(?:-[^/]*)?\.txt|setup\.(py|cfg)|pipfile|poetry\.lock|pom\.xml|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|composer\.json|gemfile|mix\.exs|makefile|dockerfile|deno\.jsonc?|cmakelists\.txt|[^/]+\.csproj|[^/]+\.sln)$/i.test(
-        path
-      );
-
-    const isImplementationFile = (path: string): boolean =>
-      /\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|go|rs|java|kt|kts|dart|swift|rb|php|cs|c|cc|cpp|cxx|h|hh|hpp|hxx|scala|sc|ex|exs|hs|lhs|ml|mli|clj|cljs|cljc|vue|svelte|sql|sh|bash|ps1|pl|r|lua|elm|fs|fsx)$/i.test(
-        path
-      ) &&
-      !/(^|\/)(__tests__|tests?|spec|fixtures|coverage|dist|build|vendor|node_modules)(\/|$)/i.test(
-        path
-      );
-
-    const rankedCandidates = candidates
-      .map((entry) => {
-        const path = entry.path;
-        const lowerPath = path.toLowerCase();
-
-        let score = terms.filter((term) =>
-          lowerPath.includes(term)
-        ).length;
-
-        if (isManifestOrReadme(path)) score += 120;
-        if (isImplementationFile(path)) score += 100;
-
-        if (
-          /(^|\/)(src|lib|app|apps|packages|cmd|internal|server|client|frontend|backend)(\/|$)/i.test(
-            path
-          )
-        ) {
-          score += 40;
-        }
-
-        if (
-          /(^|\/)(config|configuration|routes|router|controllers|services|models|components|modules|providers|middleware)(\/|$)/i.test(
-            path
-          )
-        ) {
-          score += 30;
-        }
-
-        if (
-          /(^|\/)(__tests__|tests?|spec|fixtures|coverage|dist|build|vendor|node_modules)(\/|$)/i.test(
-            path
-          )
-        ) {
-          score -= 80;
-        }
-
-        return { entry, score };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const isRepositoryInspection =
-      !target.isFile && !target.path;
-
-    const requiredManifest = isRepositoryInspection
-      ? rankedCandidates.find(({ entry }) =>
-          isManifestOrReadme(entry.path)
-        )
-      : undefined;
-
-    const requiredImplementation = !target.isFile
-      ? rankedCandidates.find(({ entry }) =>
-          isImplementationFile(entry.path)
-        )
-      : undefined;
-
-    const selectedPool = [
-      ...(requiredManifest ? [requiredManifest] : []),
-      ...(requiredImplementation ? [requiredImplementation] : []),
-      ...rankedCandidates,
-    ];
-
-    const selected = Array.from(
-      new Map(
-        selectedPool.map((item) => [
-          item.entry.path,
-          item,
-        ] as const)
-      ).values()
-    ).slice(
-      0,
-      target.isFile ? 1 : isArchitectureInspection ? 24 : 15
-    );
-
-
     const retrieved: Array<{ path: string; content: string }> = [];
+    const downloadedPaths = new Set<string>();
+    let consumedBytes = 0;
+    let contentComplete = true;
 
-    for (const item of selected) {
+    for (const entry of blobs) {
+      const remainingBytes = maxContentBytes - consumedBytes;
+
+      if (remainingBytes <= 0) {
+        contentComplete = false;
+        break;
+      }
+
+      if (
+        typeof entry.size === "number" &&
+        entry.size > remainingBytes
+      ) {
+        contentComplete = false;
+        continue;
+      }
+
       const rawUrl =
         `https://raw.githubusercontent.com/${target.owner}/${target.repo}` +
         `/${commit.sha}/` +
-        item.entry.path
+        entry.path
           .split("/")
           .map(encodeURIComponent)
           .join("/");
@@ -8174,113 +8116,101 @@ export async function fetchVerifiedExternalEvidence(
         const response = await withStrictTimeout(
           fetch(rawUrl, { redirect: "error" }),
           15000,
-          `GitHubFile:${item.entry.path}`
+          `GitHubFile:${entry.path}`
         );
 
-        if (!response.ok) continue;
+        if (!response.ok) {
+          contentComplete = false;
+          continue;
+        }
 
-        const fileContent = await response.text();
+        const bytes = new Uint8Array(await response.arrayBuffer());
+
+        if (bytes.byteLength > remainingBytes) {
+          contentComplete = false;
+          continue;
+        }
+
+        consumedBytes += bytes.byteLength;
+        downloadedPaths.add(entry.path);
+
+        // Binary files are retrieved but are not treated as readable source.
+        if (bytes.includes(0)) continue;
+
+        const fileContent = new TextDecoder("utf-8", {
+          fatal: false,
+        }).decode(bytes);
 
         if (fileContent.trim()) {
           retrieved.push({
-            path: item.entry.path,
-            content: fileContent.slice(
-              0,
-              isArchitectureInspection ? 24000 : 40000
-            ),
+            path: entry.path,
+            content: fileContent,
           });
         }
       } catch (error) {
+        contentComplete = false;
+
         console.error(
           "GITHUB_FILE_RETRIEVAL_FAILED:",
-          item.entry.path,
+          entry.path,
           redactProviderError(error)
         );
       }
     }
 
-    
     const requestedFileRetrieved =
       !target.isFile ||
-      retrieved.some((file) => file.path === target.path);
+      (!!target.path && downloadedPaths.has(target.path));
 
-    const manifestOrReadmeRetrieved = retrieved.some((file) =>
-      isManifestOrReadme(file.path)
-    );
-
-    const implementationSourceRetrieved = retrieved.some((file) =>
-      isImplementationFile(file.path)
-    );
-
-    const architectureEvidenceComplete =
-      !isArchitectureInspection ||
-      (
-        treeComplete &&
-        treePathListingComplete &&
-        manifestOrReadmeRetrieved &&
-        implementationSourceRetrieved
-      );
-
-   
-
-    const repositoryEvidenceComplete =
-      !isRepositoryInspection ||
-      (
-        treeComplete &&
-        treePathListingComplete &&
-        manifestOrReadmeRetrieved &&
-        implementationSourceRetrieved
-      );
-
-    const verified =
+    const inspectionComplete =
       treeComplete &&
-      retrieved.length > 0 &&
-      requestedFileRetrieved &&
-      architectureEvidenceComplete &&
-      repositoryEvidenceComplete;
+      contentComplete &&
+      requestedFileRetrieved;
 
-
-    
     const content = [
       `REPOSITORY: ${repository.full_name}`,
       `DEFAULT BRANCH: ${repository.default_branch}`,
       `COMMIT SHA: ${commit.sha}`,
       `TREE COMPLETE: ${treeComplete}`,
-     
-            `TREE PATH LIST COMPLETE: ${treePathListingComplete}`,
-      `TREE PATHS INCLUDED: ${Math.min(scopedTree.length, treePathLimit)} / ${scopedTree.length}`,
-      `FILES RETRIEVED: ${retrieved.length}`,
-      `ARCHITECTURE INSPECTION: ${isArchitectureInspection}`,
-      `PROJECT MANIFEST OR README RETRIEVED: ${manifestOrReadmeRetrieved}`,
-      `IMPLEMENTATION SOURCE RETRIEVED: ${implementationSourceRetrieved}`,
-      `ARCHITECTURE EVIDENCE COMPLETE: ${architectureEvidenceComplete}`,
+      `CONTENT RETRIEVAL COMPLETE: ${contentComplete}`,
+      `INSPECTION COMPLETE: ${inspectionComplete}`,
+      `FILES DISCOVERED: ${blobs.length}`,
+      `FILES DOWNLOADED: ${downloadedPaths.size}`,
+      `TEXT FILES READ: ${retrieved.length}`,
+      `CONTENT BYTES READ: ${consumedBytes}`,
       "",
-      "RETRIEVED FILE PATHS:",
-      ...retrieved.map((file) => file.path),
+      "REPOSITORY TREE:",
+      ...scopedEntries.map((entry) => entry.path),
       "",
-      "TREE PATHS:",
-            ...scopedTree         .slice(0, treePathLimit)         .map((entry) => entry.path),
-      "",
+      "RETRIEVED FILE CONTENTS:",
       ...retrieved.map(
         (file) =>
-          `===== FILE: ${file.path} =====\n${file.content}\n===== END FILE =====`
+          `===== FILE: ${file.path} =====\n` +
+          `${file.content}\n` +
+          `===== END FILE =====`
       ),
       "",
-      "LIMITATION: Only the file contents displayed above were retrieved. A complete tree does not mean every file's contents were inspected.",
+      "INSPECTION RULE:",
+      "Only paths and file contents retrieved from this commit are verified.",
+      "Do not invent missing files, languages, frameworks, services, or architecture.",
+      "If inspection is incomplete, explicitly report what was not inspected.",
     ].join("\n");
 
     return [
       {
         title: `${repository.full_name} source inspection`,
-        uri: `https://github.com/${target.owner}/${target.repo}/tree/${commit.sha}`,
+        uri:
+          `https://github.com/${target.owner}/${target.repo}` +
+          `/tree/${commit.sha}`,
+        requestedUri:
+          `https://github.com/${target.owner}/${target.repo}`,
         content,
-        requestedUri: `https://github.com/${target.owner}/${target.repo}`,
-        retrievalVerified: verified,
+        retrievalVerified: inspectionComplete,
         commitSha: commit.sha,
         defaultBranch: repository.default_branch,
         treeComplete,
         filesRetrieved: retrieved.length,
-        filesAvailable: candidates.length,
+        filesAvailable: blobs.length,
       },
     ];
   } catch (error) {
@@ -8288,12 +8218,10 @@ export async function fetchVerifiedExternalEvidence(
       "VERIFIED_SOURCE_RETRIEVAL_FAILED:",
       redactProviderError(error)
     );
+
     return [];
   }
 }
-
-
-
 export function hasRequiredExternalSourceCoverage(
   question: string,
   sources: GroundingSource[]
@@ -8318,7 +8246,8 @@ export function hasRequiredExternalSourceCoverage(
         url.protocol === "https:" &&
         url.hostname === "github.com" &&
         parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
-        parts[1]?.toLowerCase() === target.repo.toLowerCase()
+        parts[1]?.replace(/\.git$/i, "").toLowerCase() ===
+          target.repo.toLowerCase()
       );
     } catch {
       return false;
@@ -8330,14 +8259,16 @@ export function hasRequiredExternalSourceCoverage(
     source.retrievalVerified !== true ||
     !source.content ||
     source.treeComplete !== true ||
-    !source.filesRetrieved ||
     !source.commitSha ||
     !/^[a-f0-9]{40}$/i.test(source.commitSha) ||
     !source.defaultBranch ||
     !source.content.includes(`COMMIT SHA: ${source.commitSha}`) ||
     !source.content.includes(
       `DEFAULT BRANCH: ${source.defaultBranch}`
-    )
+    ) ||
+    !source.content.includes("TREE COMPLETE: true") ||
+    !source.content.includes("CONTENT RETRIEVAL COMPLETE: true") ||
+    !source.content.includes("INSPECTION COMPLETE: true")
   ) {
     return false;
   }
@@ -8347,6 +8278,19 @@ export function hasRequiredExternalSourceCoverage(
       `===== FILE: ${target.path} =====`
     );
   }
+
+  if (target.path) {
+    return source.content
+      .split("\n")
+      .some(
+        (line) =>
+          line === target.path ||
+          line.startsWith(`${target.path}/`)
+      );
+  }
+
+  return source.content.includes("REPOSITORY TREE:");
+}
 
   const isArchitectureInspection =
     !target.isFile &&
