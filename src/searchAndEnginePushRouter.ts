@@ -9,6 +9,8 @@ import {
   startFlowTrace,
   recordFlowStep,
   finishFlowTrace,
+  getLatestFlowTrace,
+  formatFlowTrace,
 } from "./flowTracer";
 import { assertDefendedQuery } from "./security/queryGuard";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -163,46 +165,81 @@ export function buildEngineQueryPayload(
 export async function pushQueryToEnginesAndConverge(
   request: SearchAndEnginePushRequest
 ): Promise<Record<string, any>> {
- const startedAt = Date.now();
-const effectiveQuestion = String(request.question || "").trim();
-const flowTraceId = startFlowTrace(effectiveQuestion);
+   const startedAt = Date.now();
+  const effectiveQuestion = String(request.question || "").trim();
 
-recordFlowStep(
-  flowTraceId,
-  "Request received",
-  "ok",
-  {
-    sourceFile: "src/searchAndEnginePushRouter.ts",
-    sourceFunction: "pushQueryToEnginesAndConverge",
-    incoming: {
-      queryChars: effectiveQuestion.length,
-    },
+  // Show the previous completed trace only when explicitly requested.
+  const traceRequestText = effectiveQuestion;
+
+  const wantsFlowTrace =
+    /\b(show|display|print|view|inspect|explain|walk me through)\b[\s\S]{0,120}\b(trace|execution flow|logic steps|processing steps|inputs and outputs)\b/i.test(
+      traceRequestText
+    ) ||
+    /\b(trace the logic|trace the flow|trace from the beginning|steps from the beginning of (the )?query|query to the final response)\b/i.test(
+      traceRequestText
+    ) ||
+    /^(?:show\s+)?trace$/i.test(traceRequestText);
+
+  if (wantsFlowTrace) {
+    return {
+      answer: formatFlowTrace(getLatestFlowTrace()),
+      tracerOnly: true,
+    };
   }
-);
 
-try {
+  const flowTraceId = startFlowTrace(effectiveQuestion);
+
   recordFlowStep(
     flowTraceId,
-    "Query validation",
+    "1. Request received",
+    "ok",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      incoming: {
+        queryChars: effectiveQuestion.length,
+        activeModels: request.activeModels,
+        targetAgreement: request.targetAgreement,
+      },
+      outgoing: {
+        effectiveQuestion,
+        historyTurns: Array.isArray(request.history)
+          ? request.history.length
+          : 0,
+      },
+      decision: "Request accepted and a new execution trace started.",
+    }
+  );
+
+try {
+    recordFlowStep(
+    flowTraceId,
+    "2. Query validation",
     "running",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
+      incoming: {
+        queryChars: effectiveQuestion.length,
+      },
     }
   );
 
- 
-assertDefendedQuery(effectiveQuestion);
+  assertDefendedQuery(effectiveQuestion);
 
-recordFlowStep(
-  flowTraceId,
-  "Query validation",
-  "ok",
-  {
-    sourceFile: "src/searchAndEnginePushRouter.ts",
-    sourceFunction: "pushQueryToEnginesAndConverge",
-  }
-);
+  recordFlowStep(
+    flowTraceId,
+    "2. Query validation",
+    "ok",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      outgoing: {
+        queryValidated: true,
+      },
+      decision: "The incoming query passed query-defense validation.",
+    }
+  );
 
 const requestedModels = Array.isArray(request.activeModels)
   ? request.activeModels
@@ -224,23 +261,41 @@ if (modelsList.length === 0) {
     }
   );
 
+  if (modelsList.length === 0) {
+  recordFlowStep(
+    flowTraceId,
+    "2. Engine selection validation",
+    "error",
+    {
+      sourceFile: "src/searchAndEnginePushRouter.ts",
+      sourceFunction: "pushQueryToEnginesAndConverge",
+      detail: "No engine is available for this request.",
+      outgoing: {
+        selectedEngineCount: 0,
+      },
+      decision: "Execution stopped because no AI engine was selected.",
+    }
+  );
+
   throw new Error(
     "No usable AI engine is available. Configure a provider before retrying."
   );
 }
 
-  recordFlowStep(
-    flowTraceId,
-    "Engine selection validation",
-    "ok",
-    {
-      sourceFile: "src/searchAndEnginePushRouter.ts",
-      sourceFunction: "pushQueryToEnginesAndConverge",
-      outgoing: {
-        engineCount: modelsList.length,
-      },
-    }
-  );
+recordFlowStep(
+  flowTraceId,
+  "2. Engine selection validation",
+  "ok",
+  {
+    sourceFile: "src/searchAndEnginePushRouter.ts",
+    sourceFunction: "pushQueryToEnginesAndConverge",
+    outgoing: {
+      selectedEngineCount: modelsList.length,
+      selectedEngines: modelsList,
+    },
+    decision: "The requested AI engine selection passed validation.",
+  }
+);
 
     const safeTarget = Math.max(
     0,
@@ -254,20 +309,23 @@ if (modelsList.length === 0) {
   );
   
     
-    const loopResult = await runSmartMemoryConsensusLoop(
-    effectiveQuestion,
-    request.history || [],
-    modelsList,
-    safeTarget,
-    {
-      buildAppMode: Boolean(request.buildAppMode),
-      adminUpgradeMode: Boolean(request.adminUpgradeMode),
-      nextVersionTag: request.nextVersionTag || "key",
-      attachments: request.attachments || [],
-      strictQueryPriority: request.strictQueryPriority,
-      flowTraceId,
-    }
-  );
+    // Local consensus execution path.
+// Pass the same trace ID into the consensus engine so its internal
+// processing events belong to this request's execution trace.
+const loopResult = await runSmartMemoryConsensusLoop(
+  effectiveQuestion,
+  request.history || [],
+  modelsList,
+  safeTarget,
+  {
+    buildAppMode: Boolean(request.buildAppMode),
+    adminUpgradeMode: Boolean(request.adminUpgradeMode),
+    nextVersionTag: request.nextVersionTag || "key",
+    attachments: request.attachments || [],
+    strictQueryPriority: request.strictQueryPriority,
+    flowTraceId,
+  }
+);
 
     
    const response = executeConsensusApiPayload(
@@ -280,22 +338,29 @@ if (modelsList.length === 0) {
 
   const finalAnswer = String(loopResult.finalAnswer || "").trim();
 
+   // Step 3: Handle a missing final response.
   if (!finalAnswer) {
     recordFlowStep(
       flowTraceId,
-      "Final response assembly",
+      "3. Multi-Engine Consensus & Convergence",
       "error",
       {
-        sourceFile: "src/searchAndEnginePushRouter.ts",
-        sourceFunction: "pushQueryToEnginesAndConverge",
+        sourceFile: "src/consensusEngine.ts",
+        sourceFunction: "runSmartMemoryConsensusLoop",
         durationMs: Date.now() - startedAt,
-        detail: "The consensus loop returned an empty final answer.",
+        incoming: {
+          selectedEngines: modelsList,
+          targetAgreement: safeTarget,
+        },
         outgoing: {
           status: "error",
           outputChars: 0,
-          achievedAgreement: loopResult.achievedAgreement,
-          iterationsRequired: loopResult.iterationsRequired,
+          achievedAgreement:
+            loopResult.achievedAgreement ?? null,
+          roundsExecuted:
+            loopResult.iterationsRequired ?? null,
         },
+        decision: "The consensus loop returned no final answer.",
       }
     );
 
@@ -304,25 +369,70 @@ if (modelsList.length === 0) {
     );
   }
 
+  // Determine the actual consensus trace status.
+  const finalTraceStatus: "ok" | "error" =
+    loopResult.conformityReached === false ? "error" : "ok";
+
+  // Step 3: Record the completed consensus result.
   recordFlowStep(
     flowTraceId,
-    "Final response assembly",
+    "3. Multi-Engine Consensus & Convergence",
+    finalTraceStatus,
+    {
+      sourceFile: "src/consensusEngine.ts",
+      sourceFunction: "runSmartMemoryConsensusLoop",
+      durationMs: Date.now() - startedAt,
+      incoming: {
+        selectedEngines: modelsList,
+        targetAgreement: safeTarget,
+        promptProvided: effectiveQuestion,
+      },
+      outgoing: {
+        achievedAgreement:
+          loopResult.achievedAgreement ?? null,
+        targetAgreement: safeTarget,
+        roundsExecuted:
+          loopResult.iterationsRequired ?? null,
+        selectedEngineCount: modelsList.length,
+        conformityReached:
+          typeof loopResult.conformityReached === "boolean"
+            ? loopResult.conformityReached
+            : null,
+        finalAnswerSnippet:
+          finalAnswer.length > 200
+            ? `${finalAnswer.slice(0, 200)}…`
+            : finalAnswer,
+        finalAnswerChars: finalAnswer.length,
+      },
+      decision:
+        loopResult.conformityReached === false
+          ? "A final response was returned, but fulfillment conformity was not reached."
+          : loopResult.conformityReached === true
+            ? "The consensus result passed fulfillment conformity."
+            : "A final response was returned; fulfillment conformity was not reported.",
+    }
+  );
+
+  // Step 4: Record the response payload return.
+  recordFlowStep(
+    flowTraceId,
+    "4. Response Payload Return",
     "ok",
     {
       sourceFile: "src/searchAndEnginePushRouter.ts",
       sourceFunction: "pushQueryToEnginesAndConverge",
-      durationMs: Date.now() - startedAt,
-      outgoing: {
-        status: "ok",
-        outputChars: finalAnswer.length,
-        achievedAgreement: loopResult.achievedAgreement,
-        iterationsRequired: loopResult.iterationsRequired,
-        activeEngineCount: modelsList.length,
+      incoming: {
+        responseFieldCount: Object.keys(response).length,
       },
+      outgoing: {
+        responsePayloadReturned: true,
+      },
+      decision:
+        "The consensus API response payload was returned to the calling function. HTTP delivery is handled by the caller.",
     }
   );
 
-  finishFlowTrace(flowTraceId, "ok");
+  finishFlowTrace(flowTraceId, finalTraceStatus);
   return response;
 } catch (error) {
   recordFlowStep(
