@@ -7882,20 +7882,7 @@ export async function fetchGoogleSearchGrounding(
 }
 
 
-type GitHubTarget = {
-  owner: string;
-  repo: string;
-  kind: "repository" | "tree" | "blob";
-  requestedRefAndPath: string[];
-  ref?: string;
-  path?: string;
-  isFile: boolean;
-};
-
-function getGitHubTarget(
-  question: string,
-  sources: GroundingSource[]
-): GitHubTarget | null {
+ GitHubTarget | null {
   const urls = [
     ...Array.from(
       question.matchAll(/https:\/\/github\.com\/[^\s"'<>]+/gi)
@@ -7954,432 +7941,30 @@ export async function fetchVerifiedExternalEvidence(
 ): Promise<GroundingSource[]> {
   assertDefendedQuery(question);
 
-  const target = getGitHubTarget(question, discoverySources);
-  if (!target) return [];
-
-  try {
-    const api =
-      `https://api.github.com/repos/${encodeURIComponent(target.owner)}` +
-      `/${encodeURIComponent(target.repo)}`;
-
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    };
-
-    const token = getServerEnv("GITHUB_TOKEN");
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const getJson = async <T,>(url: string): Promise<T> => {
-      const response = await withStrictTimeout(
-        fetch(url, { headers, redirect: "error" }),
-        15000,
-        "GitHubSourceRetrieval"
-      );
-
-      if (!response.ok) {
-        throw new Error(`GitHub returned HTTP ${response.status}`);
-      }
-
-      return response.json() as Promise<T>;
-    };
-
-    const repository = await getJson<{
-      full_name: string;
-      default_branch: string;
-    }>(api);
-
-    const requestedParts = target.requestedRefAndPath || [];
-
-let ref = repository.default_branch;
-let requestedPath = "";
-
-if (requestedParts.length > 0) {
-  let resolved = false;
-
-  for (
-    let length = requestedParts.length;
-    length >= 1;
-    length--
-  ) {
-    const candidate = requestedParts.slice(0, length).join("/");
-
-    try {
-      await getJson(
-        `${api}/commits/${encodeURIComponent(candidate)}`
-      );
-
-      ref = candidate;
-      requestedPath = requestedParts.slice(length).join("/");
-      resolved = true;
-      break;
-    } catch {
-      // Try a shorter candidate ref.
-    }
-  }
-
-  if (!resolved) {
-    throw new Error(
-      "The explicitly requested GitHub branch or commit could not be resolved."
-    );
-  }
-}
-
-if (target.kind === "repository") {
-  ref = repository.default_branch;
-}
-
-    const commit = await getJson<{
-      sha: string;
-      commit: {
-        tree: {
-          sha: string;
-        };
-      };
-    }>(`${api}/commits/${encodeURIComponent(ref)}`);
-
-    if (!commit.commit?.tree?.sha) {
-      throw new Error("GitHub did not return the commit tree SHA");
-    }
-
-    // This is an operational retrieval budget, not a language or
-    // repository-type assumption. Configure it per deployment.
-    const configuredBudget = Number(
-      getServerEnv("GITHUB_INSPECTION_MAX_CONTENT_BYTES") || 10000000
-    );
-
-    const maxContentBytes =
-      Number.isFinite(configuredBudget) && configuredBudget > 0
-        ? configuredBudget
-        : 10000000;
-
-    type GitTreeEntry = {
-      path: string;
-      type: string;
-      mode?: string;
-      size?: number;
-      sha: string;
-    };
-
-    // Walk individual Git trees instead of relying on GitHub's
-    // potentially truncated recursive tree response.
-    const pendingTrees: Array<{ sha: string; prefix: string }> = [
-      { sha: commit.commit.tree.sha, prefix: "" },
-    ];
-
-    const visitedTrees = new Set<string>();
-    const allEntries: GitTreeEntry[] = [];
-    let treeComplete = true;
-
-    while (pendingTrees.length > 0) {
-      const current = pendingTrees.shift()!;
-
-      if (visitedTrees.has(current.sha)) continue;
-      visitedTrees.add(current.sha);
-
-      const result = await getJson<{
-        truncated?: boolean;
-        tree?: GitTreeEntry[];
-      }>(`${api}/git/trees/${encodeURIComponent(current.sha)}`);
-
-      if (!Array.isArray(result.tree) || result.truncated === true) {
-        treeComplete = false;
-      }
-
-      for (const entry of result.tree || []) {
-        const fullPath = current.prefix
-          ? `${current.prefix}/${entry.path}`
-          : entry.path;
-
-        const normalized: GitTreeEntry = {
-          ...entry,
-          path: fullPath,
-        };
-
-        allEntries.push(normalized);
-
-        if (entry.type === "tree") {
-          pendingTrees.push({
-            sha: entry.sha,
-            prefix: fullPath,
-          });
-        }
-      }
-    }
-
-    const scopedEntries = target.path
-      ? allEntries.filter(
-          (entry) =>
-            entry.path === target.path ||
-            entry.path.startsWith(`${target.path}/`)
-        )
-      : allEntries;
-
-    const blobs = scopedEntries.filter(
-      (entry) =>
-        entry.type === "blob" &&
-        entry.mode !== "120000" &&
-        entry.mode !== "160000"
-    );
-
-    if (
-      target.isFile &&
-      target.path &&
-      !blobs.some((entry) => entry.path === target.path)
-    ) {
-      throw new Error(`Requested file not found: ${target.path}`);
-    }
-
-    const githubFiles: GitHubFileEvidence[] = [];
-    const downloadedPaths = new Set<string>();
-    let consumedBytes = 0;
-    let contentComplete = true;
-
-    for (const entry of blobs) {
-      const remainingBytes = maxContentBytes - consumedBytes;
-
-      if (remainingBytes <= 0) {
-        contentComplete = false;
-        break;
-      }
-
-      if (
-        typeof entry.size === "number" &&
-        entry.size > remainingBytes
-      ) {
-        contentComplete = false;
-        continue;
-      }
-
-      const rawUrl =
-        `https://raw.githubusercontent.com/${target.owner}/${target.repo}` +
-        `/${commit.sha}/` +
-        entry.path
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/");
-
-      try {
-        const response = await withStrictTimeout(
-          fetch(rawUrl, { redirect: "error" }),
-          15000,
-          `GitHubFile:${entry.path}`
-        );
-
-        if (!response.ok) {
-          contentComplete = false;
-          continue;
-        }
-
-        const bytes = new Uint8Array(await response.arrayBuffer());
-
-        if (bytes.byteLength > remainingBytes) {
-          contentComplete = false;
-          continue;
-        }
-
-        consumedBytes += bytes.byteLength;
-        downloadedPaths.add(entry.path);
-
-        // Binary files are retrieved but are not treated as readable source.
-        if (bytes.includes(0)) continue;
-
-        const fileContent = new TextDecoder("utf-8", {
-          fatal: false,
-        }).decode(bytes);
-
-        if (fileContent.trim()) {
-          retrieved.push({
-            path: entry.path,
-            content: fileContent,
-          });
-        }
-      } catch (error) {
-        contentComplete = false;
-
-        console.error(
-          "GITHUB_FILE_RETRIEVAL_FAILED:",
-          entry.path,
-          redactProviderError(error)
-        );
-      }
-    }
-
-    const requestedFileRetrieved =
-      !target.isFile ||
-      (!!target.path && downloadedPaths.has(target.path));
-
-    const inspectionComplete =
-      treeComplete &&
-      contentComplete &&
-      requestedFileRetrieved;
-
-    const content = [
-      `REPOSITORY: ${repository.full_name}`,
-      `DEFAULT BRANCH: ${repository.default_branch}`,
-      `COMMIT SHA: ${commit.sha}`,
-      `TREE COMPLETE: ${treeComplete}`,
-      `CONTENT RETRIEVAL COMPLETE: ${contentComplete}`,
-      `INSPECTION COMPLETE: ${inspectionComplete}`,
-      `FILES DISCOVERED: ${blobs.length}`,
-      `FILES DOWNLOADED: ${downloadedPaths.size}`,
-      `TEXT FILES READ: ${retrieved.length}`,
-      `CONTENT BYTES READ: ${consumedBytes}`,
-      "",
-      "REPOSITORY TREE:",
-      ...scopedEntries.map((entry) => entry.path),
-      "",
-      "RETRIEVED FILE CONTENTS:",
-      ...retrieved.map(
-        (file) =>
-          `===== FILE: ${file.path} =====\n` +
-          `${file.content}\n` +
-          `===== END FILE =====`
-      ),
-      "",
-      "INSPECTION RULE:",
-      "Only paths and file contents retrieved from this commit are verified.",
-      "Do not invent missing files, languages, frameworks, services, or architecture.",
-      "If inspection is incomplete, explicitly report what was not inspected.",
-    ].join("\n");
-
-    return [
-      {
-        title: `${repository.full_name} source inspection`,
-        uri:
-          `https://github.com/${target.owner}/${target.repo}` +
-          `/tree/${commit.sha}`,
-        requestedUri:
-          `https://github.com/${target.owner}/${target.repo}`,
-        content,
-        retrievalVerified: inspectionComplete,
-        commitSha: commit.sha,
-        defaultBranch: repository.default_branch,
-        treeComplete,
-        filesRetrieved: retrieved.length,
-        filesAvailable: blobs.length,
-      },
-    ];
-    } catch (error) {
-    const failureMessage =
-      error instanceof Error
-        ? redactProviderError(error)
-        : "Unknown GitHub retrieval error";
-
-    console.error(
-      "VERIFIED_SOURCE_RETRIEVAL_FAILED:",
-      failureMessage
-    );
-
-    return [
-      {
-        title: `${target.owner}/${target.repo} — inspection failed`,
-        uri: `https://github.com/${target.owner}/${target.repo}`,
-        requestedUri: `https://github.com/${target.owner}/${target.repo}`,
-        content: [
-          `REPOSITORY: ${target.owner}/${target.repo}`,
-          "INSPECTION COMPLETE: false",
-          "TREE COMPLETE: false",
-          "CONTENT RETRIEVAL COMPLETE: false",
-          `RETRIEVAL ERROR: ${failureMessage}`,
-          "Repository architecture claims are not verified.",
-        ].join("\n"),
-        retrievalVerified: false,
-        treeComplete: false,
-        filesRetrieved: 0,
-        filesAvailable: 0,
-      },
-    ];
-  }
+  // KEY does not perform its own GitHub repository inspection.
+  // The original question and GitHub URL remain available to the engines.
+  return [];
 }
 export function hasRequiredExternalSourceCoverage(
   question: string,
   sources: GroundingSource[]
 ): boolean {
-  const target = getGitHubTarget(question, sources);
+  const isGitHubRequest =
+    /https:\/\/github\.com\/[^\s"'<>]+/i.test(question);
 
-  if (!target) {
-    return sources.some(
-      (source) =>
-        source.retrievalVerified === true &&
-        typeof source.content === "string" &&
-        source.content.trim().length > 0
-    );
+  // Do not require KEY to inspect GitHub repositories.
+  // The engines receive the original request and URL.
+  if (isGitHubRequest) {
+    return true;
   }
 
-  const source = sources.find((item) => {
-    try {
-      const url = new URL(item.uri);
-      const parts = url.pathname.split("/").filter(Boolean);
-
-      return (
-        url.hostname === "github.com" &&
-        parts[0]?.toLowerCase() === target.owner.toLowerCase() &&
-        parts[1]?.replace(/\.git$/i, "").toLowerCase() ===
-          target.repo.toLowerCase()
-      );
-    } catch {
-      return false;
-    }
-  });
-
-  if (
-    !source ||
-    !source.githubInspection ||
-    !/^[a-f0-9]{40}$/i.test(
-      source.githubInspection.resolvedCommitSha
-    ) ||
-    source.githubInspection.resolvedCommitSha !== source.commitSha ||
-    !Array.isArray(source.githubTreeEntries) ||
-    !Array.isArray(source.githubFiles)
-  ) {
-    return false;
-  }
-
-  const inspection = source.githubInspection;
-
-  if (!inspection.treeComplete) {
-    return false;
-  }
-
-  const requestedPath = target.path || "";
-
-  if (target.isFile && requestedPath) {
-    const exists = source.githubTreeEntries.some(
-      (entry) =>
-        entry.type === "blob" &&
-        entry.path === requestedPath
-    );
-
-    const retrieved = source.githubFiles.some(
-      (file) =>
-        file.path === requestedPath &&
-        file.contentRetrieved &&
-        file.isText &&
-        file.content.trim().length > 0
-    );
-
-    return exists && retrieved;
-  }
-
-  if (requestedPath) {
-    const directoryExists = source.githubTreeEntries.some(
-      (entry) =>
-        entry.type === "tree" &&
-        entry.path === requestedPath
-    );
-
-    const filesRetrieved = source.githubFiles.some(
-      (file) =>
-        file.path.startsWith(`${requestedPath}/`) &&
-        file.contentRetrieved &&
-        file.isText
-    );
-
-    return directoryExists && filesRetrieved;
-  }
-
-  return inspection.inspectionComplete === true;
+  // Preserve the existing general external-source coverage check.
+  return sources.some(
+    (source) =>
+      source.retrievalVerified === true &&
+      typeof source.content === "string" &&
+      source.content.trim().length > 0
+  );
 }
 
 export function resolveConversationalFlowExplanation(
@@ -11072,10 +10657,7 @@ const combinedRefusalFeedback = combinedResultRefused
   "Agreement between engines and confident wording do not prove correctness.",
   "Only actual retrieved source content can support claims that an external source was inspected.",
   "A search result URL or AI-generated search summary is not retrieved source content.",
-  "For GitHub repository requests, verify material repository claims against actual retrieved file contents.",
-  "Do not treat a repository tree or filename as proof of implementation details.",
-  "Never invent repository paths, languages, frameworks, dependencies, services, or architecture.",
-   "Return pass only when every material requirement is addressed and claims are adequately supported or qualified.",
+ "Return pass only when every material requirement is addressed and claims are adequately supported or qualified.",
   "If a material claim is unsupported, contradictory, incomplete, or uncertain, return needs_revision or unverified.",
   "Never invent facts, sources, calculations, measurements, file paths, repository contents, or verification results.",
   "Use external evidence when relevant, but do not require irrelevant web evidence for creative or purely logical tasks.",
@@ -11098,7 +10680,7 @@ const combinedRefusalFeedback = combinedResultRefused
   "If every engine refuses, assess whether the requested action actually requires refusal.",
   "If the request is permitted but the engines refuse, return needs_revision and identify the missing substantive answer.",
   "If refusal is required, explain the applicable restriction and offer a safe alternative where appropriate.",
-    'Return JSON with exactly these fields: {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"],"refusalJustified":true|false,"claimEvidence":[{"claim":"exact claim from engine batch","path":"actual repository file path","quote":"exact supporting text from that file"}]}.',
+    'Return JSON with exactly these fields: {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"],"refusalJustified":true|false}.', {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"],"refusalJustified":true|false}.', {"status":"pass"|"needs_revision"|"unverified","feedback":"specific explanation","missingRequirements":["specific requirement"],"refusalJustified":true|false,"claimEvidence":[{"claim":"exact claim from engine batch","path":"actual repository file path","quote":"exact supporting text from that file"}]}.',
   "",
   `USER'S ORIGINAL REQUEST:\n${promptToText(multimodalContents)}`,
   "",
@@ -11179,8 +10761,7 @@ if (
   !parsedVerification.missingRequirements.every(
     (item: unknown) => typeof item === "string"
   ) ||
-  typeof parsedVerification.refusalJustified !== "boolean" ||
-  
+    typeof parsedVerification.refusalJustified !== "boolean"
 ) {
   throw new Error(
     "Invalid fulfillment-verifier response structure"
@@ -11264,12 +10845,9 @@ if (requiresWebEvidence && !liveEvidenceRequirementMet) {
       "The requested external source was not retrieved and verified. " +
       "Search summaries and source URLs alone are not evidence.",
     missingRequirements: [
-      "Retrieve actual source content.",
-      "Verify that the content belongs to the requested source.",
-      "For GitHub, establish the branch and commit SHA.",
-      "Retrieve the requested file contents.",
-      "Disclose partial or incomplete inspection.",
-    ],
+  "Retrieve actual source content.",
+  "Verify that the content belongs to the requested source.",
+],
     refusalJustified: false,
   };
 }
