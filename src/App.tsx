@@ -4300,11 +4300,6 @@ const data = await res.json();
   previousMessages
 );
 
-const clientRelationCheck = computeClientRelationWithPrevious(
-  queryText,
-  previousMessages
-);
-
 const priorUserHistoryPipe =
   !hasNoAppOrLogicGuardInClient &&
   clientRelationCheck.hasRelation
