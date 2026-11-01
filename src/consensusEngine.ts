@@ -8240,8 +8240,31 @@ export function hasRequiredExternalSourceCoverage(
     return false;
   }
 
+  // Verify the exact requested file for direct file requests.
   if (target.isFile && target.path) {
-    return source.content.includes(`===== FILE: ${target.path} =====`);
+    return source.content.includes(
+      `===== FILE: ${target.path} =====`
+    );
+  }
+
+  // Apply architecture requirements only to repository inspections.
+  const isArchitectureInspection =
+    !target.isFile &&
+    /\b(architecture|architectural|file\s+tree|directory\s+tree|folder\s+structure|project\s+layout|repository\s+layout|repository\s+structure|codebase\s+structure)\b/i.test(
+      question
+    );
+
+  if (isArchitectureInspection) {
+    const requiredEvidence = [
+      "ARCHITECTURE INSPECTION: true",
+      "PROJECT MANIFEST OR README RETRIEVED: true",
+      "IMPLEMENTATION SOURCE RETRIEVED: true",
+      "ARCHITECTURE EVIDENCE COMPLETE: true",
+    ];
+
+    return requiredEvidence.every((marker) =>
+      source.content!.includes(marker)
+    );
   }
 
   return true;
