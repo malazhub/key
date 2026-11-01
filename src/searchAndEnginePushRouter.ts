@@ -249,19 +249,8 @@ const requestedModels = Array.isArray(request.activeModels)
 
 const modelsList = requestedModels;
 
+// Stop execution if no AI engines were selected.
 if (modelsList.length === 0) {
-  recordFlowStep(
-    flowTraceId,
-    "Engine selection validation",
-    "error",
-    {
-      sourceFile: "src/searchAndEnginePushRouter.ts",
-      sourceFunction: "pushQueryToEnginesAndConverge",
-      detail: "No engine is available for this request",
-    }
-  );
-
-  if (modelsList.length === 0) {
   recordFlowStep(
     flowTraceId,
     "2. Engine selection validation",
@@ -282,6 +271,7 @@ if (modelsList.length === 0) {
   );
 }
 
+// Record successful engine selection.
 recordFlowStep(
   flowTraceId,
   "2. Engine selection validation",
