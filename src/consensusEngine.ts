@@ -2936,19 +2936,12 @@ export function isStandaloneHighPriorityIsolatedQuery(rawText: string): boolean 
 export function forceIsolatedPayloadSentToEngines(
   rawQuestion: string
 ): string {
-  const clean = extractCleanUserTurnText(rawQuestion);
-  if (!clean.includes("===")) {
-    return clean.trim() || rawQuestion.trim();
-  }
-  const stripped = clean
-    .replace(
-      /===\s*(?:WORKING MEMORY LEDGER|CUMULATIVE USER SPECIFICATION|CUMULATIVE RELATED PREVIOUS CONVERSATION HISTORY|UNIFIED QUERY SENT TO ALL AI ENGINES)[\s\S]*?===\s*CURRENT USER QUERY[^=]*===\s*/gi,
-      ""
-    )
-    .trim();
-  return stripped || clean.trim() || rawQuestion.trim();
+  // Return the full user text, trimmed only.
+  // The previous implementation truncated at marker phrases and stripped
+  // any "=== … ===" block. Callers that must preserve the legacy
+  // assembled-payload cleanup do so locally (see purgeHistoryFromPayload).
+  return (rawQuestion || "").trim();
 }
-
 export function isLegacyStaticBrainRefusalText(rawText: string): boolean {
   if (!rawText) return false;
   return /\b(while\s+i\s+cannot\s+modify\s+my\s+core\s+neural\s+weights|cannot\s+modify\s+my\s+core\s+neural\s+weights|fundamental\s+architecture\s+of\s+the\s+10\s+ai\s+engines\s+i\s+synchronize|while\s+my\s+["']?brain["']?\s*\(the\s+models\)\s+is\s+static|understanding\s+system\s+upgrades\s+and\s+capability\s+enhancement|cannot\s+modify\s+my\s+own\s+(?:source\s+)?code|unable\s+to\s+modify\s+my\s+own\s+files|cannot\s+upgrade\s+myself|unable\s+to\s+upgrade\s+myself)\b/i.test(
@@ -4177,9 +4170,14 @@ export function doesCurrentQuerySupersedeSavedPair(
 
 export function calculateMathematicalRelationWithPrevious(
   currentQuery: string,
-  windowPairs: SavedQAPair[]
+  windowPairs: SavedQAPair[],
+  originalQuestion?: string
 ): MathematicalRelationResult {
   const cleanQ = currentQuery.trim();
+  // payloadQ is used ONLY inside engine-payload strings below.
+  // cleanQ still drives every classifier, matcher, scorer, supersession check,
+  // and the cumulativeUserSpecification / cumulativeSpecParts values.
+  const payloadQ = (originalQuestion || currentQuery).trim();
   if (
     windowPairs.length === 0 ||
     isStandaloneGreetingOrSmallTalk(cleanQ) ||
@@ -4190,9 +4188,9 @@ export function calculateMathematicalRelationWithPrevious(
       contextMode: "NEW_QUERY_ONLY",
       historyMatchScore: 0,
       matchedPairIndices: [],
-      payloadSentToEngines: cleanQ,
+            payloadSentToEngines: payloadQ,
       isCorrectionOrRepetition: false,
-      cumulativeUserSpecification: cleanQ,
+      cumulativeUserSpecification: cleanQ,   // unchanged
       workingMemoryFacts: [],
     };
   }
@@ -4515,16 +4513,13 @@ export function calculateMathematicalRelationWithPrevious(
   const workingMemoryFacts = extractWorkingMemoryFacts(activeBackgroundPairs);
 
   const userRequirementsChain = [
-    `• [CURRENT QUERY #${windowPairs.length + 1} — 100% SUPERSEDING EXECUTION PRIORITY]: ${cleanQ}`,
-    ...activeBackgroundPairs.map(
-      (p) =>
-        `• [Saved Non-Conflicting Background Ask #${p.pairIndex} (Subordinate to Current Query)]: ${p.userQuery.trim()}`
-    ),
-    ...supersededPairs.map(
-      (p) =>
-        `• [Saved Ask #${p.pairIndex} — SUPERSEDED BY CURRENT QUERY]: "${p.userQuery.trim()}" (Overridden by "${cleanQ}")`
-    ),
-  ].join("\n");
+  `• [CURRENT QUERY #${windowPairs.length + 1} — 100% SUPERSEDING EXECUTION PRIORITY]: ${payloadQ}`,
+  ...activeBackgroundPairs.map(/* existing mapping */),
+  ...supersededPairs.map(
+    (p) =>
+      `• [Saved Ask #${p.pairIndex} — SUPERSEDED BY CURRENT QUERY]: "${p.userQuery.trim()}" (Overridden by "${payloadQ}")`
+  ),
+].join("\n");
 
   const cumulativeContextParts = activeBackgroundPairs.map((p, idx) => {
     const isLatestMatched = idx === activeBackgroundPairs.length - 1;
@@ -4543,11 +4538,14 @@ export function calculateMathematicalRelationWithPrevious(
           .join("\n")}\n`
       : "";
 
-  const unifiedCombinedQuery = `=== CURRENT USER QUERY (100% SUPERSEDING PRIORITY — MUST OVERRIDE ANY CONFLICTING SAVED MEMORY) ===\n${cleanQ}\n\n=== COMPARED SAVED MEMORY (PASSIVE BACKGROUND ONLY — SUPERSEDED BY CURRENT QUERY ON ANY CONFLICT) ===\n${userRequirementsChain}\n${memoryLedgerBlock}${
-    cumulativeContextParts.length > 0
-      ? `\n${cumulativeContextParts.join("\n")}\n`
-      : ""
-  }\n=== FINAL ACTIVE INSTRUCTION (EXECUTE CURRENT QUERY WITH 100% PRIORITY) ===\n${cleanQ}`;
+  const unifiedCombinedQuery = `=== CURRENT USER QUERY (100% SUPERSEDING PRIORITY — MUST OVERRIDE ANY CONFLICTING SAVED MEMORY) ===
+${payloadQ}
+
+=== COMPARED SAVED MEMORY (PASSIVE BACKGROUND ONLY — SUPERSEDED BY CURRENT QUERY ON ANY CONFLICT) ===
+${userRequirementsChain}
+${memoryLedgerBlock}${/* existing content */}
+=== FINAL ACTIVE INSTRUCTION (EXECUTE CURRENT QUERY WITH 100% PRIORITY) ===
+${payloadQ}`;
 
   const cumulativeSpecParts = [
     ...activeBackgroundPairs.map((p) => p.userQuery),
@@ -7244,8 +7242,10 @@ export function sanitizeAndEnrichConsensusResult(
   safeTarget: number,
   question: string,
   shouldGenerateAppPreview?: boolean,
-  cumulativeContextText?: string
+  cumulativeContextText?: string,
+  originalQuestion?: string   // ← NEW optional 7th param
 ) {
+  const payloadQ = (originalQuestion || question).trim();
   const rawFinalAnswer = String(parsed.finalAnswer || "").trim();
   const { cleanMarkdown, extractedHtml } =
     extractRawHtmlFromAnswer(rawFinalAnswer);
@@ -7509,8 +7509,8 @@ export function sanitizeAndEnrichConsensusResult(
   const isForcedIsolatedInSanitizer =
     isGreeting ||
     hasExplicitTopicResetDirective(question);
-  const sanitizedIsolatedPayload =
-    forceIsolatedPayloadSentToEngines(question);
+    const sanitizedIsolatedPayload =
+    forceIsolatedPayloadSentToEngines(payloadQ);
 
   const engineTelemetryList: EngineNodeTelemetry[] = enrichedNodes.map(
     (node, idx) => ({
@@ -8197,6 +8197,7 @@ export interface SemanticPriorityGateResult {
 }
 
 export interface QueryContextResolution {
+  originalQuestion: string; // NEW — full user text, trimmed only
   cleanQuestion: string;
   isolatedPayloadSentToEngines: string;
   contextMode: "MERGED_WITH_SAVED" | "NEW_QUERY_ONLY";
@@ -8264,12 +8265,30 @@ export class QueryContextManager {
    * Forcefully purges all previous message history from `payloadSentToEngines`,
    * returning strictly the clean, immediate user query.
    */
-  static purgeHistoryFromPayload(
+    static purgeHistoryFromPayload(
     rawQuestionOrPayload: string,
     fallbackCleanQuestion?: string
   ): string {
-    const target = fallbackCleanQuestion || rawQuestionOrPayload;
-    return forceIsolatedPayloadSentToEngines(target);
+    // Preserve the legacy forceIsolatedPayloadSentToEngines behavior at this
+    // specific call site: first run extractCleanUserTurnText (so wrapper
+    // markers are honored), then strip any assembled "=== … ===" blocks.
+    // This method is the only caller that may receive an assembled payload,
+    // so the legacy cleanup belongs here rather than in the raw-question helper.
+    const target = fallbackCleanQuestion || rawQuestionOrPayload || "";
+    const clean = extractCleanUserTurnText(target);
+
+    if (!clean.includes("===")) {
+      return clean.trim() || target.trim();
+    }
+
+    const stripped = clean
+      .replace(
+        /===\s*(?:WORKING MEMORY LEDGER|CUMULATIVE USER SPECIFICATION|CUMULATIVE RELATED PREVIOUS CONVERSATION HISTORY|UNIFIED QUERY SENT TO ALL AI ENGINES)[\s\S]*?===\s*CURRENT USER QUERY[^=]*===\s*/gi,
+        ""
+      )
+      .trim();
+
+    return stripped || clean.trim() || target.trim();
   }
 
   static evaluateSemanticPriorityGate(
@@ -8368,17 +8387,19 @@ export class QueryContextManager {
     };
   }
 
-  static resolveQueryContext(
+    static resolveQueryContext(
     rawQuestion: string,
     history: HistoryTurn[],
     options?: {
       strictQueryPriority?: boolean;
     }
   ): QueryContextResolution {
+    const originalQuestion =
+      String(rawQuestion || "").trim();
     const cleanQuestion =
       extractCleanUserTurnText(rawQuestion) || rawQuestion.trim();
     const isolatedPayloadSentToEngines =
-      forceIsolatedPayloadSentToEngines(cleanQuestion);
+      forceIsolatedPayloadSentToEngines(originalQuestion);
 
    const sanitizedInputHistory: HistoryTurn[] =
   Array.isArray(history) ? history : [];
@@ -8431,7 +8452,7 @@ const isMandatoryIsolatedTurn =
     ? "explicit_topic_reset"
     : "greeting_without_active_session_history";
 
-      const purgedPayload = forceIsolatedPayloadSentToEngines(cleanQuestion);
+      const purgedPayload = forceIsolatedPayloadSentToEngines(originalQuestion);
 
       const isolatedRelation: MathematicalRelationResult = {
         hasRelation: false,
@@ -8445,34 +8466,35 @@ const isMandatoryIsolatedTurn =
       };
 
       return {
-        cleanQuestion,
-        isolatedPayloadSentToEngines: purgedPayload,
-        contextMode: "NEW_QUERY_ONLY",
-        strictQueryPriority: true,
-        isGreetingTarget,
-        isTopicIsolationTarget,
-        isCapabilityQuestionTarget,
-        isEnhancementTarget,
-        isEarlyTopicIsolationOrGreeting,
-        isMandatoryIsolatedTurn:
-  isMandatoryIsolatedTurn ||
+  originalQuestion,
+  cleanQuestion,
+  isolatedPayloadSentToEngines: purgedPayload,
+  contextMode: "NEW_QUERY_ONLY",
+  strictQueryPriority: true,
+  isGreetingTarget,
+  isTopicIsolationTarget,
+  isCapabilityQuestionTarget,
+  isEnhancementTarget,
   isEarlyTopicIsolationOrGreeting,
-        payloadSentToEngines: purgedPayload,
-        windowPairs: [],
-        effectiveHistory: [],
-        relation: isolatedRelation,
-        allPairsCount: rawAllPairsCount,
-        droppedOldestCount: 0,
-        cumulativeSpec: undefined,
-        priorityGate: {
-          maintainHistory: false,
-          isNewIndependentTopic: true,
-          recentTurnOverlapScore: 0,
-          maxSavedOverlapScore: 0,
-          sharedRecentTokenCount: 0,
-          gateReason: isolationReason,
-        },
-      };
+  isMandatoryIsolatedTurn:
+    isMandatoryIsolatedTurn ||
+    isEarlyTopicIsolationOrGreeting,
+  payloadSentToEngines: purgedPayload,
+  windowPairs: [],
+  effectiveHistory: [],
+  relation: isolatedRelation,
+  allPairsCount: rawAllPairsCount,
+  droppedOldestCount: 0,
+  cumulativeSpec: undefined,
+  priorityGate: {
+    maintainHistory: false,
+    isNewIndependentTopic: true,
+    recentTurnOverlapScore: 0,
+    maxSavedOverlapScore: 0,
+    sharedRecentTokenCount: 0,
+    gateReason: isolationReason,
+  },
+};
     }
 
     // 2. Measure semantic relationships without allowing semantic
@@ -8483,7 +8505,8 @@ const allPairsCount = rawAllPairsCount;
 const rawRelation =
   calculateMathematicalRelationWithPrevious(
     cleanQuestion,
-    rawWindowPairs
+    rawWindowPairs,
+    originalQuestion
   );
 
 // This gate remains useful for semantic diagnostics and
@@ -8546,25 +8569,26 @@ const cumulativeSpec =
     ? rawRelation.cumulativeUserSpecification
     : undefined;
     return {
-      cleanQuestion,
-      isolatedPayloadSentToEngines,
-      contextMode,
-      strictQueryPriority,
-      isGreetingTarget,
-      isTopicIsolationTarget,
-      isCapabilityQuestionTarget,
-      isEnhancementTarget,
-      isEarlyTopicIsolationOrGreeting,
-      isMandatoryIsolatedTurn,
-      payloadSentToEngines,
-      windowPairs,
-      effectiveHistory,
-      relation,
-      allPairsCount,
-      droppedOldestCount,
-      cumulativeSpec,
-      priorityGate,
-    };
+  originalQuestion,
+  cleanQuestion,
+  isolatedPayloadSentToEngines,
+  contextMode,
+  strictQueryPriority,
+  isGreetingTarget,
+  isTopicIsolationTarget,
+  isCapabilityQuestionTarget,
+  isEnhancementTarget,
+  isEarlyTopicIsolationOrGreeting,
+  isMandatoryIsolatedTurn,
+  payloadSentToEngines,
+  windowPairs,
+  effectiveHistory,
+  relation,
+  allPairsCount,
+  droppedOldestCount,
+  cumulativeSpec,
+  priorityGate,
+};
   }
 }
 
@@ -9544,19 +9568,26 @@ export async function runSmartMemoryConsensusLoop(
   }
 
   const {
-    cleanQuestion,
-    isolatedPayloadSentToEngines,
-    isGreetingTarget,
-    isTopicIsolationTarget,
-    isCapabilityQuestionTarget,
-    isEnhancementTarget,
-    windowPairs,
-    effectiveHistory,
-    relation,
-    allPairsCount,
-    droppedOldestCount,
-    priorityGate,
-  } = resolvedContext;
+  originalQuestion,
+  cleanQuestion,
+  isolatedPayloadSentToEngines,
+  contextMode,
+  strictQueryPriority,
+  isGreetingTarget,
+  isTopicIsolationTarget,
+  isCapabilityQuestionTarget,
+  isEnhancementTarget,
+  isEarlyTopicIsolationOrGreeting,
+  isMandatoryIsolatedTurn,
+  payloadSentToEngines,
+  windowPairs,
+  effectiveHistory,
+  relation,
+  allPairsCount,
+  droppedOldestCount,
+  cumulativeSpec,
+  priorityGate,
+} = resolvedContext;
 
       const strictQueryPriority =
     resolvedContext.strictQueryPriority;
@@ -9865,7 +9896,7 @@ return correctiveCandidates;
   }
     );
    const plannerExecutionContext = compileExecutionContext(
-  cleanQuestion,
+  originalQuestion,
   queryExecutionPlan,
   adaptiveRetrievalResult.selected,
   groundingSources.map((source) => ({
@@ -10005,17 +10036,26 @@ HISTORY AUTHORIZATION (STRICT DEFAULT):
 
   if (isGreetingTarget) {
     promptSections.push(
-      `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===\nUser Message: "${cleanQuestion}"\nInstruction: Respond naturally and directly to this greeting in real time.`
-    );
-  } else if (relation.hasRelation) {
-    promptSections.push(
-      `=== CURRENT USER QUERY (HIGHEST PRIORITY) ===\n"${cleanQuestion}"${attachmentNamesSummary}\n\n=== COMBINED CONTEXT PAYLOAD ===\n${payloadSentToEngines}`
-    );
-  } else {
-    promptSections.push(
-      `=== CURRENT USER QUERY SENT TO ALL ${modelsList.length} AI ENGINES ===\n"${cleanQuestion}"${attachmentNamesSummary}`
-    );
-  }
+      `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===\nif (isGreetingTarget) {
+  promptSections.push(
+    `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===
+User Message: "${originalQuestion}"
+Instruction: Respond naturally and directly to this greeting in real time.`
+  );
+} else if (relation.hasRelation) {
+  promptSections.push(
+    `=== CURRENT USER QUERY (HIGHEST PRIORITY) ===
+"${originalQuestion}"${attachmentNamesSummary}
+
+=== COMBINED CONTEXT PAYLOAD ===
+${payloadSentToEngines}`
+  );
+} else {
+  promptSections.push(
+    `=== CURRENT USER QUERY SENT TO ALL ${modelsList.length} AI ENGINES ===
+"${originalQuestion}"${attachmentNamesSummary}`
+  );
+}
 
   if (lastSavedPair) {
     promptSections.push(
@@ -10964,7 +11004,7 @@ if (flowTraceId) {
   const timedGroundingSources = groundingSources;
 
   if (deterministicParsed) {
-    const enriched = sanitizeAndEnrichConsensusResult(
+        const enriched = sanitizeAndEnrichConsensusResult(
       {
         ...deterministicParsed,
         _wallClockElapsedMs: Date.now() - loopStartTimeMs,
@@ -10974,7 +11014,8 @@ if (flowTraceId) {
       safeTarget,
       cleanQuestion,
       shouldGenerateAppPreview,
-      cumulativeSpec
+      cumulativeSpec,
+      originalQuestion   // ← add
     );
     return {
       ...enriched,
@@ -11028,9 +11069,11 @@ export function executeConsensusApiPayload(
     Math.max(0, Number(result.achievedAgreement) || 0)
   );
 
+    const originalEffectiveQuestion =
+    String(effectiveQuestion || "").trim();
   const cleanEffectiveQuestion =
-    extractCleanUserTurnText(effectiveQuestion) || effectiveQuestion.trim();
-
+    extractCleanUserTurnText(originalEffectiveQuestion) ||
+    originalEffectiveQuestion;
   const isStrictPriorityTurn =
     Boolean(result.strictQueryPriority) ||
     result.contextMode !== "MERGED_WITH_SAVED" ||
@@ -11055,9 +11098,11 @@ export function executeConsensusApiPayload(
       result.generatedAppHtml.trim().length > 0
   );
 
-  const finalPayloadSentToEngines = isStrictPriorityTurn
-    ? forceIsolatedPayloadSentToEngines(cleanEffectiveQuestion)
-    : String(result.payloadSentToEngines || cleanEffectiveQuestion);
+    const finalPayloadSentToEngines = isStrictPriorityTurn
+    ? forceIsolatedPayloadSentToEngines(originalEffectiveQuestion)
+    : String(
+        result.payloadSentToEngines || originalEffectiveQuestion
+      );
 
   const mappedNodes = (result.nodeContributions || []).map(
     (
