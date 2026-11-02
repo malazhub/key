@@ -50,7 +50,7 @@ export interface SearchAndEnginePushResult {
   strictQueryPriority: boolean;
   contextMode: "NEW_QUERY_ONLY" | "MERGED_WITH_SAVED";
   historyMatchScore: number;
-  webSearchSources: GroundingSource[];
+  discoverySources: GroundingSource[];
   memorySearchTrace: MemoryOSPipelineTrace;
   finalAnswer: string;
   achievedAgreement: number;
@@ -69,9 +69,19 @@ export interface SearchAndEnginePushResult {
 }
 
 /**
- * STEP 1: Live Web Search Grounding + 5-Channel Parallel Memory Search
- * Executes real-time Google Search Grounding (`tools: [{ googleSearch: {} }]`) in parallel
- * with Key's 5-Channel Memory Operating System (Semantic, BM25, Entity, Temporal, Exact-Ref).
+ * STEP 1: 5-Channel Parallel Memory Search + Context Preparation.
+ *
+ * This function does NOT perform live Google Search grounding. Live web
+ * retrieval happens inside the consensus pipeline
+ * (runSmartMemoryConsensusLoop → fetchGoogleSearchGrounding →
+ * fetchVerifiedExternalEvidence).
+ *
+ * `discoverySources` is currently always empty. It is preserved on the
+ * return shape so callers can distinguish "memory-only retrieval" from
+ * "memory + grounded-evidence retrieval" without changing signatures.
+ *
+ * Discovery is not verified evidence. An empty discovery array must never
+ * be presented to the user as evidence.
  */
 export async function executeKeySearchPipeline(
   question: string,
@@ -81,7 +91,7 @@ export async function executeKeySearchPipeline(
     flowTraceId?: string;
   }
 ): Promise<{
-  webSearchSources: GroundingSource[];
+  discoverySources: GroundingSource[];
   memorySearchTrace: MemoryOSPipelineTrace;
 }> {
     const traceId = options?.flowTraceId;
@@ -97,14 +107,14 @@ export async function executeKeySearchPipeline(
     }
   );
 
-  if (!cleanQuestion) {
+    if (!cleanQuestion) {
     return {
-      webSearchSources: [],
+      discoverySources: [],
       memorySearchTrace,
     };
   }
 
-  const webSearchSources: GroundingSource[] = [];
+  const discoverySources: GroundingSource[] = [];
 
   if (traceId) {
     recordFlowStep(
@@ -115,14 +125,14 @@ export async function executeKeySearchPipeline(
         sourceFile: "src/searchAndEnginePushRouter.ts",
         sourceFunction: "executeKeySearchPipeline",
         outgoing: {
-          webSourceCount: webSearchSources.length,
+          discoverySourceCount: discoverySources.length,
         },
       }
     );
   }
 
   return {
-    webSearchSources,
+    discoverySources,
     memorySearchTrace,
   };
 }
