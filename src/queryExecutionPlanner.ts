@@ -38,8 +38,27 @@ export interface PlannerModelInvoker {
 export interface QueryExecutionPlan {
   originalQuery: string;
   normalizedQuery: string;
-  polarity: PlannerPolarity;
-  objective: string;
+    taskType:
+    | "question"
+    | "research"
+    | "coding"
+    | "analysis"
+    | "comparison"
+    | "summarization"
+    | "creative"
+    | "conversation"
+    | "other";
+
+  requiredOutput: string[];
+
+  /**
+   * Null when conversation history is not required.
+   * Non-empty when recent context or long-term memory is enabled.
+   * Diagnostic only — the retrieval decision is owned by `evidenceNeeds`.
+   */
+  historyReason: string | null;
+
+  requiresConversationHistory: boolean;
 
   evidenceNeeds: {
     recentContext: boolean;
@@ -71,6 +90,8 @@ export interface QueryExecutionPlan {
 }
 
 export interface PlannerModelOutput {
+    taskType?: QueryExecutionPlan["taskType"];
+  requiredOutput?: string[];
   polarity?: PlannerPolarity;
   objective?: string;
   evidenceNeeds?: Partial<QueryExecutionPlan["evidenceNeeds"]>;
@@ -78,7 +99,9 @@ export interface PlannerModelOutput {
   queryExpansions?: string[];
   constraints?: string[];
   prohibitions?: string[];
-  confidence?: number;
+    confidence?: number;
+  taskType?: QueryExecutionPlan["taskType"];
+  requiredOutput?: string[];
 }
 
 export interface AdaptiveCandidate {
@@ -184,7 +207,76 @@ function fallbackPolarity(query: string): PlannerPolarity {
     return "confirmation";
   if (/\?|\b(what|when|where|which|who|how many|how much)\b/.test(q))
     return "question";
-  return "other";
+    return "other";
+}
+
+function inferTaskType(
+  query: string,
+  polarity: PlannerPolarity,
+): QueryExecutionPlan["taskType"] {
+  const q = normalizePlannerText(query).toLowerCase();
+
+  const hasCodeContext =
+    /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|cpp|cc|c|h|hpp|rb|php|swift|kt|scala|sh|bash|zsh|ps1|sql|html|htm|css|scss|sass|less|json|yaml|yml|xml|toml|ini|env|md)\b/i.test(
+      q,
+    ) ||
+    /\b(function|class|method|variable|const|let|var|interface|type|enum|import|export|module|package|api|endpoint|route|handler|component|hook|state|props|jsx|tsx|regex|query|sql|database|schema|migration|deploy|build|compile|test|spec|assert|debug|refactor|commit|branch|merge|repository|repo|git|npm|yarn|pnpm|node|python|javascript|typescript|react|vue|angular|svelte|next|vite|webpack|express|fastapi|django|flask|spring|rails|rust|golang|kotlin|swift)\b/i.test(
+      q,
+    ) ||
+    /\b(src|lib|dist|build|tests?|node_modules|packages?)\//i.test(q);
+
+  switch (polarity) {
+    case "question":
+    case "confirmation":
+    case "prohibition":
+      return "question";
+
+    case "explanation":
+    case "diagnostic":
+      return "analysis";
+
+    case "comparison":
+      return "comparison";
+
+    case "modification":
+      return hasCodeContext ? "coding" : "other";
+
+    default:
+      return "other";
+  }
+}
+
+// Diagnostic only. Describes why `requiresConversationHistory` was set
+// by evidenceNeeds. Does not itself authorize retrieval.
+function inferHistoryReason(
+  query: string,
+  needs: QueryExecutionPlan["evidenceNeeds"],
+): string | null {
+  if (!needs.recentContext && !needs.longTermMemory) {
+    return null;
+  }
+
+  const q = normalizePlannerText(query).toLowerCase();
+
+  const explicit =
+    /\b(previous|prior|earlier|last turn|conversation|history|remember|again|we discussed|you said)\b/.test(
+      q,
+    );
+
+  if (explicit) {
+    return "explicit_prior_reference";
+  }
+
+  const deictic =
+    /\b(the above|the previous|same file|that function|this file|that line)\b/.test(
+      q,
+    );
+
+  if (deictic) {
+    return "deictic_reference";
+  }
+
+  return "context_need_detected";
 }
 
 function defaultNeeds(
@@ -280,6 +372,21 @@ export const PLANNER_SCHEMA = {
   properties: {
     polarity: { type: "STRING" },
     objective: { type: "STRING" },
+    taskType: {
+      type: "STRING",
+      enum: [
+        "question",
+        "research",
+        "coding",
+        "analysis",
+        "comparison",
+        "summarization",
+        "creative",
+        "conversation",
+        "other",
+      ],
+    },
+    requiredOutput: { type: "ARRAY", items: { type: "STRING" } },
     evidenceNeeds: { type: "OBJECT" },
     retrieval: { type: "OBJECT" },
     queryExpansions: { type: "ARRAY", items: { type: "STRING" } },
@@ -311,7 +418,7 @@ function fallbackPlan(query: string, reason?: string): QueryExecutionPlan {
   const polarity = fallbackPolarity(normalized);
   const needs = defaultNeeds(normalized);
 
-    const entries: Array<[EvidenceSource, boolean]> = [
+  const entries: Array<[EvidenceSource, boolean]> = [
     ["recent_context", needs.recentContext],
     ["long_term_memory", needs.longTermMemory],
     ["knowledge", needs.knowledge],
@@ -320,11 +427,19 @@ function fallbackPlan(query: string, reason?: string): QueryExecutionPlan {
     ["query_context", true],
   ];
 
+  const taskType = inferTaskType(query, polarity);
+  const historyReason = inferHistoryReason(normalized, needs);
+
   return {
     originalQuery: query,
     normalizedQuery: normalized,
     polarity,
     objective: normalized,
+    taskType,
+    requiredOutput: ["direct_answer"],
+    historyReason,
+    requiresConversationHistory:
+      needs.recentContext || needs.longTermMemory,
     evidenceNeeds: needs,
     retrieval: {
       sources: entries.filter((e) => e[1]).map((e) => e[0]),
@@ -350,11 +465,13 @@ export async function buildQueryExecutionPlan(
 
   if (!invokePlanner) return fallback;
 
-  const prompt = [
+    const prompt = [
     "You are Key's Query Execution Planner.",
     "Return JSON only.",
     "The original user query is authoritative and must never be replaced.",
-    "Classify polarity, objective, evidence requirements, retrieval sources, expansions, constraints, prohibitions, and confidence.",
+    "Classify polarity, objective, taskType, requiredOutput, evidence requirements, retrieval sources, expansions, constraints, prohibitions, and confidence.",
+    "taskType must be exactly one of: question, research, coding, analysis, comparison, summarization, creative, conversation, other.",
+    "requiredOutput must be a non-empty array of short strings naming the deliverables the user is asking for, for example: [\"direct_answer\"], [\"code_patch\",\"unit_tests\"], [\"summary\",\"key_points\"].",
     "Retrieval expansions are search aids only and are not user replacements.",
     "ORIGINAL USER QUERY: " + originalQuery,
     "SCHEMA: " + JSON.stringify(PLANNER_SCHEMA),
@@ -409,12 +526,50 @@ const needs = {
     fallback.evidenceNeeds.exactReference ||
     requestedNeeds.exactReference === true,
 
-  entityCoverage:
+    entityCoverage:
     fallback.evidenceNeeds.entityCoverage ||
     requestedNeeds.entityCoverage === true,
 };
 
-        const allowed = new Set<EvidenceSource>([
+    const historyReason = inferHistoryReason(originalQuery, needs);
+    const inferredTaskType = inferTaskType(originalQuery, polarity);
+
+    const validTaskTypes = [
+      "question",
+      "research",
+      "coding",
+      "analysis",
+      "comparison",
+      "summarization",
+      "creative",
+      "conversation",
+      "other",
+    ] as const;
+
+    // Reject a model-supplied "coding" classification when the deterministic
+    // query-based classifier does not identify code context.
+    const taskType =
+      parsed.taskType === "coding" && inferredTaskType !== "coding"
+        ? inferredTaskType
+        : parsed.taskType &&
+            (validTaskTypes as readonly string[]).includes(parsed.taskType)
+          ? parsed.taskType
+          : inferredTaskType;
+
+    const normalizedRequiredOutput = Array.isArray(parsed.requiredOutput)
+      ? parsed.requiredOutput
+          .filter((item): item is string => typeof item === "string")
+          .map(normalizePlannerText)
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
+
+    const requiredOutput =
+      normalizedRequiredOutput.length > 0
+        ? normalizedRequiredOutput
+        : ["direct_answer"];
+
+    const allowed = new Set<EvidenceSource>([
       "recent_context",
       "long_term_memory",
       "knowledge",
@@ -461,8 +616,13 @@ const sources = Array.from(
 
     return {
       ...fallback,
-      normalizedQuery: normalizePlannerText(originalQuery),
+            normalizedQuery: normalizePlannerText(originalQuery),
       polarity,
+      taskType,
+      requiredOutput,
+      historyReason,
+      requiresConversationHistory:
+        needs.recentContext || needs.longTermMemory,
       objective: normalizePlannerText(parsed.objective || originalQuery) || originalQuery,
       evidenceNeeds: needs,
       retrieval: {
