@@ -1862,14 +1862,14 @@ export interface VersionedEngineExecutionRecord {
   };
   retries: number;
   retryCount?: number;
-  inputContextHash?: string;
+    inputContextHash?: string;
   outputHash?: string;
   agreementScore: number;
-  contributionScore: number;
+  contributionScore: number | null;
   contributionBreakdown: {
-    tokenCoverageRatio: number;
-    uniqueClaimSurvivalRatio: number;
-    round1ToFinalRetention: number;
+    tokenCoverageRatio: number | null;
+    uniqueClaimSurvivalRatio: number | null;
+    round1ToFinalRetention: number | null;
   };
 }
 
@@ -1965,13 +1965,13 @@ export interface NormalizedEngineCardViewModel {
   completionTokens: number;
   totalTokens: number;
   tokensEstimated: boolean;
-  retries: number;
+    retries: number;
   agreementScore: number;
-  contributionScore: number;
+  contributionScore: number | null;
   contributionBreakdown: {
-    tokenCoverageRatio: number;
-    uniqueClaimSurvivalRatio: number;
-    round1ToFinalRetention: number;
+    tokenCoverageRatio: number | null;
+    uniqueClaimSurvivalRatio: number | null;
+    round1ToFinalRetention: number | null;
   };
   specialistRole: KeySpecialistRole;
   orchestrationRoleV21: KeyOrchestrationRoleV21;
@@ -2614,12 +2614,22 @@ if (isConversationMemoryDiagnosticOrUpgradeQuery(q)) {
 export function buildKeyConversationMemoryInspectorPortalHtml(
   windowPairs: SavedQAPair[] = []
 ): string {
+  const pairs = Array.isArray(windowPairs) ? windowPairs : [];
   const safePairsJson = JSON.stringify(
-    (windowPairs || []).map((p) => ({
-      pairIndex: p.pairIndex,
-      userQuery: p.userQuery,
-      agreedAnswer: (p.agreedAnswer || "").slice(0, 480),
-    }))
+    pairs
+      .filter((p) => p && typeof p === "object")
+      .map((p) => ({
+        pairIndex:
+          Number.isFinite((p as any).pairIndex) && (p as any).pairIndex >= 0
+            ? Math.floor((p as any).pairIndex)
+            : 0,
+        userQuery:
+          typeof (p as any).userQuery === "string" ? (p as any).userQuery : "",
+        agreedAnswer:
+          typeof (p as any).agreedAnswer === "string"
+            ? (p as any).agreedAnswer.slice(0, 480)
+            : "",
+      }))
   ).replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html>
@@ -2627,100 +2637,77 @@ export function buildKeyConversationMemoryInspectorPortalHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Key Continuous Multi-Turn Memory Engine &amp; Working Memory Ledger Studio</title>
+  <title>Key Local Memory Simulator</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans min-h-screen">
   <div class="max-w-6xl mx-auto space-y-4">
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+    <div class="rounded-2xl bg-slate-900 border border-slate-600/60 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xl">
       <div>
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-          <h1 class="text-sm sm:text-base font-extrabold text-white">Key Continuous Multi-Turn Conversational Memory Engine (v3.8 Memory-Retention Active)</h1>
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+          <h1 class="text-sm sm:text-base font-extrabold text-white">Key Local Memory Simulator</h1>
         </div>
         <p class="text-xs text-slate-400 mt-1">
-          30-Turn Rolling Context Window (<code class="text-emerald-300">MERGED_WITH_SAVED</code>) · Dual Ask+Reply Indexing · Working Memory Fact Extraction · <code class="text-sky-300">/api/history/audit</code> Live Sync
+          Local sandbox only. This page does not run the server-side retrieval pipeline and does not verify memory retention.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <button id="simulateMultiTurnBtn" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">
-          ⚡ Run Multi-Turn Recall Verification Test
-        </button>
         <button id="auditServerMemoryBtn" type="button" class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">
-          🔍 Audit Live Session Memory (/api/history/audit)
+          Audit Submitted Turns (/api/history/audit)
         </button>
       </div>
     </div>
-
-    <div id="memoryStatusBanner" class="p-3.5 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-xs text-emerald-200 font-mono">
-      ✓ CONTINUOUS MULTI-TURN MEMORY ACTIVE: All 7 conversation-forgetting leaks patched · Rolling 30-turn context window enabled · Zero history wipes during active threads.
+    <div id="memoryStatusBanner" class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-600/60 text-xs text-slate-200 font-mono">
+      Local simulator only. The audit button sends the turns you list below to /api/history/audit and reports what that endpoint returns. It does not read persisted backend memory.
     </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
-        <div class="text-xs font-extrabold text-emerald-300 uppercase tracking-wider">7 Patched Forgetting Leaks</div>
-        <ul class="space-y-2 text-xs text-slate-300">
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">1. Overlap Gate Fixed:</strong> Removed destructive <code>windowPairs.length = 0</code> wipe when <code>tokenOverlap &lt; 0.2</code>.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">2. Priority Gate Fixed:</strong> <code>evaluateSemanticPriorityGate</code> defaults to <code>maintainHistory: true</code> when <code>savedPairs.length &gt; 0</code>.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">3. Dual Ask+Reply Index:</strong> Indexes both <code>p.userQuery</code> and <code>p.agreedAnswer</code> with rolling window continuity.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">4. Client Flag Fixed:</strong> Browser <code>runConsensus</code> no longer sends <code>strictQueryPriority: true</code> on active threads.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">5. Topic-Reset Regex Fixed:</strong> <code>hasExplicitTopicResetDirective</code> never triggers on <em>"used to forget"</em> or <em>"not forget"</em>.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">6. Stop-Words Cleaned:</strong> Preserves <code>history</code>, <code>previous</code>, <code>conversation</code>, <code>saved</code>, and domain nouns.</li>
-          <li class="p-2 rounded-lg bg-slate-950 border border-slate-800"><strong class="text-emerald-400">7. Fallback Prompt Fixed:</strong> Secondary Gemini fallback receives full multi-turn <code>prompt</code> instead of bare <code>cleanQuestion</code>.</li>
-        </ul>
-      </div>
-
-      <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3 flex flex-col">
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
-          <div>
-            <h2 class="text-xs sm:text-sm font-extrabold text-white">Active Working Memory Ledger &amp; Interactive Recall Sandbox</h2>
-            <p class="text-[11px] text-slate-400">Add a turn or test multi-turn recall across saved conversation pairs:</p>
-          </div>
-          <span id="turnCountBadge" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold">0 Turns Indexed</span>
+    <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3 flex flex-col">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+        <div>
+          <h2 class="text-xs sm:text-sm font-extrabold text-white">Local Simulator Turns</h2>
+          <p class="text-[11px] text-slate-400">Add a turn to the local list. Nothing is sent to the server unless you click the audit button.</p>
         </div>
-
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input id="testTurnInput" type="text" placeholder="Add a test memory turn (e.g., My project codename is Project Aurora and port is 3000)..." class="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono" />
-          <button id="addTurnBtn" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer whitespace-nowrap">
-            + Append to Memory Window
-          </button>
-        </div>
-
-        <div id="turnsContainer" class="space-y-2.5 max-h-80 overflow-y-auto pr-1"></div>
+        <span id="turnCountBadge" class="px-2.5 py-1 rounded-lg bg-slate-700/40 border border-slate-600/60 text-slate-200 font-mono text-xs font-bold">0 Turns (local)</span>
       </div>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <input id="testTurnInput" type="text" placeholder="Add a local test turn..." class="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono" />
+        <button id="addTurnBtn" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer whitespace-nowrap">
+          Append to Local List
+        </button>
+      </div>
+      <div id="turnsContainer" class="space-y-2.5 max-h-80 overflow-y-auto pr-1"></div>
     </div>
   </div>
-
   <script>
     (function() {
       var pairs = ${safePairsJson};
-      if (!Array.isArray(pairs) || pairs.length === 0) {
-        pairs = [
-          {
-            pairIndex: 1,
-            userQuery: "Confirm Key can browse, read, and modify its own file tree and structure on disk.",
-            agreedAnswer: "Confirmed 100% YES — Key has full Node.js fs access (/api/fs/tree, /api/fs/read, /api/fs/write, /api/self-upgrade/execute) over the 23-file workspace at /."
-          },
-          {
-            pairIndex: 2,
-            userQuery: "Ensure Key never forgets previous conversations and retains multi-turn context like ChatGPT, Claude, and Gemini.",
-            agreedAnswer: "Upgraded Continuous Multi-Turn Memory Engine: retains up to 30 Q&A pairs per thread in MERGED_WITH_SAVED mode with Working Memory Fact pinning."
-          }
-        ];
-      }
+      if (!Array.isArray(pairs)) pairs = [];
 
       var container = document.getElementById('turnsContainer');
       var badge = document.getElementById('turnCountBadge');
       var banner = document.getElementById('memoryStatusBanner');
       var input = document.getElementById('testTurnInput');
 
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function escapePairIndex(v) {
+        var n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? String(Math.floor(n)) : '0';
+      }
       function renderPairs() {
-        badge.textContent = pairs.length + ' Turn' + (pairs.length === 1 ? '' : 's') + ' Indexed (MERGED_WITH_SAVED)';
+        badge.textContent = pairs.length + ' Turn' + (pairs.length === 1 ? '' : 's') + ' (local)';
+        if (pairs.length === 0) {
+          container.innerHTML = '<div class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400">No local turns. Add one above to populate this simulator only.</div>';
+          return;
+        }
         container.innerHTML = pairs.map(function(p) {
           return '<div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-xs">' +
-            '<div class="flex items-center justify-between"><span class="font-mono font-bold text-emerald-300">Saved Pair #' + p.pairIndex + '</span><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px]">RETAINED IN CONTEXT WINDOW</span></div>' +
-            '<div class="text-white"><strong>User Ask:</strong> ' + (p.userQuery || '').replace(/</g, '&lt;') + '</div>' +
-            '<div class="text-slate-300"><strong>Key Agreed Answer:</strong> ' + (p.agreedAnswer || '').replace(/</g, '&lt;') + '</div>' +
+            '<div class="flex items-center justify-between"><span class="font-mono font-bold text-slate-300">Local Turn #' + escapePairIndex(p && p.pairIndex) + '</span><span class="px-2 py-0.5 rounded bg-slate-700/40 text-slate-200 font-mono text-[10px]">LOCAL ONLY</span></div>' +
+            '<div class="text-white"><strong>User Ask:</strong> ' + esc(p && p.userQuery) + '</div>' +
+            '<div class="text-slate-300"><strong>Local Reply:</strong> ' + esc(p && p.agreedAnswer) + '</div>' +
           '</div>';
         }).join('');
       }
@@ -2729,37 +2716,46 @@ export function buildKeyConversationMemoryInspectorPortalHtml(
         var val = (input.value || '').trim();
         if (!val) return;
         var nextIdx = pairs.length + 1;
-        pairs.push({
-          pairIndex: nextIdx,
-          userQuery: val,
-          agreedAnswer: 'Indexed in Working Memory Ledger (Turn #' + nextIdx + ') and merged into payloadSentToEngines for all subsequent turns.'
-        });
+        pairs.push({ pairIndex: nextIdx, userQuery: val, agreedAnswer: 'Local-only entry. Not sent to the server.' });
         input.value = '';
         renderPairs();
-        banner.textContent = '✓ Appended Turn #' + nextIdx + ' to Rolling 30-Turn Memory Window — contextMode="MERGED_WITH_SAVED" verified.';
-      });
-
-      document.getElementById('simulateMultiTurnBtn').addEventListener('click', function() {
-        banner.textContent = '✓ MULTI-TURN RECALL TEST PASSED: Verified 100% retention across ' + pairs.length + ' chronological turns (historyMatchScore=98%, contextMode="MERGED_WITH_SAVED", 0 turns dropped).';
+        banner.textContent = 'Appended Turn #' + nextIdx + ' to the local list only.';
       });
 
       document.getElementById('auditServerMemoryBtn').addEventListener('click', async function() {
-        banner.textContent = '⟳ Auditing live session memory via POST /api/history/audit...';
+        banner.textContent = 'POSTing ' + pairs.length + ' submitted turn(s) to /api/history/audit...';
         try {
           var historyPayload = [];
           pairs.forEach(function(p) {
-            historyPayload.push({ role: 'user', content: p.userQuery });
-            historyPayload.push({ role: 'assistant', content: p.agreedAnswer });
+            historyPayload.push({ role: 'user', content: String((p && p.userQuery) || '') });
+            historyPayload.push({ role: 'assistant', content: String((p && p.agreedAnswer) || '') });
           });
           var r = await fetch('/api/history/audit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ history: historyPayload })
           });
-          var d = await r.json();
-          banner.textContent = '✓ LIVE /api/history/audit VERIFIED: totalIndexedTurns=' + d.totalIndexedTurns + ', activeWindowTurns=' + d.activeWindowTurns + ', coverage=' + d.coveragePercent + '% (Global State Sync Active).';
+          if (!r.ok) {
+            banner.textContent = 'POST /api/history/audit returned HTTP ' + r.status + '. No server-side audit of submitted turns occurred.';
+            return;
+          }
+          var d;
+          try { d = await r.json(); } catch (e) {
+            banner.textContent = 'POST /api/history/audit returned a non-JSON response. No server-side audit of submitted turns occurred.';
+            return;
+          }
+          var hasShape =
+            d && typeof d === 'object' &&
+            typeof d.totalIndexedTurns === 'number' && Number.isFinite(d.totalIndexedTurns) && d.totalIndexedTurns >= 0 &&
+            typeof d.activeWindowTurns === 'number' && Number.isFinite(d.activeWindowTurns) && d.activeWindowTurns >= 0 &&
+            typeof d.coveragePercent === 'number' && Number.isFinite(d.coveragePercent) && d.coveragePercent >= 0 && d.coveragePercent <= 100;
+          if (!hasShape) {
+            banner.textContent = 'POST /api/history/audit returned an unexpected response shape or out-of-range values: ' + esc(JSON.stringify(d)).slice(0, 200);
+            return;
+          }
+          banner.textContent = 'Response from /api/history/audit for the submitted turns: totalIndexedTurns=' + d.totalIndexedTurns + ', activeWindowTurns=' + d.activeWindowTurns + ', coverage=' + d.coveragePercent + '%.';
         } catch (e) {
-          banner.textContent = '✓ Local Memory Ledger Verified (' + pairs.length + ' turns active in MERGED_WITH_SAVED mode).';
+          banner.textContent = 'POST /api/history/audit failed: ' + String(e) + '. No server-side audit of submitted turns occurred.';
         }
       });
 
@@ -3265,108 +3261,60 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Key Live Structure, Folder/File-Tree Browser &amp; Autonomous Disk Self-Upgrade Studio</title>
+  <title>Key File-Tree Viewer &amp; Self-Upgrade Studio</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans min-h-screen">
   <div class="max-w-6xl mx-auto space-y-4">
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+    <div class="rounded-2xl bg-slate-900 border border-slate-600/60 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xl">
       <div>
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-          <h1 class="text-sm sm:text-base font-extrabold text-white">Key Live Structure, Folder/File-Tree Browser &amp; Autonomous Disk Self-Upgrade Studio</h1>
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+          <h1 class="text-sm sm:text-base font-extrabold text-white">Key File-Tree Viewer &amp; Self-Upgrade Studio</h1>
         </div>
         <p class="text-xs text-slate-400 mt-1">
-          Live Node.js Filesystem Bridge (<code class="text-emerald-300">/api/fs/tree</code> · <code class="text-emerald-300">/api/fs/read</code> · <code class="text-emerald-300">/api/fs/write</code> · <code class="text-amber-300">/api/self-upgrade/execute</code>) — Browse folders, read/modify any file, and persist upgrades directly on disk.
+          Backed by <code class="text-slate-300">/api/fs/tree</code>, <code class="text-slate-300">/api/fs/read</code>, <code class="text-slate-300">/api/fs/write</code>. Content shown is live only if the corresponding endpoint returned it.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            id="runDiskUpgradeBtn"
-            type="button"
-            class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md"
-          >
-            🧪 Generate &amp; Preview Upgrade
-          </button>
-
-          <button
-            id="approveStagedUpgradeBtn"
-            type="button"
-            class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md"
-          >
-            ✅ Approve Staged Upgrade
-          </button>
-        </div>
-        <button id="refreshTreeBtn" type="button" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition">
-          ↻ Refresh Live Tree
-        </button>
-        <button id="saveFileBtn" type="button" class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">
-          💾 Save File Modification to Disk
-        </button>
+        <button id="runDiskUpgradeBtn" type="button" class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">Generate &amp; Preview Upgrade</button>
+        <button id="refreshTreeBtn" type="button" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs cursor-pointer transition">Refresh Live Tree</button>
+        <button id="saveFileBtn" type="button" class="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs cursor-pointer transition shadow-md">Save File Modification</button>
       </div>
     </div>
-
-    <!-- Custom Self-Upgrade Instruction Bar -->
     <div class="rounded-2xl bg-slate-900/90 border border-amber-500/40 p-3.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-      <div class="text-xs font-bold text-amber-300 whitespace-nowrap">Autonomous Self-Upgrade Command:</div>
-      <input id="upgradeInstructionInput" type="text" value="Upgrade Key self-modification engine, folder/file tree awareness, and Version 8 harness on disk" class="flex-1 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-400" />
-      <span id="upgradeVersionBadge" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold whitespace-nowrap">Disk Registry: Active</span>
+      <div class="text-xs font-bold text-amber-300 whitespace-nowrap">Self-Upgrade Instruction:</div>
+      <input id="upgradeInstructionInput" type="text" value="Upgrade Key self-modification engine, file-tree awareness, and Version 8 harness on disk" class="flex-1 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-amber-400" />
     </div>
-
-    <div id="statusBar" class="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-mono text-emerald-300">
-      ✓ Connected to Key Node.js Filesystem Bridge (/api/fs/tree, /api/fs/read, /api/fs/write, /api/self-upgrade/execute). Click any file on the left to inspect or modify its real code on disk.
+    <div id="statusBar" class="p-3 rounded-xl bg-slate-700/40 border border-slate-600/60 text-xs font-mono text-slate-200">
+      Not yet connected. Attempting to reach /api/fs/tree.
     </div>
     <div class="rounded-2xl bg-slate-900 border border-sky-500/40 p-4 space-y-3">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-sm font-extrabold text-sky-300">
-            LIVE STAGED SELF-UPGRADE
-          </div>
-          <div class="text-[11px] text-slate-400">
-            Generated → tested → previewed → persisted. Activation remains separate.
-          </div>
+          <div class="text-sm font-extrabold text-sky-300">Staged Self-Upgrade</div>
+          <div class="text-[11px] text-slate-400">Generated → tested → previewed → persisted. Activation is separate.</div>
         </div>
-
-        <span
-          id="previewStatus"
-          class="text-[11px] font-mono text-slate-400"
-        >
-          No staged upgrade
-        </span>
+        <span id="previewStatus" class="text-[11px] font-mono text-slate-400">No staged upgrade</span>
       </div>
-
-      <iframe
-        id="upgradePreviewFrame"
-        title="Key staged self-upgrade preview"
-        class="w-full min-h-[620px] rounded-xl bg-white border border-slate-700"
-        sandbox="allow-scripts allow-forms allow-modals allow-same-origin"
-      ></iframe>
+      <iframe id="upgradePreviewFrame" title="Key staged self-upgrade preview" class="w-full min-h-[520px] rounded-xl bg-white border border-slate-700" sandbox="allow-scripts allow-forms allow-modals"></iframe>
     </div>
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="rounded-2xl bg-slate-900 border border-slate-800 p-3 flex flex-col h-[500px]">
         <div class="text-xs font-extrabold uppercase tracking-wider text-emerald-300 pb-2 border-b border-slate-800 flex items-center justify-between">
-          <span>Workspace Folders &amp; Files (/)</span>
+          <span>Workspace Files</span>
           <span id="fileCountBadge" class="font-mono text-[11px] text-slate-400">Loading...</span>
         </div>
-        <div class="py-2 border-b border-slate-800/80 text-[11px] font-mono text-slate-400 space-y-0.5">
-          <div>📁 <strong class="text-amber-300">/</strong> (Workspace Root)</div>
-          <div class="pl-3">📁 <strong class="text-amber-300">.github/workflows/</strong> (CI/CD Deploy)</div>
-          <div class="pl-3">📁 <strong class="text-amber-300">src/</strong> (Core Engine &amp; React UI)</div>
-          <div class="pl-6">📁 <strong class="text-amber-300">src/components/</strong> (UI Modals &amp; Graph)</div>
-          <div class="pl-6">📁 <strong class="text-amber-300">src/upgrades/</strong> (Self-Upgrade &amp; v8)</div>
-        </div>
+        <div id="treeSourceLabel" class="py-2 text-[11px] font-mono text-slate-500 border-b border-slate-800/80">Source: pending</div>
         <div id="fileTreeList" class="flex-1 overflow-y-auto space-y-1 pt-2 font-mono text-xs"></div>
       </div>
-
       <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-3 flex flex-col h-[500px]">
         <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
           <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded bg-sky-500/20 border border-sky-500/40 text-sky-300 font-mono text-[11px] font-bold">LIVE DISK FILE</span>
-            <span class="font-mono text-xs font-bold text-white" id="activeFilePath">src/selfUpgradeRegistry.json</span>
+            <span id="fileSourceBadge" class="px-2 py-0.5 rounded bg-slate-600/40 border border-slate-500/60 text-slate-200 font-mono text-[11px] font-bold">NO FILE LOADED</span>
+            <span class="font-mono text-xs font-bold text-white" id="activeFilePath">(none)</span>
           </div>
-          <span id="activeFileMeta" class="text-[11px] font-mono text-emerald-300">Ready</span>
+          <span id="activeFileMeta" class="text-[11px] font-mono text-slate-300">Ready</span>
         </div>
         <textarea id="fileContentEditor" class="flex-1 w-full mt-2 p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-100 focus:outline-none focus:border-emerald-400 resize-none leading-relaxed" spellcheck="false"></textarea>
       </div>
@@ -3374,247 +3322,216 @@ export function buildKeyLiveFileSystemBrowserPortalHtml(): string {
   </div>
   <script>
     (function() {
-      var FALLBACK_FILES = [
+      var EXAMPLE_SNAPSHOT = [
         { path: 'src/selfUpgradeRegistry.json', sizeBytes: 1840 },
-        { path: 'src/upgrades/activeSelfUpgradeModule.ts', sizeBytes: 1420 },
-        { path: 'src/upgrades/version8Harness.ts', sizeBytes: 19850 },
-        { path: 'src/upgrades/version8.py', sizeBytes: 112640 },
-        { path: 'version8.py', sizeBytes: 112640 },
         { path: 'src/consensusEngine.ts', sizeBytes: 612400 },
         { path: 'src/App.tsx', sizeBytes: 408211 },
-        { path: 'server.ts', sizeBytes: 199676 },
-        { path: 'src/searchAndEnginePushRouter.ts', sizeBytes: 12450 },
-        { path: 'src/mirroredKeyState.json', sizeBytes: 4200 },
-        { path: 'src/components/GitHubExportModal.tsx', sizeBytes: 18400 },
-        { path: 'src/components/MarkdownRenderer.tsx', sizeBytes: 9800 },
-        { path: 'src/components/SemanticHistoryGraph.tsx', sizeBytes: 15200 },
-        { path: 'src/firebase.ts', sizeBytes: 1450 },
-        { path: 'src/main.tsx', sizeBytes: 380 },
-        { path: 'src/index.css', sizeBytes: 420 },
         { path: 'package.json', sizeBytes: 1680 },
-        { path: 'tsconfig.json', sizeBytes: 620 },
-        { path: 'vite.config.ts', sizeBytes: 890 },
-        { path: 'index.html', sizeBytes: 940 },
-        { path: 'metadata.json', sizeBytes: 340 },
-        { path: 'README.md', sizeBytes: 2150 },
-        { path: '.github/workflows/deploy.yml', sizeBytes: 780 }
+        { path: 'README.md', sizeBytes: 2150 }
       ];
 
       var treeList = document.getElementById('fileTreeList');
       var countBadge = document.getElementById('fileCountBadge');
+      var treeSourceLabel = document.getElementById('treeSourceLabel');
       var activePathEl = document.getElementById('activeFilePath');
       var activeMetaEl = document.getElementById('activeFileMeta');
       var editor = document.getElementById('fileContentEditor');
       var statusBar = document.getElementById('statusBar');
       var upgradeInput = document.getElementById('upgradeInstructionInput');
-      var versionBadge = document.getElementById('upgradeVersionBadge');
-      var currentPath = 'src/selfUpgradeRegistry.json';
+      var fileSourceBadge = document.getElementById('fileSourceBadge');
 
-      function renderFileButtons(filesArray) {
+      var currentPath = '';
+      var currentFileIsLive = false;
+      var loadGeneration = 0;
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function normalizePath(p) {
+        return String(p == null ? '' : p).replace(/^\\/+/, '').replace(/\\\\/g, '/');
+      }
+      function setStatus(kind, text) {
+        statusBar.className = kind === 'ok'
+          ? 'p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-mono text-emerald-300'
+          : kind === 'err'
+          ? 'p-3 rounded-xl bg-rose-900/30 border border-rose-500/40 text-xs font-mono text-rose-200'
+          : 'p-3 rounded-xl bg-slate-700/40 border border-slate-600/60 text-xs font-mono text-slate-200';
+        statusBar.textContent = text;
+      }
+      function setFileBadge(state, text) {
+        if (state === 'live') fileSourceBadge.className = 'px-2 py-0.5 rounded bg-sky-500/20 border border-sky-500/40 text-sky-300 font-mono text-[11px] font-bold';
+        else if (state === 'stale') fileSourceBadge.className = 'px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[11px] font-bold';
+        else if (state === 'placeholder') fileSourceBadge.className = 'px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-mono text-[11px] font-bold';
+        else fileSourceBadge.className = 'px-2 py-0.5 rounded bg-slate-600/40 border border-slate-500/60 text-slate-200 font-mono text-[11px] font-bold';
+        fileSourceBadge.textContent = text;
+      }
+
+      function renderFileButtons(filesArray, isLive) {
         countBadge.textContent = filesArray.length + ' files';
+        treeSourceLabel.textContent = 'Source: ' + (isLive ? 'live /api/fs/tree' : 'example snapshot (NOT a live disk scan)');
+        treeSourceLabel.className = 'py-2 text-[11px] font-mono ' + (isLive ? 'text-emerald-300' : 'text-rose-300') + ' border-b border-slate-800/80';
         treeList.innerHTML = filesArray.map(function(f) {
           var isCurrent = f.path === currentPath;
-          return '<button type="button" data-path="' + f.path + '" class="file-item w-full text-left px-2.5 py-1.5 rounded-lg ' + (isCurrent ? 'bg-emerald-500/20 border border-emerald-500/40' : 'hover:bg-slate-800 border border-transparent') + ' text-slate-200 flex items-center justify-between gap-2 cursor-pointer transition">' +
-            '<span class="truncate text-emerald-300">' + f.path + '</span>' +
-            '<span class="text-[10px] text-slate-400 shrink-0">' + (f.sizeBytes || 0) + 'B</span>' +
+          return '<button type="button" data-path="' + esc(f.path) + '" class="file-item w-full text-left px-2.5 py-1.5 rounded-lg ' + (isCurrent ? 'bg-emerald-500/20 border border-emerald-500/40' : 'hover:bg-slate-800 border border-transparent') + ' text-slate-200 flex items-center justify-between gap-2 cursor-pointer transition">' +
+            '<span class="truncate ' + (isLive ? 'text-emerald-300' : 'text-rose-300') + '">' + esc(f.path) + '</span>' +
+            '<span class="text-[10px] text-slate-400 shrink-0">' + Number(f.sizeBytes || 0) + 'B</span>' +
           '</button>';
         }).join('');
         document.querySelectorAll('.file-item').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            loadFile(this.getAttribute('data-path'));
-          });
+          btn.addEventListener('click', function() { loadFile(this.getAttribute('data-path')); });
         });
       }
 
+      function markCurrentSelectionStale(reason) {
+        if (!currentPath) return;
+        if (currentFileIsLive) {
+          currentFileIsLive = false;
+          setFileBadge('stale', 'STALE — TREE REFRESH FAILED');
+          activeMetaEl.textContent = 'STALE: ' + reason + ' — reload the file via /api/fs/read before saving';
+        }
+      }
+
       async function loadFile(relPath) {
+        loadGeneration += 1;
+        var myGeneration = loadGeneration;
         currentPath = relPath;
+        currentFileIsLive = false;
         activePathEl.textContent = relPath;
-        activeMetaEl.textContent = 'Reading from disk...';
+        activeMetaEl.textContent = 'Reading from /api/fs/read...';
+        setFileBadge('pending', 'READING');
         try {
           var res = await fetch('/api/fs/read?path=' + encodeURIComponent(relPath));
+          if (myGeneration !== loadGeneration) return;
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           var data = await res.json();
-          if (data && data.ok) {
-            editor.value = data.content || '';
-            activeMetaEl.textContent = data.sizeBytes + ' bytes · ' + data.lineCount + ' lines';
-            statusBar.textContent = '✓ Read ' + relPath + ' directly from disk (' + data.sizeBytes + ' bytes, ' + data.lineCount + ' lines).';
+          if (myGeneration !== loadGeneration) return;
+          if (data && data.ok && typeof data.content === 'string') {
+            var returnedPath = typeof data.path === 'string' && data.path ? data.path : relPath;
+            var normRequested = normalizePath(relPath);
+            var normReturned = normalizePath(returnedPath);
+            if (normReturned !== normRequested) {
+              throw new Error('returned_path_mismatch: requested=' + normRequested + ', returned=' + normReturned);
+            }
+            editor.value = data.content;
+            activePathEl.textContent = normReturned;
+            activeMetaEl.textContent = data.sizeBytes + ' bytes · ' + data.lineCount + ' lines · LIVE';
+            currentPath = normReturned;
+            currentFileIsLive = true;
+            setFileBadge('live', 'LIVE DISK FILE');
             return;
           }
-        } catch (e) {}
-        editor.value = '// Live file: ' + relPath + '\\n' + JSON.stringify({ path: relPath, status: 'Tracked in Key Workspace Root (/)' }, null, 2);
-        activeMetaEl.textContent = 'Loaded from workspace snapshot';
+          throw new Error('response_not_ok_or_content_missing');
+        } catch (e) {
+          if (myGeneration !== loadGeneration) return;
+          editor.value = '// OFFLINE PLACEHOLDER — content was not fetched from disk. Do not edit or save this file.\\n' + JSON.stringify({ path: relPath, status: 'Not retrieved from server', reason: String(e) }, null, 2);
+          activeMetaEl.textContent = 'OFFLINE PLACEHOLDER (not retrieved from server): ' + String(e);
+          currentFileIsLive = false;
+          setFileBadge('placeholder', 'OFFLINE PLACEHOLDER');
+        }
       }
 
       async function loadTree() {
+        setStatus('pending', 'Calling /api/fs/tree...');
         try {
           var res = await fetch('/api/fs/tree');
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           var data = await res.json();
           if (data && data.ok && Array.isArray(data.files) && data.files.length > 0) {
-            renderFileButtons(data.files);
+            renderFileButtons(data.files, true);
+            setStatus('ok', '/api/fs/tree returned ' + data.files.length + ' files. Content is served by the Node.js filesystem bridge.');
+            if (!currentPath) loadFile(data.files[0].path);
             return;
           }
-        } catch (e) {}
-        renderFileButtons(FALLBACK_FILES);
-      }
-
-      var STAGED_UPGRADE_STORAGE_KEY = 'malaz_key_staged_self_upgrade_v1';
-      var stagedUpgrade = null;
-
-      function saveStagedUpgrade(value) {
-        stagedUpgrade = value;
-        try {
-          localStorage.setItem(
-            STAGED_UPGRADE_STORAGE_KEY,
-            JSON.stringify(value)
-          );
+          throw new Error('empty_or_malformed_tree');
         } catch (e) {
-          console.warn('Could not persist staged upgrade:', e);
+          markCurrentSelectionStale('tree refresh failed');
+          renderFileButtons(EXAMPLE_SNAPSHOT, false);
+          setStatus('err', '/api/fs/tree did not return a live file list (' + String(e) + '). The file buttons are an EXAMPLE SNAPSHOT. Saving is refused until a live read succeeds.');
         }
       }
 
-      function loadStagedUpgrade() {
-        try {
-          var raw = localStorage.getItem(STAGED_UPGRADE_STORAGE_KEY);
-          return raw ? JSON.parse(raw) : null;
-        } catch (e) {
-          return null;
-        }
-      }
-
-      function showStagedUpgrade(value) {
+      var STAGED_KEY = 'malaz_key_staged_self_upgrade_v1';
+      function showStaged(value) {
         var frame = document.getElementById('upgradePreviewFrame');
         var previewStatus = document.getElementById('previewStatus');
-
-        if (!value) {
-          if (frame) frame.srcdoc = '';
-          if (previewStatus) previewStatus.textContent = 'No staged upgrade';
-          return;
-        }
-
-        if (frame) {
-          frame.srcdoc = value.previewHtml || '';
-        }
-
-        if (previewStatus) {
-          previewStatus.textContent =
-            'STAGED · ' +
-            (value.filePath || 'candidate') +
-            ' · ' +
-            (value.savedAt || 'persisted');
-        }
+        if (!value) { frame.srcdoc = ''; previewStatus.textContent = 'No staged upgrade'; return; }
+        frame.srcdoc = value.previewHtml || '';
+        previewStatus.textContent = 'STAGED · ' + (value.filePath || 'candidate') + ' · ' + (value.savedAt || 'persisted');
       }
 
       async function runDiskSelfUpgrade() {
-        var instr =
-          (upgradeInput && upgradeInput.value)
-            ? upgradeInput.value.trim()
-            : 'Autonomous Key Self-Upgrade on Disk';
-
-        statusBar.textContent =
-          '⏳ Generating and testing upgrade — active Key remains unchanged...';
-
+        var instr = (upgradeInput && upgradeInput.value) ? upgradeInput.value.trim() : 'Autonomous Key Self-Upgrade on Disk';
+        setStatus('pending', 'Generating and testing upgrade — active Key unchanged...');
         try {
           var res = await fetch('/api/self-upgrade/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              instruction: instr,
-              requestedRounds: 1,
-              deploy: false
-            })
+            body: JSON.stringify({ instruction: instr, requestedRounds: 1, deploy: false })
           });
-
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           var data = await res.json();
-
           if (!data || !data.success) {
-            statusBar.textContent =
-              '⚠ Upgrade generation failed: ' + JSON.stringify(data);
+            setStatus('err', 'Upgrade generation failed: ' + JSON.stringify(data).slice(0, 200));
             return;
           }
-
           var rounds = Array.isArray(data.rounds) ? data.rounds : [];
           var round = rounds[rounds.length - 1];
-
           if (!round || !round.stagedFileContent) {
-            statusBar.textContent =
-              '⚠ Upgrade was not staged. Response: ' + JSON.stringify(data);
+            setStatus('err', 'Upgrade was not staged.');
             return;
           }
-
           var staged = {
-            sessionId: data.sessionId || '',
-            round: round.round,
-            filePath: round.candidatePath,
-            fileContent: round.stagedFileContent,
-            previewHtml: round.previewHtml || '',
-            previewReady: Boolean(round.previewReady),
+            sessionId: data.sessionId || '', round: round.round,
+            filePath: round.candidatePath, fileContent: round.stagedFileContent,
+            previewHtml: round.previewHtml || '', previewReady: Boolean(round.previewReady),
             savedAt: new Date().toISOString()
           };
-
-          saveStagedUpgrade(staged);
-          showStagedUpgrade(staged);
-
-          statusBar.textContent =
-            '✓ UPGRADE STAGED AND TESTED. Active Key was NOT changed. ' +
-            'The staged copy is persisted and will be restored after refresh.';
+          try { localStorage.setItem(STAGED_KEY, JSON.stringify(staged)); } catch (e) {}
+          showStaged(staged);
+          setStatus('ok', 'Upgrade staged and tested. Active Key was NOT changed.');
         } catch (e) {
-          statusBar.textContent =
-            '⚠ Disk upgrade error: ' + e;
+          setStatus('err', 'Disk upgrade error: ' + String(e));
         }
       }
 
-      async function approveStagedUpgrade() {
-        var value = stagedUpgrade || loadStagedUpgrade();
+      document.getElementById('refreshTreeBtn').addEventListener('click', loadTree);
+      document.getElementById('runDiskUpgradeBtn').addEventListener('click', runDiskSelfUpgrade);
 
-        if (!value || !value.filePath || !value.fileContent) {
-          statusBar.textContent =
-            '⚠ No staged upgrade exists. Generate one first.';
+      document.getElementById('saveFileBtn').addEventListener('click', async function() {
+        if (!currentPath || !currentFileIsLive) {
+          setStatus('err', 'Refusing to write: editor content was not fetched from a live read (currentFileIsLive = false). Reload the file via /api/fs/read first.');
           return;
         }
-
-        statusBar.textContent =
-        '✓ STAGED UPGRADE APPROVED FOR THE SEPARATE DEPLOY/COMMIT STEP. ' +
-        'The active Key remains unchanged.';
-
-      document.getElementById('refreshTreeBtn')
-        .addEventListener('click', loadTree);
-
-      document.getElementById('runDiskUpgradeBtn')
-        .addEventListener('click', runDiskSelfUpgrade);
-
-      document.getElementById('approveStagedUpgradeBtn')
-        .addEventListener('click', approveStagedUpgrade);
-
-      stagedUpgrade = loadStagedUpgrade();
-
-      if (stagedUpgrade) {
-        showStagedUpgrade(stagedUpgrade);
-
-        statusBar.textContent =
-          '✓ STAGED UPGRADE RESTORED AFTER REFRESH. ' +
-          'Active Key remains unchanged until you activate it.';
-      }
-      document.getElementById('saveFileBtn').addEventListener('click', async function() {
-        statusBar.textContent = '⏳ Writing ' + currentPath + ' directly to disk (/api/fs/write)...';
+        var myGeneration = loadGeneration;
+        setStatus('pending', 'Writing ' + currentPath + ' via /api/fs/write...');
         try {
-                    var res = await fetch('/api/fs/write', {
+          var res = await fetch('/api/fs/write', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: currentPath, content: editor.value })
           });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           var data = await res.json();
+          if (myGeneration !== loadGeneration) {
+            setStatus('err', 'File selection changed during save; the save result is stale and will not be shown.');
+            return;
+          }
           if (data && data.ok) {
-            statusBar.textContent = '✓ Saved & persisted ' + currentPath + ' (' + data.sizeBytes + ' bytes, ' + data.lineCount + ' lines) on disk at ' + data.updatedAt + '!';
+            setStatus('ok', 'Saved ' + currentPath + ' (' + data.sizeBytes + ' bytes, ' + data.lineCount + ' lines).');
             loadTree();
           } else {
-            statusBar.textContent = '⚠ Save error: ' + (data.error || 'Failed');
+            setStatus('err', 'Save error: ' + (data && data.error ? data.error : 'Failed'));
           }
         } catch (e) {
-          statusBar.textContent = '⚠ Save error: ' + e;
+          setStatus('err', 'Save error: ' + String(e));
         }
       });
 
+      try { var raw = localStorage.getItem(STAGED_KEY); if (raw) showStaged(JSON.parse(raw)); } catch (e) {}
+
       loadTree();
-      loadFile(currentPath);
     })();
   </script>
 </body>
@@ -7248,20 +7165,35 @@ export function sanitizeAndEnrichConsensusResult(
   originalQuestion?: string   // ← NEW optional 7th param
 ) {
   const payloadQ = (originalQuestion || question).trim();
-  const rawFinalAnswer = String(parsed.finalAnswer || "").trim();
+    const rawFinalAnswer = String(parsed.finalAnswer || "").trim();
+  const isCombinedBatchAnswer =
+    typeof parsed.isCombinedBatchAnswer === "boolean" &&
+    parsed.isCombinedBatchAnswer === true;
+
   const { cleanMarkdown, extractedHtml } =
     extractRawHtmlFromAnswer(rawFinalAnswer);
 
-  let finalAnswer = cleanMarkdown || rawFinalAnswer;
-  let generatedAppHtml = String(parsed.generatedAppHtml || "").trim();
-  let hasAppPreview = Boolean(parsed.hasAppPreview);
-  let appTitle = String(parsed.appTitle || "").trim();
+  let finalAnswer: string;
+  let generatedAppHtml: string;
+  let hasAppPreview: boolean;
+  let appTitle: string;
 
-  if (extractedHtml && !generatedAppHtml) {
-    generatedAppHtml = extractedHtml;
-    hasAppPreview = true;
-    if (!appTitle) {
-      appTitle = "Interactive Button & Live Preview";
+  if (isCombinedBatchAnswer) {
+    finalAnswer = rawFinalAnswer;
+    generatedAppHtml = "";
+    hasAppPreview = false;
+    appTitle = "";
+  } else {
+    finalAnswer = cleanMarkdown || rawFinalAnswer;
+    generatedAppHtml = String(parsed.generatedAppHtml || "").trim();
+    hasAppPreview = Boolean(parsed.hasAppPreview);
+    appTitle = String(parsed.appTitle || "").trim();
+    if (extractedHtml && !generatedAppHtml && shouldGenerateAppPreview) {
+      generatedAppHtml = extractedHtml;
+      hasAppPreview = true;
+      if (!appTitle) {
+        appTitle = "Interactive Button & Live Preview";
+      }
     }
   }
 
@@ -7354,11 +7286,10 @@ export function sanitizeAndEnrichConsensusResult(
       generatedAppHtml = buildKey1ZeroDivergencePortalHtml();
     }
     
-  } else {
+    } else {
     const claimsInteractiveUi =
       Boolean(shouldGenerateAppPreview) ||
-      generatedAppHtml.length > 80 ||
-      extractedHtml.length > 80;
+      generatedAppHtml.length > 80;
 
     if (claimsInteractiveUi) {
       hasAppPreview = true;
@@ -7377,6 +7308,13 @@ export function sanitizeAndEnrichConsensusResult(
       appTitle = "";
       generatedAppHtml = "";
     }
+  }
+
+  // ← 3b.3 inserted here
+  if (isCombinedBatchAnswer) {
+    hasAppPreview = false;
+    appTitle = "";
+    generatedAppHtml = "";
   }
 
   finalAnswer = finalAnswer.replace(
@@ -7462,13 +7400,38 @@ export function sanitizeAndEnrichConsensusResult(
       const detailedResponse = String(existing?.detailedResponse || "").trim() ||
         finalMatchedReply;
 
-      const contribution = computeReproducibleEngineContribution(
-        initialReply,
-        finalMatchedReply,
-        finalAnswer,
-        idx,
-        rawNodes.length
-      );
+            const contribution:
+        | {
+            contributionScore: number;
+            breakdown: {
+              tokenCoverageRatio: number;
+              uniqueClaimSurvivalRatio: number;
+              round1ToFinalRetention: number;
+            };
+          }
+        | {
+            contributionScore: null;
+            breakdown: {
+              tokenCoverageRatio: null;
+              uniqueClaimSurvivalRatio: null;
+              round1ToFinalRetention: null;
+            };
+          } = isCombinedBatchAnswer
+        ? {
+            contributionScore: null,
+            breakdown: {
+              tokenCoverageRatio: null,
+              uniqueClaimSurvivalRatio: null,
+              round1ToFinalRetention: null,
+            },
+          }
+        : computeReproducibleEngineContribution(
+            initialReply,
+            finalMatchedReply,
+            finalAnswer,
+            idx,
+            rawNodes.length
+          );
 
       return {
         modelName,
@@ -7887,30 +7850,200 @@ export async function fetchVerifiedExternalEvidence(
 ): Promise<GroundingSource[]> {
   assertDefendedQuery(question);
 
-  // KEY does not perform its own GitHub repository inspection.
-  // The original question and GitHub URL remain available to the engines.
-  return [];
+  const candidates: string[] = [];
+  for (const match of question.match(/https?:\/\/[^\s<>"'`)]+/gi) || []) {
+    candidates.push(match.replace(/[.,;:!?]+$/, ""));
+  }
+  for (const src of discoverySources) {
+    if (typeof src.uri === "string" && /^https?:\/\//i.test(src.uri)) {
+      candidates.push(src.uri.replace(/[.,;:!?]+$/, ""));
+    }
+  }
+  const urls = Array.from(new Set(candidates)).slice(0, 6);
+
+  const blockedHostnames = [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+    "metadata.google.internal",
+    "metadata.goog",
+    "169.254.169.254",
+  ];
+
+  const acceptableContentTypes = [
+    "text/html",
+    "application/xhtml+xml",
+    "text/plain",
+    "application/xml",
+    "text/xml",
+    "application/json",
+  ];
+
+  const MAX_BODY_BYTES = 200_000;
+  const FETCH_TIMEOUT_MS = 15_000;
+
+  const results: GroundingSource[] = [];
+
+  for (const url of urls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:") continue;
+    if (parsed.username || parsed.password) continue;
+
+    const hostLower = parsed.hostname.toLowerCase();
+    if (
+      blockedHostnames.some(
+        (h) => hostLower === h || hostLower.endsWith(`.${h}`)
+      )
+    ) {
+      continue;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        headers: {
+          Accept:
+            "text/html,application/xhtml+xml,text/plain,application/xml,application/json;q=0.9,*/*;q=0.5",
+        },
+      });
+
+      if (resp.type === "opaqueredirect" || resp.type === "opaque") {
+        continue;
+      }
+      if (resp.status < 200 || resp.status >= 300) continue;
+
+      const contentType = (resp.headers.get("content-type") || "")
+        .toLowerCase()
+        .split(";")[0]
+        .trim();
+      if (!acceptableContentTypes.includes(contentType)) continue;
+
+      const reader = resp.body?.getReader();
+      if (!reader) continue;
+
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        const remaining = MAX_BODY_BYTES - total;
+        if (remaining <= 0) {
+          try {
+            await reader.cancel();
+          } catch {
+            // no-op
+          }
+          break;
+        }
+        const take = Math.min(value.byteLength, remaining);
+        const copy = new Uint8Array(take);
+        copy.set(value.subarray(0, take));
+        chunks.push(copy);
+        total += take;
+        if (total >= MAX_BODY_BYTES) {
+          try {
+            await reader.cancel();
+          } catch {
+            // no-op
+          }
+          break;
+        }
+      }
+
+      if (total === 0) continue;
+
+      const combined = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      const content = new TextDecoder("utf-8", { fatal: false }).decode(
+        combined
+      );
+      if (content.trim().length < 40) continue;
+
+      results.push({
+        title: parsed.pathname || parsed.hostname,
+        uri: url,
+        summary: content.slice(0, 500),
+        content,
+        retrievalVerified: true,
+        requestedUri: url,
+      });
+    } catch {
+      // CORS, network, timeout, abort. Honest failure.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return results;
+}
+function normalizeUrlForCoverage(rawUrl: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return null;
+  }
+  parsed.hash = "";
+  parsed.hostname = parsed.hostname.toLowerCase();
+  if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) {
+    parsed.pathname = parsed.pathname.slice(0, -1);
+  }
+  return parsed.toString();
 }
 export function hasRequiredExternalSourceCoverage(
   question: string,
   sources: GroundingSource[]
 ): boolean {
-  const isGitHubRequest =
-    /https:\/\/github\.com\/[^\s"'<>]+/i.test(question);
+  const expected = (question.match(/https?:\/\/[^\s<>"'`)]+/gi) || [])
+    .map((u) => normalizeUrlForCoverage(u.replace(/[.,;:!?]+$/, "")))
+    .filter((u): u is string => u !== null);
 
-  // Do not require KEY to inspect GitHub repositories.
-  // The engines receive the original request and URL.
-  if (isGitHubRequest) {
-    return true;
+  if (expected.length === 0) {
+    return sources.some(
+      (source) =>
+        source.retrievalVerified === true &&
+        typeof source.content === "string" &&
+        source.content.trim().length > 0
+    );
   }
 
-  // Preserve the existing general external-source coverage check.
-  return sources.some(
-    (source) =>
-      source.retrievalVerified === true &&
-      typeof source.content === "string" &&
-      source.content.trim().length > 0
-  );
+  for (const url of expected) {
+    const covered = sources.some((source) => {
+      if (source.retrievalVerified !== true) return false;
+      if (
+        typeof source.content !== "string" ||
+        source.content.trim().length === 0
+      ) {
+        return false;
+      }
+      const retrievedNorm = normalizeUrlForCoverage(
+        source.requestedUri || source.uri
+      );
+      return retrievedNorm !== null && retrievedNorm === url;
+    });
+       if (!covered) return false;
+  }
+  return true;
 }
 
 export function resolveConversationalFlowExplanation(
@@ -10565,13 +10698,13 @@ if (successfulResults.length === 0) {
 
     actualAgreement = calculateSimilarity(answers);
 
-    convergenceRounds.push({
+        convergenceRounds.push({
       round: roundNumber,
       agreement: actualAgreement,
       note:
         actualAgreement >= safeTarget
-          ? `Batch agreement reached ${actualAgreement}%; independent fulfillment verification is still required.`
-          : `Batch agreement is ${actualAgreement}%, below the required ${safeTarget}%.`,
+          ? `Lexical similarity ${actualAgreement}% (diagnostic, not factual accuracy); independent fulfillment verification is still required.`
+          : `Lexical similarity ${actualAgreement}%, below the configured target of ${safeTarget}%.`,
     });
 
     
@@ -10854,7 +10987,7 @@ if (flowTraceId) {
     }
   );
 }
-    if (conformityReached) {
+        if (conformityReached) {
       let bestIndex = 0;
       let bestScore = -Infinity;
 
@@ -10863,7 +10996,6 @@ if (flowTraceId) {
 
         for (let j = 0; j < answers.length; j += 1) {
           if (i === j) continue;
-
           score += calculateSimilarity([
             answers[i],
             answers[j],
@@ -10876,10 +11008,14 @@ if (flowTraceId) {
         }
       }
 
-      const finalAnswer = answers[bestIndex];
+      const medoidAnswer = answers[bestIndex];
+
+      const isCombinedBatchAnswer = !shouldGenerateAppPreview;
+      const finalAnswer = isCombinedBatchAnswer ? combinedBatch : medoidAnswer;
 
       deterministicParsed = {
         finalAnswer,
+        isCombinedBatchAnswer,
         hasAppPreview: shouldGenerateAppPreview,
         appTitle: shouldGenerateAppPreview
           ? `Interactive Application Preview (${nextVer})`
@@ -10891,10 +11027,16 @@ if (flowTraceId) {
         conformityReached: true,
         fulfillmentVerification: lastVerification,
         stopReason: "CONFORMITY_REACHED",
-        consensusSummary:
-          `Conformity reached in round ${roundNumber}: ` +
-          `batch agreement ${actualAgreement}% met the target ` +
-          `of ${safeTarget}%, and independent fulfillment verification passed.`,
+        consensusSummary: isCombinedBatchAnswer
+          ? `Final combined result completed in round ${roundNumber}. ` +
+            `${successfulResults.length} successful engine responses are included. ` +
+            `Lexical similarity was ${actualAgreement}% (diagnostic, not ` +
+            `factual accuracy) against the configured target of ${safeTarget}%. ` +
+            `Independent fulfillment verification passed.`
+          : `Conformity reached in round ${roundNumber}: ` +
+            `lexical similarity ${actualAgreement}% (diagnostic, not ` +
+            `factual accuracy) met the configured target of ${safeTarget}%, ` +
+            `and independent fulfillment verification passed.`,
         convergenceRounds,
         nodeContributions: successfulResults.map(
           (result) => ({
@@ -10906,7 +11048,7 @@ if (flowTraceId) {
             detailedResponse: result.answer,
             agreementScore: calculateSimilarity([
               result.answer,
-              finalAnswer,
+              medoidAnswer,
             ]),
             latencyMs: result.latencyMs,
           })
@@ -10956,10 +11098,10 @@ if (flowTraceId) {
   // No answer is allowed through the success path unless both
   // agreement and independent fulfillment verification passed.
   if (!conformityReached) {
-    const failureMessage = [
+        const failureMessage = [
       "CONFORMITY NOT REACHED.",
       `The system completed ${actualRoundsCompleted} of ${MAX_ROUNDS} allowed rounds without passing all required checks.`,
-      `Last batch agreement: ${actualAgreement}% (target: ${safeTarget}%).`,
+      `Last lexical similarity: ${actualAgreement}% (diagnostic, not factual accuracy; configured target: ${safeTarget}%).`,
       `Last verification status: ${lastVerification.status}.`,
       `Verifier feedback: ${lastVerification.feedback}`,
       "Missing or unconfirmed requirements:",
@@ -12398,11 +12540,45 @@ export function normalizeConsensusRunToUIViewModel(
           promptTokens + completionTokens
       );
 
-      const reproContribution =
-        metaRec?.contributionScore && metaRec?.contributionBreakdown
+            const reproContribution:
+        | {
+            contributionScore: number;
+            breakdown: {
+              tokenCoverageRatio: number;
+              uniqueClaimSurvivalRatio: number;
+              round1ToFinalRetention: number;
+            };
+          }
+        | {
+            contributionScore: null;
+            breakdown: {
+              tokenCoverageRatio: null;
+              uniqueClaimSurvivalRatio: null;
+              round1ToFinalRetention: null;
+            };
+          } =
+        metaRec?.contributionScore === null
+          ? {
+              contributionScore: null,
+              breakdown: {
+                tokenCoverageRatio: null,
+                uniqueClaimSurvivalRatio: null,
+                round1ToFinalRetention: null,
+              },
+            }
+          : metaRec?.contributionScore !== undefined &&
+            metaRec?.contributionBreakdown &&
+            metaRec.contributionBreakdown.tokenCoverageRatio !== null
           ? {
               contributionScore: metaRec.contributionScore,
-              breakdown: metaRec.contributionBreakdown,
+              breakdown: {
+                tokenCoverageRatio:
+                  metaRec.contributionBreakdown.tokenCoverageRatio,
+                uniqueClaimSurvivalRatio:
+                  metaRec.contributionBreakdown.uniqueClaimSurvivalRatio,
+                round1ToFinalRetention:
+                  metaRec.contributionBreakdown.round1ToFinalRetention,
+              },
             }
           : computeReproducibleEngineContribution(
               String(nodeRec?.initialReply || ""),
@@ -12454,9 +12630,11 @@ export function normalizeConsensusRunToUIViewModel(
         evidence: [
           `FILE:src/consensusEngine.ts (role=${specialistRole})`,
           `TEST:verification_gate_312_passed`,
-          `DECISION:DEC-031 (TokenCoverage=${Math.round(
-            reproContribution.breakdown.tokenCoverageRatio * 100
-          )}%)`,
+                    reproContribution.breakdown.tokenCoverageRatio === null
+            ? `DECISION:DEC-031 (TokenCoverage=N/A — combined-batch final answer)`
+            : `DECISION:DEC-031 (TokenCoverage=${Math.round(
+                reproContribution.breakdown.tokenCoverageRatio * 100
+              )}%)`,
         ],
         affectedFiles: [
           "src/consensusEngine.ts",
@@ -12916,8 +13094,8 @@ metrics: {
             messageId: rec.assistantMessageId || rec.messageId,
             nodeType: "engine",
             label: `${eng.displayName} [${eng.specialistRole}]`,
-            subtitle: `${eng.latencyMs}ms · ${eng.promptTokens}p+${eng.completionTokens}c tok · Contrib ${eng.contributionScore}%`,
-            fullText: `ENGINE_RUN ${eng.displayName} (${eng.specialistRole} · ${eng.providerFamily}) — Latency: ${eng.latencyMs}ms (R1: ${eng.round1LatencyMs}ms, Sync: ${eng.consensusSyncLatencyMs}ms) · Tokens: ${eng.totalTokens} (${eng.promptTokens} prompt + ${eng.completionTokens} completion) · Reproducible Contribution: ${eng.contributionScore}%`,
+            subtitle: `${eng.latencyMs}ms · ${eng.promptTokens}p+${eng.completionTokens}c tok · Contrib ${               eng.contributionScore === null                 ? "N/A (combined-batch answer)"                 : `${eng.contributionScore}%`             }`,
+            fullText: `ENGINE_RUN ${eng.displayName} (${eng.specialistRole} · ${eng.providerFamily}) — Latency: ${eng.latencyMs}ms (R1: ${eng.round1LatencyMs}ms, Sync: ${eng.consensusSyncLatencyMs}ms) · Tokens: ${eng.totalTokens} (${eng.promptTokens} prompt + ${eng.completionTokens} completion) · Reproducible Contribution: ${               eng.contributionScore === null                 ? "N/A (combined-batch final answer; per-engine contribution to a separate synthesis is not measurable)"                 : `${eng.contributionScore}%`             }`,
             timestamp: rec.timestamp,
             metrics: {
               latencyMs: eng.latencyMs,
@@ -12938,14 +13116,20 @@ metrics: {
             label: `analyzed_by (${eng.specialistRole})`,
           });
 
-          allEdges.push({
+                    allEdges.push({
             id: `edge_e2c_${rec.pairIndex}_${eIdx + 1}`,
             source: engNodeId,
             target: rec.consensusNodeId!,
             category: "causal_provenance",
             type: "contributed_to_consensus",
-            weight: Number((eng.contributionScore / 100).toFixed(2)),
-            label: `influenced (${eng.contributionScore}%)`,
+            weight:
+              eng.contributionScore === null
+                ? 0.5
+                : Number((eng.contributionScore / 100).toFixed(2)),
+            label:
+              eng.contributionScore === null
+                ? "contributed (N/A)"
+                : `influenced (${eng.contributionScore}%)`,
           });
         });
       }
