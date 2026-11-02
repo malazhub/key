@@ -144,3 +144,112 @@ test("corrective retrieval never exceeds its pass limit", async () => {
   assert.ok(retrievalCalls <= MAX_CORRECTIVE_PASSES);
   assert.ok(result.correctivePasses <= MAX_CORRECTIVE_PASSES);
 });
+test("standalone factual question does not require conversation history", async () => {
+  const plan = await buildQueryExecutionPlan(
+    "What is the difference between photosynthesis and cellular respiration?",
+  );
+  assert.equal(plan.requiresConversationHistory, false);
+  assert.equal(plan.historyReason, null);
+});
+
+test("explicit continuation requires conversation history", async () => {
+  const plan = await buildQueryExecutionPlan(
+    "Continue investigating the repository we discussed.",
+  );
+  assert.equal(plan.requiresConversationHistory, true);
+  assert.notEqual(plan.historyReason, null);
+});
+
+test("planner preserves the exact original query", async () => {
+  const query = "How do I fix the failing test in src/foo.ts?";
+  const plan = await buildQueryExecutionPlan(query);
+  assert.equal(plan.originalQuery, query);
+});
+
+test("planner always provides task and output classifications", async () => {
+  const plan = await buildQueryExecutionPlan("Compare these two approaches.");
+  assert.ok(plan.taskType);
+  assert.ok(Array.isArray(plan.requiredOutput));
+  assert.ok(plan.requiredOutput.length > 0);
+});
+
+test("modification without code context is not classified as coding", async () => {
+  const plan = await buildQueryExecutionPlan(
+    "Revise this paragraph to sound more professional.",
+  );
+  assert.notEqual(plan.taskType, "coding");
+});
+
+test("modification with code context is classified as coding", async () => {
+  const plan = await buildQueryExecutionPlan(
+    "Fix the TypeScript function in src/foo.ts that fails on null input.",
+  );
+  assert.equal(plan.taskType, "coding");
+});
+
+test("model-output 'coding' is rejected when the query has no code context", async () => {
+  const fakePlanner = async () =>
+    JSON.stringify({
+      polarity: "modification",
+      objective: "improve prose",
+      taskType: "coding",
+      requiredOutput: ["code_patch"],
+      evidenceNeeds: { knowledge: true },
+      retrieval: { sources: ["knowledge"], maxCandidates: 8 },
+      queryExpansions: [],
+      constraints: [],
+      prohibitions: [],
+      confidence: 0.7,
+    });
+
+  const plan = await buildQueryExecutionPlan(
+    "Revise this paragraph to sound more professional.",
+    fakePlanner,
+  );
+
+  assert.notEqual(plan.taskType, "coding");
+});
+
+test("model-output 'coding' is accepted when the query has code context", async () => {
+  const fakePlanner = async () =>
+    JSON.stringify({
+      polarity: "modification",
+      objective: "apply a code fix",
+      taskType: "coding",
+      requiredOutput: ["code_patch", "unit_tests"],
+      evidenceNeeds: { knowledge: true },
+      retrieval: { sources: ["knowledge"], maxCandidates: 8 },
+      queryExpansions: [],
+      constraints: [],
+      prohibitions: [],
+      confidence: 0.82,
+    });
+
+  const plan = await buildQueryExecutionPlan(
+    "Fix the null-pointer bug in src/util.ts.",
+    fakePlanner,
+  );
+
+  assert.equal(plan.taskType, "coding");
+  assert.deepEqual(plan.requiredOutput, ["code_patch", "unit_tests"]);
+});
+
+test("model-output requiredOutput with only invalid entries falls back to ['direct_answer']", async () => {
+  const fakePlanner = async () =>
+    JSON.stringify({
+      polarity: "question",
+      objective: "answer the question",
+      taskType: "question",
+      requiredOutput: [123, null, { x: 1 }, ""],
+      evidenceNeeds: { knowledge: true },
+      retrieval: { sources: ["knowledge"], maxCandidates: 8 },
+      queryExpansions: [],
+      constraints: [],
+      prohibitions: [],
+      confidence: 0.75,
+    });
+
+  const plan = await buildQueryExecutionPlan("What is a monad?", fakePlanner);
+
+  assert.deepEqual(plan.requiredOutput, ["direct_answer"]);
+});
