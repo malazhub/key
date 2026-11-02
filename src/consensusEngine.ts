@@ -13747,16 +13747,17 @@ assertDefendedQuery(
           credentialIndex
         ];
 
-      try {
-           
-                return await withProviderRecovery(
+            try {
+        return await withProviderRecovery(
           () =>
             withStrictTimeout(
               attemptModel(modelId, credential),
               provider === "google" ? 30000 : 45000,
               `${engine}(${modelId})`
             ),
-                      maxAttempts: request.maxProviderAttempts ?? 3,
+          {
+            maxAttempts: request.maxProviderAttempts ?? 3,
+          }
         );
       } catch (error) {
         // Preserve existing classification and recovery logic.
