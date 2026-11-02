@@ -24,7 +24,12 @@ import {
   compileExecutionContext,
   type AdaptiveCandidate,
 } from "./queryExecutionPlanner";
-
+/**
+ * Monotonic counter used to guarantee unique dispatch-run IDs even when
+ * two requests share the same original question and start within the same
+ * millisecond.
+ */
+let dispatchRunSequence = 0;
 type EngineProvider =
   | "google"
   | "openai"
@@ -42,8 +47,88 @@ export interface EngineDispatchRequest {
   systemInstruction: string;
   responseSchema?: unknown;
   signal?: AbortSignal;
+
+  /**
+   * Fires immediately before the outbound provider HTTP request begins.
+   * Not before registry validation, not before credential checks —
+   * only when the fetch call is about to run.
+   */
+  onProviderDispatch?: () => void;
+
+  /**
+   * Fires immediately after the provider HTTP response resolves, before
+   * the body is parsed or validated. HTTP 200, 4xx, and 5xx all count
+   * as a received response. Network errors and timeouts do not.
+   */
+  onProviderResponse?: () => void;
+
+  /** Test seam. Production callers must not set this. */
+  fetchFn?: typeof fetch;
+
+  /** Test seam. Caps retries. Production default is 3. */
+  maxProviderAttempts?: number;
+}
+export interface EngineDispatchAudit {
+  engineId: string;
+  queryId: string;
+  round: number;
+  originalQueryHash: string;
+  dispatched: boolean;
+  responseReceived: boolean;
+  usableResponse: boolean;
+  error?: string;
 }
 
+interface RoundVerification {
+  status: "pass" | "needs_revision" | "unverified";
+  feedback: string;
+  missingRequirements: string[];
+  refusalJustified?: boolean;
+
+  evidenceCoverage: number | null;
+  sourceVerification: number | null;
+  taskFulfillment: number | null;
+  factualVerification: "verified" | "partially_verified" | "unverified";
+  unsupportedClaims: string[] | null;
+}
+
+function makeRoundVerification(
+  overrides: Partial<RoundVerification> & { feedback: string },
+): RoundVerification {
+  return {
+    status: "unverified",
+    missingRequirements: [],
+    refusalJustified: false,
+    evidenceCoverage: null,
+    sourceVerification: null,
+    taskFulfillment: null,
+    factualVerification: "unverified",
+    unsupportedClaims: null,
+    ...overrides,
+  };
+}
+
+export function buildDispatchAudit(params: {
+  engineId: string;
+  queryId: string;
+  round: number;
+  originalQueryHash: string;
+  dispatchStarted: boolean;
+  providerResponded: boolean;
+  answerUsable: boolean;
+  errorMessage?: string;
+}): EngineDispatchAudit {
+  return {
+    engineId: params.engineId,
+    queryId: params.queryId,
+    round: params.round,
+    originalQueryHash: params.originalQueryHash,
+    dispatched: params.dispatchStarted,
+    responseReceived: params.providerResponded,
+    usableResponse: params.answerUsable,
+    ...(params.errorMessage ? { error: params.errorMessage } : {}),
+  };
+}
 export interface EngineDispatchResult {
   engine: string;
   provider: EngineProvider;
@@ -9641,19 +9726,25 @@ export async function runSmartMemoryConsensusLoop(
   history: HistoryTurn[],
   modelsList: string[],
   targetAgreement: number,
-  options?: {
+    options?: {
     buildAppMode?: boolean;
     adminUpgradeMode?: boolean;
     nextVersionTag?: string;
     attachments?: IncomingAttachment[];
     strictQueryPriority?: boolean;
     flowTraceId?: string;
+
+    /** Test-only overrides. Production callers must not set these. */
+    aiClient?: GoogleGenAI;
+    dispatchEngineFn?: typeof dispatchEngine;
+    maxProviderAttempts?: number;
   }
 ) {
   assertDefendedQuery(question);
 
   const loopStartTimeMs = Date.now();
-  const ai = createGenAIClient();
+  const ai = options?.aiClient ?? createGenAIClient();
+  const dispatchEngineImpl = options?.dispatchEngineFn ?? dispatchEngine;
   const flowTraceId = options?.flowTraceId;
 
   if (flowTraceId) {
@@ -10397,6 +10488,17 @@ iterationsRequired: actualRoundsCompleted,
         .filter(Boolean)
     )
     );
+    const dispatchAudits: EngineDispatchAudit[] = [];
+  const dispatchRunId =
+    flowTraceId ||
+    `dr_${Date.now().toString(36)}_${(++dispatchRunSequence).toString(36)}_${computeDeterministicHexHash(
+      originalQuestion,
+      0x811c9dc5,
+    )}`;
+  const originalQueryHash = computeDeterministicHexHash(
+    originalQuestion,
+    0x811c9dc5,
+  );
       // Keep the complete selected engine set eligible throughout all rounds.
 // Record failures per round; never permanently exclude an engine.
       if (selectedModels.length === 0) {
@@ -10431,6 +10533,7 @@ iterationsRequired: actualRoundsCompleted,
           "The final answer must pass conformity verification.",
         ],
       },
+      dispatchAudits,
       stopReason: "CONFORMITY_NOT_REACHED",
     };
   }
@@ -10472,6 +10575,7 @@ iterationsRequired: actualRoundsCompleted,
           "The final answer must pass conformity verification.",
         ],
       },
+      dispatchAudits,
       stopReason: "CONFORMITY_NOT_REACHED",
     };
   }
@@ -10509,19 +10613,12 @@ iterationsRequired: actualRoundsCompleted,
    let conformityReached = false;
 
   
-let lastVerification: {
-  status: "pass" | "needs_revision" | "unverified";
-  feedback: string;
-  missingRequirements: string[];
-  refusalJustified?: boolean;
-} = {
-  status: "unverified",
+let lastVerification: RoundVerification = makeRoundVerification({
   feedback: "Independent fulfillment verification has not passed.",
   missingRequirements: [
     "The combined engine batch must pass independent fulfillment verification.",
   ],
-  refusalJustified: false,
-};
+});
 
   // Every round is assessed as a complete batch.
   // Agreement alone is never sufficient to declare success.
@@ -10536,15 +10633,14 @@ let lastVerification: {
   const eligibleModels = selectedModels;
 
     if (eligibleModels.length === 0) {
-      lastVerification = {
-        status: "unverified",
-        feedback:
-          "No eligible engines remain. The batch could not be generated or verified.",
-        missingRequirements: [
-          "At least one usable engine response is required.",
-          "Independent fulfillment verification must pass.",
-        ],
-      };
+      lastVerification = makeRoundVerification({
+  feedback:
+    "No eligible engines remain. The batch could not be generated or verified.",
+  missingRequirements: [
+    "At least one usable engine response is required.",
+    "Independent fulfillment verification must pass.",
+  ],
+});
 
       if (roundNumber < MAX_ROUNDS) {
         currentRoundPayload = refinePayload(
@@ -10557,13 +10653,18 @@ let lastVerification: {
       break;
     }
 
-    const settledResults = await Promise.all(
+        const settledResults = await Promise.all(
       eligibleModels.map(async (modelName) => {
+        let dispatchStarted = false;
+        let providerResponded = false;
+        let answerUsable = false;
+        let attemptError: string | undefined;
+
         try {
           assertDefendedQuery(promptToText(currentRoundPayload));
 
-                    const dispatched = await withStrictTimeout(
-            dispatchEngine({
+          const dispatched = await withStrictTimeout(
+            dispatchEngineImpl({
               engine: modelName,
               prompt: currentRoundPayload,
               systemInstruction:
@@ -10580,12 +10681,19 @@ let lastVerification: {
                 "Do not claim that verification passed unless the independent " +
                 "verifier passes.",
               responseSchema: shouldGenerateAppPreview
-  ? responseSchemaConfig
-  : undefined,
-signal: AbortSignal.timeout(55_000),
-}),
-60_000,
-`ConsensusRound${roundNumber}(${modelName})`
+                ? responseSchemaConfig
+                : undefined,
+              signal: AbortSignal.timeout(55_000),
+              onProviderDispatch: () => {
+                dispatchStarted = true;
+              },
+              onProviderResponse: () => {
+                providerResponded = true;
+              },
+              maxProviderAttempts: options?.maxProviderAttempts,
+            }),
+            60_000,
+            `ConsensusRound${roundNumber}(${modelName})`,
           );
 
           const answer = dispatched.answer.trim();
@@ -10594,29 +10702,38 @@ signal: AbortSignal.timeout(55_000),
             throw new Error("Empty provider response");
           }
 
+          answerUsable = true;
+
           return {
             ...dispatched,
             answer,
           };
         } catch (error) {
-          const errorMessage =
-            error instanceof Error
-              ? error.message
-              : String(error);
-
-          // Preserve the timeout in this round's failure diagnostics.
-// Do not exclude this engine from subsequent rounds.
+          attemptError = redactProviderError(error);
 
           liveDispatchFailures.push({
             modelName,
             provider: ENGINE_REGISTRY[modelName]?.provider,
-            reason: redactProviderError(error),
+            reason: attemptError,
             round: roundNumber,
           });
 
           return null;
+        } finally {
+          dispatchAudits.push(
+            buildDispatchAudit({
+              engineId: modelName,
+              queryId: dispatchRunId,
+              round: roundNumber,
+              originalQueryHash,
+              dispatchStarted,
+              providerResponded,
+              answerUsable,
+              errorMessage: attemptError,
+            }),
+          );
         }
-      })
+      }),
     );
 
     const successfulResults = settledResults.filter(
@@ -10666,18 +10783,17 @@ if (successfulResults.length === 0) {
             `${failure.modelName}: ${failure.reason}`
         );
 
-      lastVerification = {
-        status: "unverified",
-        feedback: [
-          `Round ${roundNumber}/${MAX_ROUNDS} produced no usable responses.`,
-          ...roundFailures,
-          "No answer can be verified from this round.",
-        ].join("\n"),
-        missingRequirements: [
-          "At least one usable engine response is required.",
-          "Independent fulfillment verification must pass.",
-        ],
-      };
+      lastVerification = makeRoundVerification({
+  feedback: [
+    `Round ${roundNumber}/${MAX_ROUNDS} produced no usable responses.`,
+    ...roundFailures,
+    "No answer can be verified from this round.",
+  ].join("\n"),
+  missingRequirements: [
+    "At least one usable engine response is required.",
+    "Independent fulfillment verification must pass.",
+  ],
+});
 
       if (roundNumber < MAX_ROUNDS) {
         currentRoundPayload = refinePayload(
@@ -10862,26 +10978,22 @@ if (
 
 
      
-lastVerification = {
+lastVerification = makeRoundVerification({
   status: parsedVerification.status,
   feedback: parsedVerification.feedback,
-  missingRequirements:
-    parsedVerification.missingRequirements,
+  missingRequirements: parsedVerification.missingRequirements,
   refusalJustified: parsedVerification.refusalJustified,
-};
+});
 
     } catch (error) {
-      lastVerification = {
-        status: "unverified",
-        feedback:
-          "Independent fulfillment verification failed: " +
-          (error instanceof Error
-            ? error.message
-            : String(error)),
-        missingRequirements: [
-          "The complete engine batch must be independently verified.",
-        ],
-      };
+      lastVerification = makeRoundVerification({
+  feedback:
+    "Independent fulfillment verification failed: " +
+    (error instanceof Error ? error.message : String(error)),
+  missingRequirements: [
+    "The complete engine batch must be independently verified.",
+  ],
+});
     }
 
     
@@ -10900,22 +11012,21 @@ lastVerification = {
       lastVerification.status === "pass" &&
       lastVerification.refusalJustified !== true
     ) {
-      lastVerification = {
-        status: "needs_revision",
-        feedback:
-          "Every usable engine response was classified as a refusal, " +
-          "but the verifier did not establish that refusal was justified. " +
-          "Reassess the user's requested action. If it is permitted, " +
-          "provide a substantive answer. If an applicable restriction " +
-          "requires refusal, explain that restriction and offer a safe " +
-          "alternative when appropriate.",
-        missingRequirements: [
-          "Determine whether the requested action is permitted.",
-          "If permitted, provide a substantive answer instead of an unjustified refusal.",
-          "If restricted, explain the applicable restriction and offer an appropriate safe alternative.",
-        ],
-        refusalJustified: false,
-      };
+      lastVerification = makeRoundVerification({
+  status: "needs_revision",
+  feedback:
+    "Every usable engine response was classified as a refusal, " +
+    "but the verifier did not establish that refusal was justified. " +
+    "Reassess the user's requested action. If it is permitted, " +
+    "provide a substantive answer. If an applicable restriction " +
+    "requires refusal, explain that restriction and offer a safe " +
+    "alternative when appropriate.",
+  missingRequirements: [
+    "Determine whether the requested action is permitted.",
+    "If permitted, provide a substantive answer instead of an unjustified refusal.",
+    "If restricted, explain the applicable restriction and offer an appropriate safe alternative.",
+  ],
+});
     }
    
     
@@ -10931,17 +11042,15 @@ const liveEvidenceRequirementMet =
   );
 
 if (requiresWebEvidence && !liveEvidenceRequirementMet) {
-  lastVerification = {
-    status: "unverified",
-    feedback:
-      "The requested external source was not retrieved and verified. " +
-      "Search summaries and source URLs alone are not evidence.",
-    missingRequirements: [
-  "Retrieve actual source content.",
-  "Verify that the content belongs to the requested source.",
-],
-    refusalJustified: false,
-  };
+  lastVerification = makeRoundVerification({
+  feedback:
+    "The requested external source was not retrieved and verified. " +
+    "Search summaries and source URLs alone are not evidence.",
+  missingRequirements: [
+    "Retrieve actual source content.",
+    "Verify that the content belongs to the requested source.",
+  ],
+});
 }
 
 const verificationPassed =
@@ -11038,7 +11147,7 @@ if (flowTraceId) {
             `factual accuracy) met the configured target of ${safeTarget}%, ` +
             `and independent fulfillment verification passed.`,
         convergenceRounds,
-        nodeContributions: successfulResults.map(
+                nodeContributions: successfulResults.map(
           (result) => ({
             modelName: result.engine,
             provider: result.provider,
@@ -11053,6 +11162,7 @@ if (flowTraceId) {
             latencyMs: result.latencyMs,
           })
         ),
+        dispatchAudits,
       };
 
       break;
@@ -11121,10 +11231,12 @@ if (flowTraceId) {
       iterationsRequired: actualRoundsCompleted,
       conformityReached: false,
       fulfillmentVerification: lastVerification,
+      dispatchAudits,
       stopReason: "CONFORMITY_NOT_REACHED",
-      consensusSummary: failureMessage,
+            consensusSummary: failureMessage,
       convergenceRounds,
       nodeContributions: [],
+      dispatchAudits,
     };
   }
   const timedGroundingSources = groundingSources;
@@ -11145,9 +11257,10 @@ if (flowTraceId) {
     );
     return {
       ...enriched,
-      memoryOS: memoryOSTrace,
+           memoryOS: memoryOSTrace,
       strictQueryPriority,
       groundingSources: timedGroundingSources,
+      dispatchAudits,
       workingMemoryFacts: strictQueryPriority
         ? []
         : relation.workingMemoryFacts || [],
@@ -11361,8 +11474,14 @@ export function executeConsensusApiPayload(
     consensus: result.consensus,
     confidence: result.confidence,
     engineResponses: mappedNodes,
-    memoryOS: result.metadata?.memoryOS || result.memoryOS,
+        memoryOS: result.metadata?.memoryOS || result.memoryOS,
     activeModels: modelsList,
+    dispatchAudits: Array.isArray(result.dispatchAudits)
+      ? [...result.dispatchAudits].sort(
+          (a: EngineDispatchAudit, b: EngineDispatchAudit) =>
+            a.round - b.round || a.engineId.localeCompare(b.engineId),
+        )
+      : [],
   };
 }
 
@@ -13338,8 +13457,10 @@ assertDefendedQuery(
           request.responseSchema;
       }
 
+            const fetchImpl = request.fetchFn ?? fetch;
+      request.onProviderDispatch?.();
       const response =
-        await fetch(
+        await fetchImpl(
           `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
             modelId
           )}:generateContent?key=${encodeURIComponent(
@@ -13375,6 +13496,7 @@ assertDefendedQuery(
                 : {}),
             }),
           }
+                request.onProviderResponse?.();
         );
 
       const data =
@@ -13400,11 +13522,14 @@ assertDefendedQuery(
     }
 
     if (provider === "anthropic") {
+            const fetchImpl = request.fetchFn ?? fetch;
+      request.onProviderDispatch?.();
       const response =
-        await fetch(
+        await fetchImpl(
           "https://api.anthropic.com/v1/messages",
           {
             method: "POST",
+            signal: request.signal,
             headers: {
               "Content-Type":
                 "application/json",
@@ -13455,11 +13580,14 @@ assertDefendedQuery(
     }
 
     if (provider === "cohere") {
+            const fetchImpl = request.fetchFn ?? fetch;
+      request.onProviderDispatch?.();
       const response =
-        await fetch(
+        await fetchImpl(
           "https://api.cohere.com/v2/chat",
           {
             method: "POST",
+            signal: request.signal,
             headers: {
               "Content-Type":
                 "application/json",
@@ -13554,11 +13682,14 @@ assertDefendedQuery(
       };
     }
 
+        const fetchImpl = request.fetchFn ?? fetch;
+    request.onProviderDispatch?.();
     const response =
-      await fetch(
+      await fetchImpl(
         endpoint,
         {
           method: "POST",
+          signal: request.signal,
           headers: {
             "Content-Type":
               "application/json",
@@ -13622,14 +13753,7 @@ assertDefendedQuery(
               provider === "google" ? 30000 : 45000,
               `${engine}(${modelId})`
             ),
-          {
-            maxAttempts: 3,
-            trace: {
-              engine,
-              model: modelId,
-              sourceFile: "src/consensusEngine.ts",
-            },
-          }
+                      maxAttempts: request.maxProviderAttempts ?? 3,
         );
       } catch (error) {
         // Preserve existing classification and recovery logic.
@@ -13745,9 +13869,12 @@ export function calculateSimilarity(
     return 0;
   }
 
- if (responses.length === 1) {
-  return 0;
-}
+   if (responses.length === 1) {
+    // One response has no other response to disagree with.
+    // Agreement is therefore trivially 100%, not evidence of accuracy.
+    // Independent fulfillment verification remains mandatory.
+    return 100;
+  }
 
   const tokenSets =
     responses.map((response) =>
