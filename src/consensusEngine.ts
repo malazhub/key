@@ -4512,14 +4512,17 @@ export function calculateMathematicalRelationWithPrevious(
 
   const workingMemoryFacts = extractWorkingMemoryFacts(activeBackgroundPairs);
 
-      const userRequirementsChain = [
-  `• [CURRENT QUERY #${windowPairs.length + 1} — 100% SUPERSEDING EXECUTION PRIORITY]: ${payloadQ}`,
-  ...activeBackgroundPairs.map(/* existing mapping */),
-  ...supersededPairs.map(
-    (p) =>
-      `• [Saved Ask #${p.pairIndex} — SUPERSEDED BY CURRENT QUERY]: "${p.userQuery.trim()}" (Overridden by "${payloadQ}")`
-  ),
-].join("\n");
+       const userRequirementsChain = [
+    `• [CURRENT QUERY #${windowPairs.length + 1} — 100% SUPERSEDING EXECUTION PRIORITY]: ${payloadQ}`,
+    ...activeBackgroundPairs.map(
+      (p) =>
+        `• [Saved Non-Conflicting Background Ask #${p.pairIndex} (Subordinate to Current Query)]: ${p.userQuery.trim()}`
+    ),
+    ...supersededPairs.map(
+      (p) =>
+        `• [Saved Ask #${p.pairIndex} — SUPERSEDED BY CURRENT QUERY]: "${p.userQuery.trim()}" (Overridden by "${payloadQ}")`
+    ),
+  ].join("\n");
 
   const cumulativeContextParts = activeBackgroundPairs.map((p, idx) => {
     const isLatestMatched = idx === activeBackgroundPairs.length - 1;
@@ -4538,12 +4541,12 @@ export function calculateMathematicalRelationWithPrevious(
           .join("\n")}\n`
       : "";
 
-  const unifiedCombinedQuery = `=== CURRENT USER QUERY (100% SUPERSEDING PRIORITY — MUST OVERRIDE ANY CONFLICTING SAVED MEMORY) ===
+    const unifiedCombinedQuery = `=== CURRENT USER QUERY (100% SUPERSEDING PRIORITY — MUST OVERRIDE ANY CONFLICTING SAVED MEMORY) ===
 ${payloadQ}
 
 === COMPARED SAVED MEMORY (PASSIVE BACKGROUND ONLY — SUPERSEDED BY CURRENT QUERY ON ANY CONFLICT) ===
 ${userRequirementsChain}
-${memoryLedgerBlock}${/* existing content */}
+${memoryLedgerBlock}
 === FINAL ACTIVE INSTRUCTION (EXECUTE CURRENT QUERY WITH 100% PRIORITY) ===
 ${payloadQ}`;
   const cumulativeSpecParts = [
