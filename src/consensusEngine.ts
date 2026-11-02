@@ -7292,12 +7292,8 @@ export function sanitizeAndEnrichConsensusResult(
     !hasExplicitNoApplicationDirective(question) &&
     isKeySelfModificationRequest(question, cumulativeContextText);
     const hasNoAppOrLogicGuard =
-    isConversationalInquiry ||
-    hasExplicitNoApplicationDirective(question) ||
-    (!isDirectSelfModInSanitizer &&
-      !isCapabilityQ &&
-      !isCodebaseDiagnosticOrLogicGapQuery(question) &&
-      (isTopicIsolation || isLogicOrArchitectureQuery(question)));
+  isConversationalInquiry ||
+  hasExplicitNoApplicationDirective(question);
 
   const isKey1Request =
     !isStrictYesNo &&
@@ -8108,15 +8104,9 @@ export function buildDeepAnalyticalResilientSynthesis(
     }
   }
 
-  const isTopicIsolation = isTopicIsolationOrComplaintQuery(cleanQ);
 const isEnhancement =
   isKeySelfModificationRequest(rawCleanQ) &&
-  isEnhancementOrRevisionRequest(cleanQ);  const isLogicQuery =
-    isTopicIsolation ||
-    isLogicOrArchitectureQuery(cleanQ) ||
-    /\b(key\s+logic|current\s+logic|ai\s+logic|ur\s+logic|your\s+logic|other\s+ai\s+logic|modifications?\s+on\s+key\s+logic|chang(?:e|ed)\s+(?:the\s+)?key\s+logic|do(?:es)?\s+key\s+now\s+respond|logic\s+gap|30\s+revision|50\s+revision|revise\s+\d+\s+times|comparison\s+fasten\w*|better\s+than\s+(?:the\s+)?previous|worst\s+reply|non\s+solv\w*\s+any\s+logic)\b/i.test(
-      cleanQ
-    );
+  isEnhancementOrRevisionRequest(cleanQ);
 
   const lastPair =
     windowPairs.length > 0 ? windowPairs[windowPairs.length - 1] : null;
@@ -8418,7 +8408,6 @@ const isCapabilityQuestionTarget =
 
 const isEnhancementTarget =
   !isGreetingTarget &&
-  !isTopicIsolationTarget &&
   !isCapabilityQuestionTarget &&
   isEnhancementOrRevisionRequest(cleanQuestion);
 
@@ -9628,12 +9617,10 @@ export async function runSmartMemoryConsensusLoop(
       : "";
 
   const hasNoAppOrLogicGuard =
-    isCapabilityQuestionTarget ||
-    isConversationalInquiryOrExplanationRequest(cleanQuestion) ||
-    isReferentialFollowUpToRecentTurn(cleanQuestion) ||
-    hasExplicitNoApplicationDirective(cleanQuestion) ||
-    (!isKeySelfModificationRequest(cleanQuestion) &&
-      (isTopicIsolationTarget || isLogicOrArchitectureQuery(cleanQuestion)));
+  isCapabilityQuestionTarget ||
+  isConversationalInquiryOrExplanationRequest(cleanQuestion) ||
+  isReferentialFollowUpToRecentTurn(cleanQuestion) ||
+  hasExplicitNoApplicationDirective(cleanQuestion);
 
   const shouldGenerateAppPreview =
     !isGreetingTarget &&
