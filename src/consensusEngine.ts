@@ -4512,7 +4512,7 @@ export function calculateMathematicalRelationWithPrevious(
 
   const workingMemoryFacts = extractWorkingMemoryFacts(activeBackgroundPairs);
 
-  const userRequirementsChain = [
+      const userRequirementsChain = [
   `• [CURRENT QUERY #${windowPairs.length + 1} — 100% SUPERSEDING EXECUTION PRIORITY]: ${payloadQ}`,
   ...activeBackgroundPairs.map(/* existing mapping */),
   ...supersededPairs.map(
@@ -4546,7 +4546,6 @@ ${userRequirementsChain}
 ${memoryLedgerBlock}${/* existing content */}
 === FINAL ACTIVE INSTRUCTION (EXECUTE CURRENT QUERY WITH 100% PRIORITY) ===
 ${payloadQ}`;
-
   const cumulativeSpecParts = [
     ...activeBackgroundPairs.map((p) => p.userQuery),
     cleanQ,
