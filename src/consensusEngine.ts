@@ -13495,9 +13495,12 @@ assertDefendedQuery(
                   }
                 : {}),
             }),
-          }
-                request.onProviderResponse?.();
+                    }
         );
+      request.onProviderResponse?.();
+
+              );
+      request.onProviderResponse?.();
 
       const data =
         await readProviderJson(
@@ -13554,6 +13557,9 @@ assertDefendedQuery(
             }),
           }
         );
+
+              );
+      request.onProviderResponse?.();
 
       const data =
         await readProviderJson(
@@ -13612,6 +13618,9 @@ assertDefendedQuery(
             }),
           }
         );
+
+              );
+      request.onProviderResponse?.();
 
       const data =
         await readProviderJson(
