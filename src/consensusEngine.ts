@@ -4199,7 +4199,7 @@ export function calculateMathematicalRelationWithPrevious(
   const effectiveQueryForMatching =
     stripNegatedAndOldDiscussionClauses(cleanQ) || cleanQ;
 
-  if (
+     if (
     isStandaloneGreetingOrSmallTalk(effectiveQueryForMatching) ||
     isTopicIsolationOrComplaintQuery(effectiveQueryForMatching) ||
     isSelfUpgradeCapabilityQuestion(effectiveQueryForMatching)
@@ -4209,7 +4209,7 @@ export function calculateMathematicalRelationWithPrevious(
       contextMode: "NEW_QUERY_ONLY",
       historyMatchScore: 0,
       matchedPairIndices: [],
-      payloadSentToEngines: cleanQ,
+      payloadSentToEngines: payloadQ,
       isCorrectionOrRepetition: false,
       cumulativeUserSpecification: cleanQ,
       workingMemoryFacts: [],
@@ -4479,13 +4479,13 @@ export function calculateMathematicalRelationWithPrevious(
   const hasRelation =
     (matchedPairs.length > 0 && maxScore >= 45) || isPureMetaFollowUp;
 
-  if (!hasRelation || matchedPairs.length === 0) {
+    if (!hasRelation || matchedPairs.length === 0) {
     return {
       hasRelation: false,
       contextMode: "NEW_QUERY_ONLY",
       historyMatchScore: 0,
       matchedPairIndices: [],
-      payloadSentToEngines: cleanQ,
+      payloadSentToEngines: payloadQ,
       isCorrectionOrRepetition: false,
       cumulativeUserSpecification: cleanQ,
       workingMemoryFacts: [],
@@ -9567,40 +9567,31 @@ export async function runSmartMemoryConsensusLoop(
     });
   }
 
-  const {
-  originalQuestion,
-  cleanQuestion,
-  isolatedPayloadSentToEngines,
-  contextMode,
-  strictQueryPriority,
-  isGreetingTarget,
-  isTopicIsolationTarget,
-  isCapabilityQuestionTarget,
-  isEnhancementTarget,
-  isEarlyTopicIsolationOrGreeting,
-  isMandatoryIsolatedTurn,
-  payloadSentToEngines,
-  windowPairs,
-  effectiveHistory,
-  relation,
-  allPairsCount,
-  droppedOldestCount,
-  cumulativeSpec,
-  priorityGate,
-} = resolvedContext;
+    const {
+    originalQuestion,
+    cleanQuestion,
+    isolatedPayloadSentToEngines,
+    contextMode,
+    strictQueryPriority,
+    isGreetingTarget,
+    isTopicIsolationTarget,
+    isCapabilityQuestionTarget,
+    isEnhancementTarget,
+    isEarlyTopicIsolationOrGreeting,
+    isMandatoryIsolatedTurn,
+    payloadSentToEngines,
+    windowPairs,
+    effectiveHistory,
+    relation,
+    allPairsCount,
+    droppedOldestCount,
+    cumulativeSpec,
+    priorityGate,
+  } = resolvedContext;
 
-      const strictQueryPriority =
-    resolvedContext.strictQueryPriority;
-
-    // All ordinary queries use the same resolved context.
-  // Explicit URLs do not create a separate query or history-isolation route.
-  const contextMode = resolvedContext.contextMode;
-
-  const payloadSentToEngines =
-    resolvedContext.payloadSentToEngines;
-
-  const cumulativeSpec =
-    resolvedContext.cumulativeSpec;
+  // The destructured bindings above already hold these values.
+  // Do not re-declare strictQueryPriority, contextMode,
+  // payloadSentToEngines, or cumulativeSpec.
 
   const authorizedActiveHistory: HistoryTurn[] =
     effectiveHistory;
@@ -10034,32 +10025,23 @@ HISTORY AUTHORIZATION (STRICT DEFAULT):
   const promptSections: string[] = [];
 
 
-  if (isGreetingTarget) {
+    if (isGreetingTarget) {
     promptSections.push(
-      `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===\nif (isGreetingTarget) {
-  promptSections.push(
-    `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===
-User Message: "${originalQuestion}"
-Instruction: Respond naturally and directly to this greeting in real time.`
-  );
-} else if (relation.hasRelation) {
-  promptSections.push(
-    `=== CURRENT USER QUERY (HIGHEST PRIORITY) ===
-"${originalQuestion}"${attachmentNamesSummary}
-
-=== COMBINED CONTEXT PAYLOAD ===
-${payloadSentToEngines}`
-  );
-} else {
-  promptSections.push(
-    `=== CURRENT USER QUERY SENT TO ALL ${modelsList.length} AI ENGINES ===
-"${originalQuestion}"${attachmentNamesSummary}`
-  );
-}
-
-  if (lastSavedPair) {
+      `=== LIVE USER GREETING / WELCOME QUERY DISPATCHED TO ALL ${modelsList.length} AI ENGINES ===\nUser Message: "${originalQuestion}"\nInstruction: Respond naturally and directly to this greeting in real time.`
+    );
+  } else if (relation.hasRelation) {
     promptSections.push(
-      `=== IMMEDIATELY PRECEDING CONVERSATION TURN (MOST RECENT TURN #${lastSavedPair.pairIndex}) ===\nPrevious User Ask: "${lastSavedPair.userQuery}"\nPrevious Key Agreed Reply:\n${(lastSavedPair.agreedAnswer || "").slice(0, 3500)}`
+      `=== CURRENT USER QUERY (HIGHEST PRIORITY) ===\n"${originalQuestion}"${attachmentNamesSummary}\n\n=== COMBINED CONTEXT PAYLOAD ===\n${payloadSentToEngines}`
+    );
+  } else {
+    promptSections.push(
+      `=== CURRENT USER QUERY SENT TO ALL ${modelsList.length} AI ENGINES ===\n"${originalQuestion}"${attachmentNamesSummary}`
+    );
+  }
+
+    if (lastSavedPair) {
+    promptSections.push(
+      `=== IMMEDIATELY PRECEDING CONVERSATION TURN (MOST RECENT TURN #${lastSavedPair.pairIndex}) ===\nPrevious User Ask: "${lastSavedPair.userAsk || lastSavedPair.userQuery}"\nPrevious Key Agreed Reply:\n${(lastSavedPair.agreedAnswer || "").slice(0, 3500)}`
     );
   }
 
