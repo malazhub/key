@@ -82,7 +82,6 @@ export interface SelfUpgradeSession {
 }
 
 type DeployFn = (args: {
-  githubToken?: string;
   repoOwner?: string;
   repoName?: string;
   branch?: string;
@@ -267,10 +266,9 @@ function summarizeFailure(
 
 export async function runBoundedSelfUpgradeSession(
   request: SelfUpgradeControllerRequest,
-  deps: {
+    deps: {
     activeWorkspace: string;
     deploy: DeployFn;
-    githubToken?: string;
     generateCandidate?: SelfUpgradeCandidateGenerator;
   }
 ): Promise<SelfUpgradeSession> {
@@ -832,8 +830,7 @@ export async function runBoundedSelfUpgradeSession(
         intendedFileChanged: true,
       };
 
-      const deployment = await deps.deploy({
-        githubToken: deps.githubToken,
+            const deployment = await deps.deploy({
         repoOwner: "malazhub",
         repoName: "key",
         branch: "main",
