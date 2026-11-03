@@ -4568,21 +4568,6 @@ ${payloadQ}`;
   };
 }
 
-export function isKey1CloneOrButtonRequest(text: string): boolean {
-  if (!text) return false;
-  if (
-    hasExplicitNoApplicationDirective(text) ||
-    isLogicOrArchitectureQuery(text) ||
-    isKeySelfModificationRequest(text)
-  ) {
-    return false;
-  }
-  const stripped = stripPastedAssistantTranscripts(text) || text;
-  return /\b(commit\s+force|force\s+git|deploy\s+key|force-push|force\s+push|force\s+deploy|foce\s+deploy|make\s+force\s+deploy|run\s+deploy|direct\s+github\s+deployment|remove\s+key2|remove\s+key1)\b/i.test(
-    stripped
-  );
-}
-
 export interface SelfUpgradeRevisionStep {
   revisionNumber: number;
   subsystem:
@@ -6949,12 +6934,9 @@ export function detectAppBuildIntent(
     return true;
   }
 
-    if (
-    isKey1CloneOrButtonRequest(q) ||
-    isKeySelfModificationRequest(rawQ, _cumulativeContextText)
-  ) {
-    return true;
-  }
+    if (isKeySelfModificationRequest(rawQ, _cumulativeContextText)) {
+  return true;
+}
 
   if (
     /\b(key logic|current logic|ai logic|history|previous conversation|cumulative|no relation|has relation|send to engines)\b/i.test(
@@ -7092,90 +7074,11 @@ export function extractRawHtmlFromAnswer(rawText: string): {
   };
 }
 
-export function buildKey1ZeroDivergencePortalHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Key — Direct GitHub Force-Deploy &amp; Live Entry Point (malazhub/key)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background-color: #020617; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
-  </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col p-4 sm:p-6">
-  <div class="max-w-4xl w-full mx-auto space-y-5">
-    <div class="rounded-2xl bg-slate-900 border border-emerald-500/50 p-5 shadow-2xl space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-        <div class="space-y-1">
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-            <h1 class="text-lg font-extrabold text-white tracking-tight">
-              Direct GitHub Force-Deployment — <code class="text-emerald-300">malazhub/key</code>
-            </h1>
-          </div>
-          <p class="text-xs text-slate-300">
-            All secondary instances removed. Hard-coded exclusively to <strong class="text-emerald-300">https://github.com/malazhub/key</strong> and live entry URL <strong class="text-sky-300">https://malazhub.github.io/key/</strong>.
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <a
-            href="https://malazhub.github.io/key/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="px-4 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-lg transition"
-          >
-            <span>🌐 Open AI Key (malazhub.github.io/key)</span>
-            <span>↗</span>
-          </a>
-          <a
-            href="https://github.com/malazhub/key"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-xs flex items-center gap-1.5 transition"
-          >
-            <span>📁 github.com/malazhub/key</span>
-            <span>↗</span>
-          </a>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-        <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div class="font-bold text-emerald-400">1. Direct Repository Targeting</div>
-          <div class="text-slate-300 leading-relaxed">
-            Exclusively targets <code class="text-emerald-300">https://github.com/malazhub/key</code> (branch <code class="text-emerald-300">main</code>).
-          </div>
-        </div>
-        <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div class="font-bold text-emerald-400">2. Full Key Structure Force-Push</div>
-          <div class="text-slate-300 leading-relaxed">
-            Commits &amp; force-pushes the compiled <code class="text-emerald-300">index.html</code>, <code class="text-emerald-300">assets/*</code>, <code class="text-emerald-300">src/*</code>, <code class="text-emerald-300">server.ts</code>, <code class="text-emerald-300">package.json</code>, and <code class="text-emerald-300">README.md</code>.
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-
-
 export function buildFallbackInteractivePortalHtml(
   question: string,
-  appTitle: string,
-  cumulativeContext?: string
+  appTitle: string
 ): string {
-    const combined = `${question || ""} ${cumulativeContext || ""}`;
-  if (isKey1CloneOrButtonRequest(question || "")) {
-    return buildKey1ZeroDivergencePortalHtml();
-  }
-
-  const safeTitle = (appTitle || "Interactive Live Application Preview")
+     const safeTitle = (appTitle || "Interactive Live Application Preview")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
   const safeQuery = (question || "Interactive Application")
@@ -7313,23 +7216,13 @@ export function sanitizeAndEnrichConsensusResult(
     const hasNoAppOrLogicGuard =
   isConversationalInquiry ||
   hasExplicitNoApplicationDirective(question);
-
-  const isKey1Request =
-    !isStrictYesNo &&
-    !isGreeting &&
-    !hasNoAppOrLogicGuard &&
-    isKey1CloneOrButtonRequest(question);
-
   const isSelfModRequest =
     !isStrictYesNo &&
     !isGreeting &&
     !hasNoAppOrLogicGuard &&
     isDirectSelfModInSanitizer;
 
-  const hasDummyStatusPlaceholder =
-    /running in an isolated state|Key1 Instance Initialized Successfully|Current state:\s*Sandbox Mode/i.test(
-      generatedAppHtml
-    );
+  
 
   // PERMANENT LIVE LOGIC: Never overwrite the live "finalAnswer" returned by the AI engines with predefined/canned answers.
   // Only attach an interactive HTML application preview when the user explicitly requested an application or UI self-modification.
@@ -7362,15 +7255,7 @@ export function sanitizeAndEnrichConsensusResult(
     if (!generatedAppHtml) {
       generatedAppHtml = buildSelfModifiedKeyReplicaHtml(selfModSpec, question);
     }
-  } else if (isKey1Request) {
-    hasAppPreview = true;
-    appTitle =
-      appTitle ||
-      "Direct GitHub Force-Deployment — https://github.com/malazhub/key (https://malazhub.github.io/key/)";
-    if (!generatedAppHtml) {
-      generatedAppHtml = buildKey1ZeroDivergencePortalHtml();
-    }
-    
+      
     } else {
     const claimsInteractiveUi =
       Boolean(shouldGenerateAppPreview) ||
@@ -7381,12 +7266,11 @@ export function sanitizeAndEnrichConsensusResult(
       if (!appTitle) {
         appTitle = "Live Interactive Button & Application Preview";
       }
-      if (!generatedAppHtml || hasDummyStatusPlaceholder) {
+      if (!generatedAppHtml) {
         generatedAppHtml = buildFallbackInteractivePortalHtml(
-          question,
-          appTitle,
-          cumulativeContextText
-        );
+  question,
+  appTitle
+);
       }
     } else {
       hasAppPreview = false;
