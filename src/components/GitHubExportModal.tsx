@@ -268,64 +268,136 @@ function buildStandaloneGitHubPagesHtml(): string {
       "https://ais-pre-f2uayjdkh47dv4kxbqlp7-790065884957.europe-west2.run.app",
     ];
 
-    function captureWorkingCopy() {
-      const runtimeState = {
-        models: [...models],
-        targetAgreement,
-        allowApplicationMode,
-        isAdminAuthenticated,
-        pendingAttachments: Array.isArray(pendingAttachments) ? pendingAttachments : [],
-        chatHistory: Array.isArray(chatHistory) ? chatHistory : [],
-        lastGeneratedAppHtml,
-        lastGeneratedAppTitle,
-      };
-      return {
-        workingCopyId:
-          (() => {
-            try {
-                 function captureWorkingCopy() {
-      const runtimeState = {
-        models: [...models],
-        targetAgreement,
-        allowApplicationMode,
-      };
+        function sanitizeWorkingCopy(candidate) {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        !candidate.runtimeState ||
+        typeof candidate.runtimeState !== "object" ||
+        !Array.isArray(candidate.runtimeState.models)
+      ) {
+        return null;
+      }
+
+      const state = candidate.runtimeState;
+      const parsedTarget = Number(state.targetAgreement);
 
       return {
         workingCopyId:
-          (() => {
-            try {
-              const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
-              return existing?.workingCopyId || null;
-            } catch {
-              return null;
-            }
-          })(),
+          typeof candidate.workingCopyId === "string"
+            ? candidate.workingCopyId
+            : null,
         source: "Key Browser",
-        runtimeState,
+        runtimeState: {
+          models: state.models.filter(
+            (model) => typeof model === "string"
+          ),
+          targetAgreement: Number.isFinite(parsedTarget)
+            ? Math.max(1, Math.min(100, parsedTarget))
+            : 95,
+          allowApplicationMode:
+            state.allowApplicationMode === true,
+          pendingAttachments: Array.isArray(state.pendingAttachments)
+            ? state.pendingAttachments
+            : [],
+          chatHistory: Array.isArray(state.chatHistory)
+            ? state.chatHistory
+            : [],
+          lastGeneratedAppHtml:
+            typeof state.lastGeneratedAppHtml === "string"
+              ? state.lastGeneratedAppHtml
+              : "",
+          lastGeneratedAppTitle:
+            typeof state.lastGeneratedAppTitle === "string"
+              ? state.lastGeneratedAppTitle
+              : "Interactive Application Preview (key1)",
+        },
+      };
+    }
+
+    function captureWorkingCopy() {
+      let existingId = null;
+
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null"
+        );
+
+        if (typeof existing?.workingCopyId === "string") {
+          existingId = existing.workingCopyId;
+        }
+      } catch {}
+
+      return {
+        workingCopyId: existingId,
+        source: "Key Browser",
+        runtimeState: {
+          models: [...models],
+          targetAgreement,
+          allowApplicationMode,
+          pendingAttachments: Array.isArray(pendingAttachments)
+            ? pendingAttachments
+            : [],
+          chatHistory: Array.isArray(chatHistory)
+            ? chatHistory
+            : [],
+          lastGeneratedAppHtml,
+          lastGeneratedAppTitle,
+        },
       };
     }
 
     async function persistWorkingCopy() {
-      const copy = captureWorkingCopy();
-            if (         !copy.runtimeState ||         !Array.isArray(copy.runtimeState.models)       ) {         return;       }
+      const stored = sanitizeWorkingCopy(captureWorkingCopy());
+
+      if (!stored) {
+        return;
+      }
+
+      if (!stored.workingCopyId) {
+        stored.workingCopyId =
+          "wc_browser_" +
+          Date.now().toString(36) +
+          "_" +
+          Math.random().toString(16).slice(2);
+      }
+
       try {
-        let stored = copy;
-        const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
-        if (existing?.workingCopyId) stored.workingCopyId = existing.workingCopyId;
-        else stored.workingCopyId = "wc_browser_" + Date.now().toString(36) + "_" + Math.random().toString(16).slice(2);
-        localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(stored));
+        localStorage.setItem(
+          WORKING_COPY_STORAGE_KEY,
+          JSON.stringify(stored)
+        );
+
         for (const backend of WORKING_COPY_BACKENDS) {
           try {
-            const response = await fetch(backend + "/api/working-copy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
-              body: JSON.stringify(stored),
-            });
-            if (response.ok) {
-              const data = await response.json();
-              if (data?.workingCopy) {
-                localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(data.workingCopy));
+            const response = await fetch(
+              backend + "/api/working-copy",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Cache-Control": "no-cache",
+                },
+                body: JSON.stringify(stored),
               }
+            );
+
+            if (response.ok) {
+              const data = await response.json().catch(() => null);
+              const returnedCopy = sanitizeWorkingCopy(
+                data?.workingCopy
+              );
+
+              if (returnedCopy) {
+                returnedCopy.workingCopyId =
+                  returnedCopy.workingCopyId || stored.workingCopyId;
+
+                localStorage.setItem(
+                  WORKING_COPY_STORAGE_KEY,
+                  JSON.stringify(returnedCopy)
+                );
+              }
+
               break;
             }
           } catch {}
@@ -335,47 +407,71 @@ function buildStandaloneGitHubPagesHtml(): string {
 
     async function restoreWorkingCopy() {
       let copy = null;
+
       try {
-        copy = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
+        const raw = JSON.parse(
+          localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null"
+        );
+
+        copy = sanitizeWorkingCopy(raw);
+
+        if (copy) {
+          localStorage.setItem(
+            WORKING_COPY_STORAGE_KEY,
+            JSON.stringify(copy)
+          );
+        }
       } catch {}
-      if (!copy?.runtimeState) {
+
+      if (!copy) {
         for (const backend of WORKING_COPY_BACKENDS) {
           try {
-            const response = await fetch(backend + "/api/working-copy", {
-              cache: "no-store",
-              headers: { "Cache-Control": "no-cache" },
-            });
-            if (response.ok) {
-              const data = await response.json();
-              if (data?.workingCopy) {
-                copy = data.workingCopy;
-                localStorage.setItem(WORKING_COPY_STORAGE_KEY, JSON.stringify(copy));
-                break;
+            const response = await fetch(
+              backend + "/api/working-copy",
+              {
+                cache: "no-store",
+                headers: {
+                  "Cache-Control": "no-cache",
+                },
               }
+            );
+
+            if (!response.ok) {
+              continue;
+            }
+
+            const data = await response.json();
+            const safeCopy = sanitizeWorkingCopy(
+              data?.workingCopy
+            );
+
+            if (safeCopy) {
+              copy = safeCopy;
+
+              localStorage.setItem(
+                WORKING_COPY_STORAGE_KEY,
+                JSON.stringify(safeCopy)
+              );
+
+              break;
             }
           } catch {}
         }
       }
-      if (!copy?.runtimeState) return;
-      const state = copy.runtimeState;
-      if (Array.isArray(state.models)) models = state.models.filter((m) => typeof m === "string");
-      if (Number.isFinite(Number(state.targetAgreement))) targetAgreement = Math.max(1, Math.min(100, Number(state.targetAgreement)));
-            if (!copy?.runtimeState) return;
 
-      const state = copy.runtimeState;
-
-      if (Array.isArray(state.models)) {
-        models = state.models.filter((m) => typeof m === "string");
+      if (!copy) {
+        return;
       }
 
-      if (Number.isFinite(Number(state.targetAgreement))) {
-        targetAgreement = Math.max(
-          1,
-          Math.min(100, Number(state.targetAgreement))
-        );
-      }
+      const state = copy.runtimeState;
 
-      allowApplicationMode = Boolean(state.allowApplicationMode);
+      models = state.models;
+      targetAgreement = state.targetAgreement;
+      allowApplicationMode = state.allowApplicationMode;
+      pendingAttachments = state.pendingAttachments;
+      chatHistory = state.chatHistory;
+      lastGeneratedAppHtml = state.lastGeneratedAppHtml;
+      lastGeneratedAppTitle = state.lastGeneratedAppTitle;
 
       renderEngines();
       targetInput.value = String(targetAgreement);
