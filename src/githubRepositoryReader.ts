@@ -7,7 +7,7 @@
  *
  * Runs server-side. Never expose GITHUB_TOKEN to browser code.
  */
-
+import { createHash } from "node:crypto";
 export type RepositoryReadStatus =
   | "complete"
   | "partial"
@@ -31,6 +31,7 @@ export interface GitHubTreeEntry {
   type: "blob" | "tree" | "commit";
   sha: string;
   size?: number;
+  mode?: string;
 }
 
 export interface GitHubSourceFile {
@@ -82,14 +83,32 @@ const IGNORED_PATHS = [
 function createEmptyResult(): GitHubRepositoryReadResult {
   return {
     status: "failed",
+
     metadata: null,
+
     tree: [],
+
     files: [],
+
     failedPaths: [],
+
+    skippedPaths: [],
+
     errors: [],
+
     treeTruncated: false,
+
+    treeComplete: false,
+
+    inspectionComplete: false,
+
     downloadedFiles: 0,
+
+    eligibleFileCount: 0,
+
     totalTreeEntries: 0,
+
+    totalBlobEntries: 0,
   };
 }
 
@@ -151,11 +170,42 @@ export function parseGitHubRepositoryReference(
   return { owner, repo, ref };
 }
 
-function decodeGitHubBlob(content: string): string {
-  return Buffer.from(
-    content.replace(/\s/g, ""),
+function decodeGitHubBlob(
+  encodedContent: string,
+  expectedSha: string,
+  expectedSize: number,
+): string {
+  const bytes = Buffer.from(
+    encodedContent.replace(/\s/g, ""),
     "base64",
-  ).toString("utf8");
+  );
+
+  if (bytes.length !== expectedSize) {
+    throw new Error(
+      `Blob size mismatch. Expected ${expectedSize} bytes, received ${bytes.length}.`,
+    );
+  }
+
+  const actualSha = createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
+
+  if (actualSha !== expectedSha) {
+    throw new Error(
+      `Blob SHA verification failed. Expected ${expectedSha}, received ${actualSha}.`,
+    );
+  }
+
+  try {
+    return new TextDecoder("utf-8", {
+      fatal: true,
+    }).decode(bytes);
+  } catch {
+    throw new Error(
+      "File contents are not valid UTF-8 text.",
+    );
+  }
 }
 
 export async function readGitHubRepository(
@@ -234,12 +284,25 @@ export async function readGitHubRepository(
 
     // 2. Resolve branch, tag or commit to an immutable SHA.
     const commit = await githubGet<{
+  sha: string;
+  commit: {
+    tree: {
       sha: string;
-    }>(
-      `${base}/commits/${encodeURIComponent(requestedRef)}`,
-    );
+    };
+  };
+}>(
+  `${base}/commits/${encodeURIComponent(requestedRef)}`,
+);
 
-    const commitSha = commit.sha;
+const commitSha = commit.sha;
+
+const rootTreeSha = commit.commit?.tree?.sha;
+
+if (!commitSha || !rootTreeSha) {
+  throw new Error(
+    "GitHub did not return a valid commit SHA and root tree SHA.",
+  );
+}
 
     result.metadata = {
       owner: metadata.owner.login,
@@ -263,7 +326,7 @@ export async function readGitHubRepository(
       }>;
       truncated: boolean;
     }>(
-      `${base}/git/trees/${commitSha}?recursive=1`,
+      `${base}/git/trees/${rootTreeSha}?recursive=1`,
     );
 
     result.tree = recursiveTree.tree;
@@ -321,7 +384,7 @@ export async function readGitHubRepository(
       };
 
       try {
-        await walk(commitSha);
+        await walk(rootTreeSha);
 
         result.tree = recovered;
         result.treeTruncated = false;
@@ -337,19 +400,65 @@ export async function readGitHubRepository(
     }
 
     result.totalTreeEntries = result.tree.length;
+result.treeComplete = !result.treeTruncated;
 
+result.totalBlobEntries = result.tree.filter(
+  (entry) => entry.type === "blob",
+).length;
     // 5. Identify source files and documentation.
-    const sourceFiles = result.tree.filter((entry) => {
-      if (entry.type !== "blob") return false;
+    const sourceFiles: GitHubTreeEntry[] = [];
 
-      if (!TEXT_FILE_PATTERN.test(entry.path)) {
-        return false;
-      }
-
-      return !IGNORED_PATHS.some((prefix) =>
-        entry.path.startsWith(prefix),
-      );
+for (const entry of result.tree) {
+  // Submodules are not ordinary source files.
+  // Their contents must not be represented as retrieved.
+  if (entry.type === "commit") {
+    result.skippedPaths.push({
+      path: entry.path,
+      reason:
+        "Git submodule reference detected. Submodule repository contents were not retrieved.",
     });
+
+    continue;
+  }
+
+  if (entry.type !== "blob") {
+    continue;
+  }
+
+  const pathSegments = entry.path.split("/");
+
+  const ignoredDirectory = IGNORED_PATHS.some(
+    (prefix) => {
+      const ignoredName = prefix.replace(/\/$/, "");
+
+      return pathSegments.includes(ignoredName);
+    },
+  );
+
+  if (ignoredDirectory) {
+    result.skippedPaths.push({
+      path: entry.path,
+      reason:
+        "File is inside an explicitly excluded generated, dependency, build, or vendor directory.",
+    });
+
+    continue;
+  }
+
+  if (!TEXT_FILE_PATTERN.test(entry.path)) {
+    result.skippedPaths.push({
+      path: entry.path,
+      reason:
+        "File extension is not supported by the text/source retrieval filter. File contents were not inspected.",
+    });
+
+    continue;
+  }
+
+  sourceFiles.push(entry);
+}
+
+result.eligibleFileCount = sourceFiles.length;
 
     // 6. Retrieve blobs in controlled batches.
     let totalBytes = 0;
@@ -369,28 +478,53 @@ export async function readGitHubRepository(
         batch.map(async (entry) => {
           try {
             const blob = await githubGet<{
-              sha: string;
-              size: number;
-              encoding: string;
-              content: string;
-            }>(
-              `${base}/git/blobs/${entry.sha}`,
-            );
+  sha: string;
+  size: number;
+  encoding: string;
+  content: string;
+}>(
+  `${base}/git/blobs/${entry.sha}`,
+);
 
-            if (blob.size > maxFileBytes) {
-              throw new Error("File exceeds size limit.");
-            }
+if (!blob.sha || blob.sha !== entry.sha) {
+  throw new Error(
+    "GitHub returned a blob SHA that does not match the requested tree entry.",
+  );
+}
 
-            if (blob.encoding !== "base64") {
-              throw new Error("Unsupported blob encoding.");
-            }
+if (blob.size > maxFileBytes) {
+  throw new Error(
+    `File exceeds the configured ${maxFileBytes}-byte per-file limit. Actual size: ${blob.size} bytes.`,
+  );
+}
 
-            return {
-              path: entry.path,
-              sha: blob.sha,
-              size: blob.size,
-              content: decodeGitHubBlob(blob.content),
-            } satisfies GitHubSourceFile;
+if (
+  entry.size !== undefined &&
+  blob.size !== entry.size
+) {
+  throw new Error(
+    `Tree/blob size mismatch. Tree reports ${entry.size} bytes; blob reports ${blob.size} bytes.`,
+  );
+}
+
+if (blob.encoding !== "base64") {
+  throw new Error(
+    `Unsupported GitHub blob encoding: ${blob.encoding}.`,
+  );
+}
+
+const content = decodeGitHubBlob(
+  blob.content,
+  entry.sha,
+  blob.size,
+);
+
+return {
+  path: entry.path,
+  sha: blob.sha,
+  size: blob.size,
+  content,
+} satisfies GitHubSourceFile;
 
           } catch (error) {
             result.failedPaths.push(entry.path);
@@ -428,14 +562,62 @@ export async function readGitHubRepository(
 
     result.downloadedFiles = result.files.length;
 
-    // 7. Never report an incomplete tree as complete.
-    if (result.treeTruncated) {
-      result.status = "truncated";
-    } else if (result.failedPaths.length > 0) {
-      result.status = "partial";
-    } else {
-      result.status = "complete";
-    }
+result.treeComplete = !result.treeTruncated;
+
+const allBlobEntries = result.tree.filter(
+  (entry) => entry.type === "blob",
+);
+
+result.totalBlobEntries = allBlobEntries.length;
+
+const downloadedPaths = new Set(
+  result.files.map((file) => file.path),
+);
+
+const failedPathSet = new Set(
+  result.failedPaths,
+);
+
+const skippedPathSet = new Set(
+  result.skippedPaths.map((item) => item.path),
+);
+
+// Every blob must be accounted for.
+// A blob must either have been downloaded,
+// failed retrieval, or been explicitly skipped.
+const unaccountedPaths = allBlobEntries
+  .filter(
+    (entry) =>
+      !downloadedPaths.has(entry.path) &&
+      !failedPathSet.has(entry.path) &&
+      !skippedPathSet.has(entry.path),
+  )
+  .map((entry) => entry.path);
+
+for (const path of unaccountedPaths) {
+  result.failedPaths.push(path);
+
+  result.errors.push(
+    `${path}: file was present in the Git tree but was not accounted for by the retrieval process.`,
+  );
+}
+
+// Strict definition:
+// No missing, failed, skipped, or unverified files.
+result.inspectionComplete =
+  result.treeComplete &&
+  result.failedPaths.length === 0 &&
+  result.skippedPaths.length === 0 &&
+  result.files.length === result.totalBlobEntries;
+
+// Determine the actual retrieval status.
+if (!result.treeComplete) {
+  result.status = "truncated";
+} else if (!result.inspectionComplete) {
+  result.status = "partial";
+} else {
+  result.status = "complete";
+}
 
     return result;
 
