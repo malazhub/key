@@ -1327,7 +1327,7 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
     const loadFromGitHubTreeFallback = async () => {
       try {
         const treeRes = await fetch(
-          "https://api.github.com/repos/malazhub/key/git/trees/main?recursive=1"
+          
         );
         if (!treeRes.ok) return;
         const treeData = await treeRes.json();
@@ -1340,7 +1340,7 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
             let content = "";
             try {
               const rawRes = await fetch(
-                `https://raw.githubusercontent.com/malazhub/key/main/${b.path}`
+                
               );
               if (rawRes.ok) {
                 content = await rawRes.text();
@@ -1370,8 +1370,7 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
           setSelectedPath(loaded[0].path);
           setPushStatus({
             type: "success",
-            message: `Live Repository Structure Synchronized (${loaded.length} files on https://github.com/malazhub/key · Live: https://malazhub.github.io/key/)`,
-            repoUrl: "https://github.com/malazhub/key",
+           
           });
         }
       } catch {
@@ -1510,7 +1509,6 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950/80 overflow-y-auto p-3 space-y-1.5 shrink-0">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
-              Folder Structure (malazhub/key)
             </div>
             {loading ? (
               <div className="p-4 text-xs text-slate-400">
