@@ -25,16 +25,6 @@ interface MarkdownRendererProps {
 export function enhanceInteractiveHtml(rawHtml: string): string {
   if (!rawHtml) return "";
 
-  // Automatically upgrade any legacy dummy Key1 status placeholder HTML into the real Zero-Divergence Key1 Launcher & Workspace
-  const isLegacyDummyKey1 =
-    /running in an isolated state|Key1 Instance Initialized Successfully|Current state:\s*Sandbox Mode/i.test(
-      rawHtml
-    ) && !rawHtml.includes("k1ChatStream");
-
-  const effectiveRawHtml = isLegacyDummyKey1
-    ? buildClientKey1ZeroDivergenceHtml()
-    : rawHtml;
-
   const interactiveHelperScript = `<script>
 (function() {
   function showLiveFeedback(msg) {
@@ -96,7 +86,7 @@ export function enhanceInteractiveHtml(rawHtml: string): string {
 })();
 </script>`;
 
-  let fixed = effectiveRawHtml
+  let fixed = rawHtml
     .replace(
       /onclick=['"]alert\(\\?['"]([^'"]*?)\\?['"]\)['"]/gi,
       `data-key-module="$1"`
