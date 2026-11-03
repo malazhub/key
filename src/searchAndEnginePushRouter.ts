@@ -336,7 +336,9 @@ const repositoryReference =
     effectiveQuestion,
     request.repositoryReference,
   );
-
+let repositoryResultForAudit:
+  | GitHubRepositoryReadResult
+  | null = null;
 const repositoryAttachments: IncomingAttachment[] = [];
 
 if (repositoryReference) {
@@ -357,7 +359,7 @@ if (repositoryReference) {
 
   const repositoryResult: GitHubRepositoryReadResult =
     await readGitHubRepository(repositoryReference);
-
+repositoryResultForAudit = repositoryResult;
   const metadata = repositoryResult.metadata;
 
   // Preserve the repository tree as a machine-readable manifest.
@@ -378,22 +380,42 @@ if (repositoryReference) {
     `Requested reference: ${metadata?.requestedRef || "Unknown"}`,
     `Commit SHA: ${metadata?.commitSha || "Unknown"}`,
     `Repository URL: ${metadata?.htmlUrl || repositoryReference}`,
-    `Tree complete: ${!repositoryResult.treeTruncated}`,
-    `Total tree entries: ${repositoryResult.totalTreeEntries}`,
-    `Downloaded files: ${repositoryResult.downloadedFiles}`,
-    `Failed files: ${repositoryResult.failedPaths.length}`,
+    `Tree complete: ${repositoryResult.treeComplete}`,
+`Inspection complete: ${repositoryResult.inspectionComplete}`,
+`Retrieval status: ${repositoryResult.status}`,
+`Total tree entries: ${repositoryResult.totalTreeEntries}`,
+`Total blob entries: ${repositoryResult.totalBlobEntries}`,
+`Eligible source files: ${repositoryResult.eligibleFileCount}`,
+`Downloaded and verified files: ${repositoryResult.downloadedFiles}`,
+`Failed files: ${repositoryResult.failedPaths.length}`,
+`Skipped files: ${repositoryResult.skippedPaths.length}`,
     "",
     "## Complete retrieved file tree",
     "",
     treeManifest || "No tree entries retrieved.",
     "",
     "## Failed paths",
-    "",
-    repositoryResult.failedPaths.join("\n") || "None",
-    "",
-    "## Retrieval errors",
-    "",
-    repositoryResult.errors.join("\n") || "None",
+"",
+repositoryResult.failedPaths.join("\n") || "None",
+"",
+"## Skipped paths",
+"",
+repositoryResult.skippedPaths
+  .map(
+    (item) =>
+      `${item.path}: ${item.reason}`,
+  )
+  .join("\n") || "None",
+"",
+"## Retrieval errors",
+"",
+repositoryResult.errors.join("\n") || "None",
+"",
+"## Mandatory inspection disclosure",
+"",
+repositoryResult.inspectionComplete
+  ? "All repository tree entries and file contents were retrieved and verified."
+  : "INSPECTION INCOMPLETE. Do not claim that the repository was fully inspected. Explicitly disclose all failed and skipped paths.",
     "",
     "IMPORTANT: Do not claim that files were inspected unless their contents were successfully retrieved.",
   ].join("\n");
@@ -477,7 +499,96 @@ const loopResult = await runSmartMemoryConsensusLoop(
   );
 
   const finalAnswer = String(loopResult.finalAnswer || "").trim();
+if (
+  repositoryResultForAudit &&
+  !repositoryResultForAudit.inspectionComplete
+) {
+  const repositoryAudit = repositoryResultForAudit;
 
+  const failedReport =
+    repositoryAudit.failedPaths.length > 0
+      ? repositoryAudit.failedPaths
+          .map((path) => `- ${path}`)
+          .join("\n")
+      : "None";
+
+  const skippedReport =
+    repositoryAudit.skippedPaths.length > 0
+      ? repositoryAudit.skippedPaths
+          .map(
+            (item) =>
+              `- ${item.path}: ${item.reason}`,
+          )
+          .join("\n")
+      : "None";
+
+  const errorReport =
+    repositoryAudit.errors.length > 0
+      ? repositoryAudit.errors
+          .map((error) => `- ${error}`)
+          .join("\n")
+      : "None";
+
+  const authoritativeDisclosure = [
+    "## Repository inspection status: INCOMPLETE",
+    "",
+    "The repository was not fully inspected. Do not interpret this response as confirmation that every repository file was retrieved or examined.",
+    "",
+    `Repository: ${repositoryAudit.metadata?.fullName || "Unknown"}`,
+    `Commit: ${repositoryAudit.metadata?.commitSha || "Unknown"}`,
+    `Tree complete: ${repositoryAudit.treeComplete}`,
+    `Total tree entries: ${repositoryAudit.totalTreeEntries}`,
+    `Total file entries: ${repositoryAudit.totalBlobEntries}`,
+    `Files downloaded and verified: ${repositoryAudit.downloadedFiles}`,
+    "",
+    "### Files that could not be retrieved",
+    "",
+    failedReport,
+    "",
+    "### Files deliberately not retrieved",
+    "",
+    skippedReport,
+    "",
+    "### Retrieval errors",
+    "",
+    errorReport,
+    "",
+    "The missing or skipped files have not been inspected. Conclusions that depend on those files remain unverified.",
+  ].join("\n");
+
+  response.finalAnswer = [
+    finalAnswer,
+    authoritativeDisclosure,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  response.answer = response.finalAnswer;
+
+  response.repositoryInspection = {
+    status: repositoryAudit.status,
+    treeComplete: repositoryAudit.treeComplete,
+    inspectionComplete: false,
+    totalTreeEntries: repositoryAudit.totalTreeEntries,
+    totalBlobEntries: repositoryAudit.totalBlobEntries,
+    downloadedFiles: repositoryAudit.downloadedFiles,
+    failedPaths: repositoryAudit.failedPaths,
+    skippedPaths: repositoryAudit.skippedPaths,
+    errors: repositoryAudit.errors,
+  };
+} else if (repositoryResultForAudit) {
+  response.repositoryInspection = {
+    status: repositoryResultForAudit.status,
+    treeComplete: true,
+    inspectionComplete: true,
+    totalTreeEntries: repositoryResultForAudit.totalTreeEntries,
+    totalBlobEntries: repositoryResultForAudit.totalBlobEntries,
+    downloadedFiles: repositoryResultForAudit.downloadedFiles,
+    failedPaths: [],
+    skippedPaths: [],
+    errors: [],
+  };
+}
    // Step 3: Handle a missing final response.
   if (!finalAnswer) {
     recordFlowStep(
