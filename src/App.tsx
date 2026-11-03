@@ -1739,9 +1739,7 @@ export default function App() {
       } catch {
         // ignore
       }
-      return Boolean(
-        (mirroredKeyStateJson as any)?.uiState?.isAdminAuthenticated
-      );
+            return false;
     }
   );
   const [showAdminLoginModal, setShowAdminLoginModal] =
@@ -2369,23 +2367,8 @@ export default function App() {
     }, 700);
     return () => clearInterval(interval);
   }, [processing, target]);
-
-  
-            ),
-            deviceCode: String(devData.device_code),
-          };
-          prewarmedDeviceRef.current = authObj;
-          if (!devData.hasSavedGitHubToken && !discoverSavedGitHubTokenInBrowser()) {
-            setGithubDeviceAuth(authObj);
-          }
-        }
-      }
-    } catch {
-      // ignore prewarm error
-    }
-    }, [adminEmailInput, adminPassInput]);
-
-    // Generate, test, stage, and visually preview a Key self-upgrade.
+          
+   // Generate, test, stage, and visually preview a Key self-upgrade.
   // This NEVER deploys to GitHub.
     const handleGenerateSelfUpgrade = async () => {
         if (!isAdminAuthenticated || !adminPassInput.trim()) {
@@ -3923,8 +3906,7 @@ const shouldSendConversationHistory =
         }
       }
 
-      if (data.autoDeployResult && data.autoDeployResult.success) {
-        setGithubDeviceAuth(null);
+            if (data.autoDeployResult && data.autoDeployResult.success) {
         setAdminDeployResult({
           repoUrl: data.autoDeployResult.repoUrl || "https://github.com/malazhub/key",
           actionsUrl: data.autoDeployResult.actionsUrl || "https://github.com/malazhub/key/actions",
