@@ -13,6 +13,10 @@ import {
   formatFlowTrace,
 } from "./flowTracer";
 import { assertDefendedQuery } from "./security/queryGuard";
+import {
+  readGitHubRepository,
+  type GitHubRepositoryReadResult,
+} from "./githubRepositoryReader";
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   CANDIDATE_MODELS,
@@ -43,8 +47,10 @@ export interface SearchAndEnginePushRequest {
   adminUpgradeMode?: boolean;
   nextVersionTag?: string;
   attachments?: IncomingAttachment[];
-}
 
+  // Optional explicit repository reference.
+  repositoryReference?: string;
+}
 export interface SearchAndEnginePushResult {
   queryDispatchedToEngines: string;
   strictQueryPriority: boolean;
@@ -67,7 +73,20 @@ export interface SearchAndEnginePushResult {
     agreementScore: number;
   }>;
 }
+function detectGitHubRepositoryReference(
+  question: string,
+  explicitReference?: string,
+): string | null {
+  if (explicitReference?.trim()) {
+    return explicitReference.trim();
+  }
 
+  const match = question.match(
+    /https?:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(?:\.git)?(?:\/tree\/[^/?#\s]+)?/i,
+  );
+
+  return match?.[0] || null;
+}
 /**
  * STEP 1: 5-Channel Parallel Memory Search + Context Preparation.
  *
@@ -308,6 +327,127 @@ recordFlowStep(
     )
   );
   
+// ============================================================
+// STEP 3A: UNIVERSAL GITHUB REPOSITORY RETRIEVAL
+// ============================================================
+
+const repositoryReference =
+  detectGitHubRepositoryReference(
+    effectiveQuestion,
+    request.repositoryReference,
+  );
+
+const repositoryAttachments: IncomingAttachment[] = [];
+
+if (repositoryReference) {
+  recordFlowStep(
+    flowTraceId,
+    "3A. GitHub repository retrieval",
+    "running",
+    {
+      sourceFile: "src/githubRepositoryReader.ts",
+      sourceFunction: "readGitHubRepository",
+      incoming: {
+        repositoryReference,
+      },
+      decision:
+        "A GitHub repository reference was detected. Retrieving repository evidence before consensus.",
+    },
+  );
+
+  const repositoryResult: GitHubRepositoryReadResult =
+    await readGitHubRepository(repositoryReference);
+
+  const metadata = repositoryResult.metadata;
+
+  // Preserve the repository tree as a machine-readable manifest.
+  const treeManifest = repositoryResult.tree
+    .map((entry) =>
+      `${entry.type}\t${entry.path}\t${entry.sha}`,
+    )
+    .join("\n");
+
+  const repositoryManifest = [
+    "# GitHub Repository Evidence",
+    "",
+    `Status: ${repositoryResult.status}`,
+    `Repository: ${metadata?.fullName || repositoryReference}`,
+    `Description: ${metadata?.description || "Not available"}`,
+    `Private: ${metadata?.private ?? "Unknown"}`,
+    `Default branch: ${metadata?.defaultBranch || "Unknown"}`,
+    `Requested reference: ${metadata?.requestedRef || "Unknown"}`,
+    `Commit SHA: ${metadata?.commitSha || "Unknown"}`,
+    `Repository URL: ${metadata?.htmlUrl || repositoryReference}`,
+    `Tree complete: ${!repositoryResult.treeTruncated}`,
+    `Total tree entries: ${repositoryResult.totalTreeEntries}`,
+    `Downloaded files: ${repositoryResult.downloadedFiles}`,
+    `Failed files: ${repositoryResult.failedPaths.length}`,
+    "",
+    "## Complete retrieved file tree",
+    "",
+    treeManifest || "No tree entries retrieved.",
+    "",
+    "## Failed paths",
+    "",
+    repositoryResult.failedPaths.join("\n") || "None",
+    "",
+    "## Retrieval errors",
+    "",
+    repositoryResult.errors.join("\n") || "None",
+    "",
+    "IMPORTANT: Do not claim that files were inspected unless their contents were successfully retrieved.",
+  ].join("\n");
+
+  repositoryAttachments.push({
+    name: "GITHUB_REPOSITORY_MANIFEST.md",
+    mimeType: "text/markdown",
+    kind: "file",
+    textContent: repositoryManifest,
+    sizeBytes: Buffer.byteLength(repositoryManifest, "utf8"),
+  });
+
+  // Send the actual retrieved source contents to the engines.
+  for (const file of repositoryResult.files) {
+    repositoryAttachments.push({
+      name: file.path,
+      mimeType: "text/plain",
+      kind: "file",
+      textContent: file.content,
+      sizeBytes: file.size,
+    });
+  }
+
+  recordFlowStep(
+    flowTraceId,
+    "3A. GitHub repository retrieval",
+    repositoryResult.status === "complete" ? "ok" : "error",
+    {
+      sourceFile: "src/githubRepositoryReader.ts",
+      sourceFunction: "readGitHubRepository",
+      outgoing: {
+        repository: metadata?.fullName || null,
+        status: repositoryResult.status,
+        treeEntries: repositoryResult.totalTreeEntries,
+        downloadedFiles: repositoryResult.downloadedFiles,
+        failedFiles: repositoryResult.failedPaths.length,
+        treeTruncated: repositoryResult.treeTruncated,
+      },
+      decision:
+        repositoryResult.status === "complete"
+          ? "Repository metadata, tree and selected source files were retrieved."
+          : "Repository retrieval was incomplete. The engines must be informed of the retrieval limitations.",
+    },
+  );
+}
+
+// Keep existing user attachments and append repository evidence.
+// The original consensus engine remains responsible for all rounds.
+const consensusAttachments: IncomingAttachment[] = [
+  ...(request.attachments || []),
+  ...repositoryAttachments,
+];
+
+  
     
     // Local consensus execution path.
 // Pass the same trace ID into the consensus engine so its internal
@@ -321,7 +461,7 @@ const loopResult = await runSmartMemoryConsensusLoop(
     buildAppMode: Boolean(request.buildAppMode),
     adminUpgradeMode: Boolean(request.adminUpgradeMode),
     nextVersionTag: request.nextVersionTag || "key",
-    attachments: request.attachments || [],
+    attachments: consensusAttachments,
     strictQueryPriority: request.strictQueryPriority,
     flowTraceId,
   }
