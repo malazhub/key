@@ -236,25 +236,7 @@ function safeWriteClipboardText(text: string): boolean {
 }
 
 
-creturn {
-            title:
-              "Key — Direct GitHub Force-Deploy & Live AI Key Portal (https://github.com/malazhub/key → https://malazhub.github.io/key/)",
-            html: buildClientKey1ZeroDivergenceHtml(),
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return {
-          title: String(parsed.title || "Latest Cumulative Application Build"),
-          html: parsed.html,
-          updatedAt: String(parsed.updatedAt || new Date().toISOString()),
-        };
-      }
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return null;
-}
+
 
 function saveCumulativeBuildState(title: string, html: string): void {
   if (!html || html.trim().length <= 50) return;
