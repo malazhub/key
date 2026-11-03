@@ -283,27 +283,31 @@ function buildStandaloneGitHubPagesHtml(): string {
         workingCopyId:
           (() => {
             try {
+                 function captureWorkingCopy() {
+      const runtimeState = {
+        models: [...models],
+        targetAgreement,
+        allowApplicationMode,
+      };
+
+      return {
+        workingCopyId:
+          (() => {
+            try {
               const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
               return existing?.workingCopyId || null;
-            } catch { return null; }
+            } catch {
+              return null;
+            }
           })(),
         source: "Key Browser",
-        browserRuntimeSnapshot: {
-          href: window.location.href,
-          pathname: window.location.pathname,
-          capturedInputValues: Array.from(document.querySelectorAll("input, textarea, select")).map((element) => ({
-            tag: element.tagName,
-            id: (element as HTMLInputElement).id || null,
-            value: (element as HTMLInputElement).value || "",
-          })),
-        },
         runtimeState,
       };
     }
 
     async function persistWorkingCopy() {
       const copy = captureWorkingCopy();
-      if (!copy.runtimeState.lastGeneratedAppHtml && copy.runtimeState.chatHistory.length === 0) return;
+            if (         !copy.runtimeState ||         !Array.isArray(copy.runtimeState.models)       ) {         return;       }
       try {
         let stored = copy;
         const existing = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
@@ -334,7 +338,7 @@ function buildStandaloneGitHubPagesHtml(): string {
       try {
         copy = JSON.parse(localStorage.getItem(WORKING_COPY_STORAGE_KEY) || "null");
       } catch {}
-      if (!copy?.runtimeState?.lastGeneratedAppHtml) {
+      if (!copy?.runtimeState) {
         for (const backend of WORKING_COPY_BACKENDS) {
           try {
             const response = await fetch(backend + "/api/working-copy", {
@@ -356,27 +360,26 @@ function buildStandaloneGitHubPagesHtml(): string {
       const state = copy.runtimeState;
       if (Array.isArray(state.models)) models = state.models.filter((m) => typeof m === "string");
       if (Number.isFinite(Number(state.targetAgreement))) targetAgreement = Math.max(1, Math.min(100, Number(state.targetAgreement)));
+            if (!copy?.runtimeState) return;
+
+      const state = copy.runtimeState;
+
+      if (Array.isArray(state.models)) {
+        models = state.models.filter((m) => typeof m === "string");
+      }
+
+      if (Number.isFinite(Number(state.targetAgreement))) {
+        targetAgreement = Math.max(
+          1,
+          Math.min(100, Number(state.targetAgreement))
+        );
+      }
+
       allowApplicationMode = Boolean(state.allowApplicationMode);
-      isAdminAuthenticated = Boolean(state.isAdminAuthenticated);
-      pendingAttachments = Array.isArray(state.pendingAttachments) ? state.pendingAttachments : [];
-      chatHistory = Array.isArray(state.chatHistory) ? state.chatHistory : [];
-      lastGeneratedAppHtml = typeof state.lastGeneratedAppHtml === "string" ? state.lastGeneratedAppHtml : "";
-      lastGeneratedAppTitle = typeof state.lastGeneratedAppTitle === "string" ? state.lastGeneratedAppTitle : lastGeneratedAppTitle;
+
       renderEngines();
       targetInput.value = String(targetAgreement);
       renderPresets();
-      renderAttachments();
-      if (lastGeneratedAppHtml) {
-        const container = document.getElementById("messagesContainer");
-        if (container && !container.querySelector(".working-copy-recovery")) {
-          const card = document.createElement("div");
-          card.className = "working-copy-recovery w-full rounded-2xl bg-slate-900/70 border border-amber-500/50 p-5 space-y-3";
-          card.innerHTML = '<div class="flex items-center justify-between gap-3"><div><div class="text-xs font-bold text-amber-300">WORKING COPY RESTORED</div><div class="text-[11px] text-slate-400">This is the last modified copy saved before refresh. It is not deployed until admin approval.</div></div><span class="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-mono">SAFE AFTER REFRESH</span></div><iframe class="working-copy-frame w-full h-[32rem] rounded-xl border border-slate-800 bg-slate-950" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>';
-          const frame = card.querySelector(".working-copy-frame");
-          if (frame) frame.srcdoc = lastGeneratedAppHtml;
-          container.appendChild(card);
-        }
-      }
     }
 
     const enginesGrid = document.getElementById("enginesGrid");
@@ -1055,9 +1058,7 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
-  // Direct GitHub API Push State (Defaults to malazhub/key with zero manual inputs required)
-  const [githubToken, setGithubToken] = useState<string>("");
-  const [repoOwner, setRepoOwner] = useState<string>("malazhub");
+    const [repoOwner, setRepoOwner] = useState<string>("malazhub");
   const [repoName, setRepoName] = useState<string>("key");
 
   const [pushing, setPushing] = useState<boolean>(false);
@@ -1078,49 +1079,10 @@ export const GitHubExportModal: React.FC<GitHubExportModalProps> = ({
       "https://ais-pre-f2uayjdkh47dv4xbjqlp7-790065884957.europe-west2.run.app",
     ];
 
-    const readStorage = (storage: Storage) => {
-      const result: Record<string, string> = {};
-      try {
-        for (let i = 0; i < storage.length; i += 1) {
-          const key = storage.key(i);
-          if (key) {
-            const value = storage.getItem(key);
-            if (value !== null) result[key] = value;
-          }
-        }
-      } catch {
-        // Ignore inaccessible browser storage.
-      }
-      return result;
-    };
+    
 
     try {
-      const runtimeWindow = window as typeof window & {
-        __KEY_RUNTIME_STATE__?: unknown;
-      };
-
-      const mirroredState: Record<string, unknown> = {
-        deploymentRequestedAt: new Date().toISOString(),
-        deploymentSource: "Key Browser Administrative Deploy",
-        deploymentTarget: "malazhub/key",
-        deploymentBranch: "main",
-        administrativeDeploy: true,
-        volatileRuntimeCapture: true,
-        browserRuntimeSnapshot: {
-          href: window.location.href,
-          pathname: window.location.pathname,
-          localStorage: readStorage(window.localStorage),
-          sessionStorage: readStorage(window.sessionStorage),
-          runtimeState: runtimeWindow.__KEY_RUNTIME_STATE__ ?? null,
-          capturedInputValues: Array.from(
-            document.querySelectorAll("input, textarea, select")
-          ).map((element) => ({
-            tag: element.tagName,
-            id: (element as HTMLInputElement).id || null,
-            value: (element as HTMLInputElement).value || "",
-          })),
-        },
-      };
+     
 
       let lastError = "Could not reach the Key deployment backend.";
 
@@ -1205,7 +1167,6 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
         "Cache-Control": "no-cache",
     },
     body: JSON.stringify({
-        githubToken: githubToken || undefined,
         repoOwner: "malazhub",
         repoName: "key",
         branch: "main",
@@ -1215,18 +1176,13 @@ const deployRes = await fetch(`${backend}/api/admin/deploy`, {
 
     const data: any = await deployRes.json().catch(() => null);
 
-    if (data?.needsGitHubAuth) {
-    const verificationUri =
-        data.verification_uri || "https://github.com/login/device";
-
-    setPushStatus({
+        if (data?.needsGitHubAuth) {
+      setPushStatus({
         type: "error",
-        message: data.user_code
-        ? `GitHub authorization required. Open ${verificationUri}, enter code ${data.user_code}, then click Deploy again.`
-        : data.error || "GitHub authorization required before deployment.",
-        repoUrl: verificationUri,
-    });
-    return;
+        message:
+          "Deployment blocked: the backend requires GitHub authorization, but browser GitHub OAuth is disabled. Configure deployment authorization on the backend instead.",
+      });
+      return;
     }
 
     if (data?.success === true && data?.verified === true) {
