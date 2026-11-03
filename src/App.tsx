@@ -235,66 +235,8 @@ function safeWriteClipboardText(text: string): boolean {
   return copied;
 }
 
-function isValidBrowserGitHubToken(val: string): boolean {
-  const clean = String(val || "").trim();
-  if (!clean) return false;
-  if (/x{4,}/i.test(clean) || clean.includes("placeholder")) return false;
-  return /^(gh[pousr]_[A-Za-z0-9_]{15,255}|github_pat_[A-Za-z0-9_]{15,255}|[a-f0-9]{40})$/i.test(
-    clean
-  );
-}
 
-function discoverSavedGitHubTokenInBrowser(): string {
-  try {
-    const knownKeys = [
-      "malaz_github_oauth_token_v1",
-      "malaz_github_pat",
-      "github_token",
-      "gh_token",
-      "githubToken",
-      "GITHUB_TOKEN",
-    ];
-    for (const k of knownKeys) {
-      const val = (localStorage.getItem(k) || "").trim();
-      if (!val) continue;
-      if (!isValidBrowserGitHubToken(val)) {
-        try {
-          localStorage.removeItem(k);
-        } catch {
-          // ignore
-        }
-        continue;
-      }
-      return val;
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return "";
-}
-
-function readCumulativeBuildState(): {
-  title: string;
-  html: string;
-  updatedAt: string;
-} | null {
-  try {
-    // First ensure any token embedded in old storage is rescued before upgrading HTML
-    discoverSavedGitHubTokenInBrowser();
-    const raw = localStorage.getItem(CUMULATIVE_BUILD_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (
-        parsed &&
-        typeof parsed.html === "string" &&
-        parsed.html.trim().length > 50
-      ) {
-        if (
-          /Key Multi-AI Agent Architecture Active|malazhub\/key|Direct GitHub|setup\.sh/i.test(
-            `${parsed.title || ""} ${parsed.html}`
-          )
-        ) {
-          return {
+creturn {
             title:
               "Key — Direct GitHub Force-Deploy & Live AI Key Portal (https://github.com/malazhub/key → https://malazhub.github.io/key/)",
             html: buildClientKey1ZeroDivergenceHtml(),
@@ -1817,22 +1759,7 @@ export default function App() {
     targetVersionTag: string;
   } | null>(null);
   const [adminUpgrading, setAdminUpgrading] = useState<boolean>(false);
-  const [adminDeploying, setAdminDeploying] = useState<boolean>(false);
-  const [githubDeviceAuth, setGithubDeviceAuth] = useState<{
-    userCode: string;
-    verificationUri: string;
-    deviceCode: string;
-    stagedSessionId?: string;
-  } | null>(null);
-  const prewarmedDeviceRef = useRef<{
-    userCode: string;
-    verificationUri: string;
-    deviceCode: string;
-  } | null>(null);
-  const [manualGithubTokenInput, setManualGithubTokenInput] = useState<string>(
-    () => discoverSavedGitHubTokenInBrowser()
-  );
-  const [copiedDeviceCode, setCopiedDeviceCode] = useState<boolean>(false);
+    const [adminDeploying, setAdminDeploying] = useState<boolean>(false);
   const [adminDeployResult, setAdminDeployResult] = useState<{
     repoUrl: string;
     actionsUrl?: string;
@@ -2443,28 +2370,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [processing, target]);
 
-  // Pre-warm GitHub Device Code in the background so clicking Deploy opens the GitHub screen and shows the code immediately with zero delay
-  const prewarmGitHubDeviceSession = useCallback(async () => {
-    try {
-      const devRes = await fetchFromKeyBackend(
-        "/api/admin/github-device-start",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-admin-email": adminEmailInput.trim().toLowerCase(),
-            "x-admin-password": adminPassInput,
-          },
-          body: JSON.stringify({ forceNew: false }),
-        }
-      );
-      if (devRes.ok) {
-        const devData = await devRes.json();
-        if (devData.user_code && devData.device_code) {
-          const authObj = {
-            userCode: String(devData.user_code),
-            verificationUri: String(
-              devData.verification_uri || "https://github.com/login/device"
+  
             ),
             deviceCode: String(devData.device_code),
           };
@@ -2719,7 +2625,31 @@ setSelfUpgradeStatus(
 // A generated upgrade remains staged and previewable.
 // Activation/deployment is handled only by the separate
 // GitHub deploy/commit workflow.
+  // Remove legacy GitHub credentials saved by earlier browser versions.
+  useEffect(() => {
+    const legacyGitHubTokenKeys = [
+      "malaz_github_oauth_token_v1",
+      "malaz_github_pat",
+      "github_token",
+      "gh_token",
+      "githubToken",
+      "GITHUB_TOKEN",
+    ];
 
+    for (const key of legacyGitHubTokenKeys) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Ignore unavailable local storage.
+      }
+
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        // Ignore unavailable session storage.
+      }
+    }
+  }, []);
   // Restore browser-persisted staged upgrade whenever the app starts.
   useEffect(() => {
     handleRestoreStagedSelfUpgrade();
@@ -2749,7 +2679,6 @@ setSelfUpgradeStatus(
     setShowAdminLoginModal(false);
     setCurrentVersionTag("key");
     setNextVersionTag("key");
-    prewarmGitHubDeviceSession();
 
     try {
       await fetchFromKeyBackend("/api/admin/login", {
@@ -2812,115 +2741,9 @@ setSelfUpgradeStatus(
     }
   };
 
-  // Automatically poll server-side GitHub Device OAuth status every 5 seconds when a device code is active
-  // Note: Even if the user clicks Logout, server.ts continues polling GitHub in the background and executes the force-deploy automatically!
-  useEffect(() => {
-    if (!githubDeviceAuth?.deviceCode) return;
-    const timer = setInterval(async () => {
-      try {
-        const res =
-        await fetchFromKeyBackend(
-          "/api/admin/github-device-poll",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-admin-email": adminEmailInput.trim().toLowerCase(),
-              "x-admin-password": adminPassInput,
-            },
-            body: JSON.stringify({
-              deviceCode: githubDeviceAuth.deviceCode,
-              stagedSessionId: githubDeviceAuth.stagedSessionId,
-            }),
-          }
-        );
+ 
 
-      if (!res.ok) return;
-        const data = await res.json();
-
-        // GitHub authorization is not deployment approval.
-        if (
-          data.authorized &&
-          data.stagedAwaitingExplicitDeploy &&
-          githubDeviceAuth.stagedSessionId
-        ) {
-          if (
-            data.accessToken &&
-            isValidBrowserGitHubToken(String(data.accessToken))
-          ) {
-            try {
-              localStorage.setItem(
-                "malaz_github_oauth_token_v1",
-                String(data.accessToken)
-              );
-              localStorage.setItem(
-                "malaz_github_pat",
-                String(data.accessToken)
-              );
-              setManualGithubTokenInput(String(data.accessToken));
-            } catch {
-              // Ignore browser storage errors.
-            }
-          }
-
-          setGithubDeviceAuth(null);
-          setAdminDeploying(false);
-          setSelfUpgradeStatus(
-            "GitHub authorization is ready. Your candidate remains staged and has not been deployed. Review it, then click Deploy to publish this candidate."
-          );
-          return;
-        }
-
-        if (data.authorized && data.success) {
-          if (
-            data.accessToken &&
-            isValidBrowserGitHubToken(String(data.accessToken))
-          ) {
-            try {
-              localStorage.setItem(
-                "malaz_github_oauth_token_v1",
-                String(data.accessToken)
-              );
-              localStorage.setItem(
-                "malaz_github_pat",
-                String(data.accessToken)
-              );
-              setManualGithubTokenInput(String(data.accessToken));
-            } catch {
-              // ignore storage error
-            }
-          }
-          setGithubDeviceAuth(null);
-          setAdminDeploying(false);
-          const pushedCount = Number(data.pushedCount) || 21;
-          const repoUrl = data.repoUrl || "https://github.com/malazhub/key";
-          const actionsUrl =
-            data.actionsUrl || "https://github.com/malazhub/key/actions";
-          const liveDeployUrl =
-            data.liveDeployUrl || "https://malazhub.github.io/key/";
-          const commitSha = data.commitSha || "main";
-          const deployedAt = data.deployedAt || new Date().toISOString();
-          const pushedFiles = Array.isArray(data.pushedFiles)
-            ? data.pushedFiles
-            : [];
-          setAdminDeployResult({
-            repoUrl,
-            actionsUrl,
-            liveDeployUrl,
-            pushedCount,
-            commitSha,
-            deployedAt,
-            pushedFiles,
-          });
-        }
-      } catch {
-        // continue polling
-      }
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [githubDeviceAuth, adminEmailInput, adminPassInput]);
-
-  // Build exact live snapshot of the current Key workspace for 1:1 mirroring to GitHub (https://github.com/malazhub/key & https://malazhub.github.io/key/)
+   // Build a restricted UI-settings snapshot for mirrored-state synchronization.
   const buildLiveMirroredStateSnapshot = useCallback(() => {
     return {
       uiState: {
@@ -2939,18 +2762,9 @@ setSelfUpgradeStatus(
         showPreviewButton,
         showDownloadButton,
         customCssPatch,
-        isAdminAuthenticated,
       },
       models,
       target,
-      threads: threads.map((t) => ({
-        ...t,
-        messages: (t.messages || []).map((m) => ({
-          ...m,
-          attachments: undefined,
-        })),
-      })),
-      adminDeployResult,
     };
   }, [
     resetButtonPosition,
@@ -2968,11 +2782,8 @@ setSelfUpgradeStatus(
     showPreviewButton,
     showDownloadButton,
     customCssPatch,
-    isAdminAuthenticated,
     models,
     target,
-    threads,
-    adminDeployResult,
   ]);
 
   const applyIncomingMirroredSnapshot = useCallback((snap: any) => {
@@ -3119,7 +2930,7 @@ setSelfUpgradeStatus(
 
   // 1-Click Automated Full Structure Force-Deploy to https://github.com/malazhub/key
   const handleOneClickAdminDeploy = useCallback(
-    async (overrideToken?: string) => {
+    async () => {
       if (adminDeploying) return;
 
       // A staged candidate must be explicitly reviewed and approved first.
@@ -3139,27 +2950,9 @@ setSelfUpgradeStatus(
         return;
       }
 
-      setAdminDeploying(true);
-      setCopiedDeviceCode(false);
-
-      const candidateToken =
-        overrideToken !== undefined
-          ? overrideToken.trim()
-          : manualGithubTokenInput.trim() ||
-            discoverSavedGitHubTokenInBrowser();
-      const savedToken = isValidBrowserGitHubToken(candidateToken)
-        ? candidateToken
-        : "";
+            setAdminDeploying(true);
 
       try {
-        if (savedToken) {
-          try {
-            localStorage.setItem("malaz_github_oauth_token_v1", savedToken);
-            localStorage.setItem("malaz_github_pat", savedToken);
-          } catch {
-            // ignore
-          }
-        }
 
         const stagedSessionId =
   stagedSelfUpgrade?.sessionId || "";
@@ -3174,9 +2967,8 @@ if (stagedSessionId) {
       "x-admin-email": adminEmailInput.trim().toLowerCase(),
       "x-admin-password": adminPassInput,
     },
-    body: JSON.stringify({
+        body: JSON.stringify({
       stagedSessionId,
-      githubToken: savedToken || undefined,
       repoOwner: "malazhub",
       repoName: "key",
       branch: "main",
@@ -3193,9 +2985,7 @@ if (stagedSessionId) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        githubToken:
-          savedToken || undefined,
+            body: JSON.stringify({
         repoOwner: "malazhub",
         repoName: "key",
         branch: "main",
@@ -3208,71 +2998,14 @@ if (stagedSessionId) {
 
 const data = await res.json();
 
-        if (data.needsGitHubAuth) {
-          if (savedToken) {
-            try {
-              localStorage.removeItem("malaz_github_oauth_token_v1");
-              localStorage.removeItem("malaz_github_pat");
-              setManualGithubTokenInput("");
-            } catch {
-              // ignore
-            }
-          }
-
-          if (data.user_code && data.device_code) {
-            const verifyUrl =
-              data.verification_uri || "https://github.com/login/device";
-            const authObj = {
-              userCode: String(data.user_code),
-              verificationUri: String(verifyUrl),
-              deviceCode: String(data.device_code),
-              stagedSessionId:
-                stagedSessionId || undefined,
-            };
-            prewarmedDeviceRef.current = authObj;
-            setGithubDeviceAuth(authObj);
-            if (safeWriteClipboardText(authObj.userCode)) {
-              setCopiedDeviceCode(true);
-            }
-          } else {
-            const devRes = await fetchFromKeyBackend(
-              "/api/admin/github-device-start",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-admin-email": adminEmailInput.trim().toLowerCase(),
-                  "x-admin-password": adminPassInput,
-                },
-                body: JSON.stringify({
-                  stagedSessionId: stagedSessionId || undefined,
-                }),
-              }
-            );
-            const devData = await devRes.json();
-            if (devData.user_code && devData.device_code) {
-              const verifyUrl =
-                devData.verification_uri || "https://github.com/login/device";
-              const authObj = {
-                userCode: String(devData.user_code),
-                verificationUri: String(verifyUrl),
-                deviceCode: String(devData.device_code),
-                stagedSessionId:
-                  stagedSessionId || undefined,
-              };
-              prewarmedDeviceRef.current = authObj;
-              setGithubDeviceAuth(authObj);
-              if (safeWriteClipboardText(authObj.userCode)) {
-                setCopiedDeviceCode(true);
-              }
-            }
-          }
-          setAdminDeploying(false);
+                if (data.needsGitHubAuth) {
+          setSelfUpgradeStatus(
+            "Deployment blocked: the backend requires GitHub authorization, but browser GitHub OAuth is disabled. Configure deployment authorization on the backend instead."
+          );
           return;
         }
 
         if (res.ok && data.success) {
-          setGithubDeviceAuth(null);
 
           // The staged candidate has now been successfully deployed.
           // Remove the persistent staging marker so refreshes do not
@@ -3323,9 +3056,8 @@ const data = await res.json();
         setAdminDeploying(false);
       }
     },
-        [
+                [
       adminDeploying,
-      manualGithubTokenInput,
       buildLiveMirroredStateSnapshot,
       stagedSelfUpgrade,
       selfUpgradeApproved,
@@ -3929,10 +3661,7 @@ const isSelfModQuery =
       handleOneClickAdminDeploy();
     }
 
-    try {
-      const discoveredToken =
-        manualGithubTokenInput.trim() || discoverSavedGitHubTokenInBrowser();
-
+        try {
       const consensusHeaders: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -3976,7 +3705,6 @@ const shouldSendConversationHistory =
             ),
             adminUpgradeMode: isActualAdminUpgradeTask,
             nextVersionTag: "key",
-            githubToken: discoveredToken || undefined,
           strictQueryPriority:
   hasExplicitTopicResetDirective(queryText) ||
   hasExplicitNoHistoryDirective(queryText),
@@ -5497,33 +5225,9 @@ if (data.tracerOnly === true) {
                       </span>
                     </button>
 
-                    {githubDeviceAuth && (
-                      <div className="flex items-center justify-between gap-2 bg-slate-900 px-2.5 py-2 rounded-lg border border-amber-500/50">
-                        <span className="font-mono font-extrabold text-sm tracking-widest text-emerald-300 select-all">
-                          {githubDeviceAuth.userCode}
-                        </span>
-                        <a
-                          href={
-                            githubDeviceAuth.verificationUri ||
-                            "https://github.com/login/device"
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => {
-                            const codeToCopy = githubDeviceAuth.userCode || "";
-                            if (codeToCopy) {
-                              safeWriteClipboardText(codeToCopy);
-                              setCopiedDeviceCode(true);
-                            }
-                          }}
-                          className="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-extrabold cursor-pointer shrink-0 no-underline"
-                        >
-                          {copiedDeviceCode ? "Copied!" : "Copy Code"}
-                        </a>
-                      </div>
-                    )}
+                    
 
-                    {adminDeployResult && !githubDeviceAuth && (
+                    {adminDeployResult && (
                       <div className="space-y-1.5">
                         <div className="text-center font-mono text-[11px] text-emerald-400 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
                           ✓ Deployed ({adminDeployResult.commitSha})
