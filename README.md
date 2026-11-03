@@ -28,7 +28,7 @@ key/
 ├── tsconfig.json                       # TypeScript configuration
 ├── vite.config.ts                      # Vite bundler configuration
 ├── metadata.json                       # Application metadata & capabilities manifest
-├── .env.example                        # Environment variables template (GEMINI_API_KEY, GITHUB_TOKEN)
+├── .env.example                        # Environment variables template (AI provider API keys)
 ├── .gitignore                          # Git ignore rules
 ├── admin_versions_db.json              # Primary repository version ledger (malazhub/key)
 ├── cloud_users_db.json                 # Cloud user threads & quota storage ledger
