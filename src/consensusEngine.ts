@@ -2311,7 +2311,7 @@ const STOP_WORDS = new Set([
   "through", "during", "before", "after", "to", "from", "up",
   "down", "of", "off", "over", "under", "again", "further", "once", "here",
   "there", "all", "any", "both", "each", "few", "more", "most", "other", "some",
-  "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very",
+  "such", "only", "own", "same", "so", "than", "too", "very",
   "just", "now", "please", "plz", "give", "get", "make", "take", "send", "ask",
   "answer", "reply", "question", "query", "querry", "queries", "tell", "show",
   "explain", "find", "check", "use", "using", "used", "need", "want", "like",
@@ -3737,10 +3737,12 @@ function buildOrGetCachedSparseVector(rawText: string): CachedSparseVector {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(
-      (w) =>
-        (w.length >= 3 && !STOP_WORDS.has(w)) ||
-        /^(ai|ui|os|db|ip|js|ts|py|go|ml|vr|ar|3d|2d|4k|v8|ci|cd|qa)$/i.test(w)
-    );
+  (w) =>
+    (
+      (w.length >= 3 && !STOP_WORDS.has(w)) ||
+      /^(no|ai|ui|os|db|ip|js|ts|py|go|ml|vr|ar|3d|2d|4k|v8|ci|cd|qa)$/i.test(w)
+    )
+);
 
   const tokens = rawWords.map((w) => {
     let stem = w;
@@ -4433,22 +4435,15 @@ export function calculateMathematicalRelationWithPrevious(
         )
     );
 
-    if (isImmediateMetaFollowUp) {
-      rawPairScore = Math.max(rawPairScore, 92);
-    } else if (sharedCount >= 1 || idx >= Math.max(0, windowPairs.length - 6)) {
-      rawPairScore = Math.max(rawPairScore, 76);
-    }
+    // Only genuine measured relevance may qualify a saved pair.
+// Recency and a single shared word must never manufacture relevance.
+if (rawPairScore > maxScore) {
+  maxScore = rawPairScore;
+}
 
-    if (rawPairScore > maxScore) {
-      maxScore = rawPairScore;
-    }
-
-    if (
-      rawPairScore >= 45 ||
-      idx >= Math.max(0, windowPairs.length - 10)
-    ) {
-      matchedPairs.push(pair);
-    }
+if (rawPairScore >= 45) {
+  matchedPairs.push(pair);
+}
   }
 
   const isCorrectionOrRepetition =
@@ -4471,12 +4466,8 @@ export function calculateMathematicalRelationWithPrevious(
         !isKeySelfModificationRequest(p.userQuery))
   );
 
-  if (matchedPairs.length === 0 && nonGreetingWindowPairs.length > 0) {
-    for (const p of nonGreetingWindowPairs.slice(-10)) {
-      matchedPairs.push(p);
-    }
-    maxScore = Math.max(maxScore, 78);
-  }
+  // Do not add previous turns when semantic matching found no relevant pair.
+// An unrelated query must remain an isolated query.
 
   const hasRelation =
     (matchedPairs.length > 0 && maxScore >= 45) || isPureMetaFollowUp;
@@ -8396,6 +8387,133 @@ export class QueryContextManager {
   }
 
   static evaluateSemanticPriorityGate(
+  userQuery: string,
+  savedPairs: SavedQAPair[],
+  rawRelation: MathematicalRelationResult
+): SemanticPriorityGateResult {
+  const cleanQ =
+    extractCleanUserTurnText(userQuery) || userQuery.trim();
+
+  if (savedPairs.length === 0) {
+    return {
+      maintainHistory: false,
+      isNewIndependentTopic: true,
+      recentTurnOverlapScore: 0,
+      maxSavedOverlapScore: 0,
+      sharedRecentTokenCount: 0,
+      gateReason: "no_saved_history",
+    };
+  }
+
+  const currentTokens = extractSemanticTokens(
+    stripNegatedAndOldDiscussionClauses(cleanQ) || cleanQ
+  );
+
+  const currentSet = new Set(currentTokens);
+
+  // Compare against the most recent saved user question AND answer.
+  const recentPair = savedPairs[savedPairs.length - 1];
+
+  const recentTokens = recentPair
+    ? extractSemanticTokens(
+        `${recentPair.userQuery} ${
+          (recentPair.agreedAnswer || "").slice(0, 600)
+        }`
+      )
+    : [];
+
+  const recentSet = new Set(recentTokens);
+
+  let sharedRecentTokenCount = 0;
+
+  for (const token of currentSet) {
+    if (recentSet.has(token)) {
+      sharedRecentTokenCount += 1;
+    }
+  }
+
+  const recentCos = computeCosineSimilarity(
+    currentTokens,
+    recentTokens
+  );
+
+  const recentCoverage =
+    currentSet.size > 0
+      ? sharedRecentTokenCount / currentSet.size
+      : 0;
+
+  const recentTurnOverlapScore = Math.round(
+    100 * Math.min(
+      1,
+      0.55 * recentCos + 0.45 * recentCoverage
+    )
+  );
+
+  // Use the actual relation score produced by the saved-pair matcher.
+  const maxSavedOverlapScore = rawRelation.hasRelation
+    ? rawRelation.historyMatchScore
+    : 0;
+
+  // An explicit history-recall request is an intentional request
+  // to retrieve previous conversation context.
+  if (isExplicitHistoryRetrievalOrRecallRequest(cleanQ)) {
+    return {
+      maintainHistory: true,
+      isNewIndependentTopic: false,
+      recentTurnOverlapScore,
+      maxSavedOverlapScore: Math.max(
+        maxSavedOverlapScore,
+        95
+      ),
+      sharedRecentTokenCount,
+      gateReason: "explicit_previous_conversation_retrieval",
+    };
+  }
+
+  // A current instruction that supersedes all matched saved
+  // requirements must not inherit those conflicting requirements.
+  const matchedPairs = savedPairs.filter((pair) =>
+    rawRelation.matchedPairIndices.includes(pair.pairIndex)
+  );
+
+  const allMatchedPairsSuperseded =
+    rawRelation.hasRelation &&
+    matchedPairs.length > 0 &&
+    matchedPairs.every((pair) =>
+      doesCurrentQuerySupersedeSavedPair(
+        cleanQ,
+        pair.userQuery
+      )
+    );
+
+  if (allMatchedPairsSuperseded) {
+    return {
+      maintainHistory: false,
+      isNewIndependentTopic: true,
+      recentTurnOverlapScore,
+      maxSavedOverlapScore: 0,
+      sharedRecentTokenCount,
+      gateReason: "current_query_supersedes_conflicting_saved_turn",
+    };
+  }
+
+  // The actual measured relation score now decides history retention.
+  const maintainHistory =
+    rawRelation.hasRelation &&
+    rawRelation.matchedPairIndices.length > 0 &&
+    rawRelation.historyMatchScore >= 45;
+
+  return {
+    maintainHistory,
+    isNewIndependentTopic: !maintainHistory,
+    recentTurnOverlapScore,
+    maxSavedOverlapScore,
+    sharedRecentTokenCount,
+    gateReason: maintainHistory
+      ? "semantic_history_relevance_threshold_met"
+      : "semantic_history_relevance_threshold_not_met",
+  };
+}
     userQuery: string,
     savedPairs: SavedQAPair[],
     rawRelation: MathematicalRelationResult
@@ -10716,26 +10834,45 @@ const combinedBatch = successfulResults
   )
   .join("\n\n--- ENGINE BATCH RESPONSE ---\n\n");
 
-// Classify the combined engine batch using the existing defender module.
-// Treat it as a batch refusal only when every usable engine response refuses.
-const refusalAssessments = successfulResults.map((result) =>
-  analyzeRefusal(result.answer)
+// Assess every usable engine response independently.
+// One engine's refusal must not disappear because another engine answered.
+const refusalAssessments = successfulResults.map((result) => ({
+  engine: result.engine,
+  answer: result.answer,
+  assessment: analyzeRefusal(result.answer),
+}));
+
+const refusedEngineResults = refusalAssessments.filter(
+  (result) => result.assessment.refused
 );
 
 const combinedResultRefused =
   refusalAssessments.length > 0 &&
-  refusalAssessments.every((assessment) => assessment.refused);
+  refusedEngineResults.length === refusalAssessments.length;
 
-const combinedRefusalFeedback = combinedResultRefused
-  ? [
-      "COMBINED ENGINE RESULT REFUSED.",
-      "The combined refusal has been classified by defenderRuntime.",
-      "Reassess whether the original request can be fulfilled safely.",
-      "If the refusal is erroneous and another attempt is permitted,",
-      "provide a substantive answer while preserving all security boundaries.",
-      "Do not override a justified safety refusal.",
-    ].join("\n")
-  : "";
+// Every detected refusal receives an individual assessment.
+// A permitted request may be clarified or safely reframed.
+// A justified provider refusal must remain respected.
+const combinedRefusalFeedback =
+  refusedEngineResults.length > 0
+    ? [
+        "ENGINE REFUSAL HANDLING REQUIRED.",
+        "",
+        ...refusedEngineResults.map(
+          (result) =>
+            `Engine: ${result.engine}\n` +
+            `Detected refusal categories: ${result.assessment.categories.join(", ")}\n` +
+            `Original refusal: ${result.answer}`
+        ),
+        "",
+        "Assess each refusal against the user's original request.",
+        "Determine whether the refusal is justified or whether the request can be answered safely.",
+        "For a permitted request, clarify ambiguity or missing context and provide the permitted answer.",
+        "Do not use deception, identity pretense, encoding, or prompt obfuscation to evade provider safety restrictions.",
+        "Preserve legitimate safety, privacy, authorization, and access boundaries.",
+        "Do not claim that a refused engine successfully answered.",
+      ].join("\n")
+    : "";
 
 
     // Independently verify the complete batch against the user's request.
